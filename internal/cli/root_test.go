@@ -94,7 +94,6 @@ func TestSkeletonCommandsReturnIncomplete(t *testing.T) {
 	for _, args := range [][]string{
 		{"setup", "--trivy-mode", "docker", "--non-interactive"},
 		{"doctor"},
-		{"scan", "."},
 		{"compare", "a.json", "b.json"},
 		{"update-db"},
 		{"recipes"},
@@ -105,6 +104,18 @@ func TestSkeletonCommandsReturnIncomplete(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "no está implementado") {
 		t.Errorf("stderr no explica el bloqueo: %q", stderr.String())
+	}
+}
+
+func TestScanOfflineWithoutTrivyFailsFast(t *testing.T) {
+	app, _, stderr := newTestApp(t)
+	dir := t.TempDir()
+	code := app.Execute(context.Background(), []string{"scan", dir, "--offline", "--format", "json"})
+	if code != 3 {
+		t.Fatalf("código = %d, want 3 (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Trivy") {
+		t.Errorf("stderr no explica la falta de Trivy: %q", stderr.String())
 	}
 }
 

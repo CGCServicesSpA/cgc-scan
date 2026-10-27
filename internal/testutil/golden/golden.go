@@ -35,6 +35,9 @@ func Normalize(t *testing.T, data []byte) []byte {
 			for _, e := range engines {
 				if m, ok := e.(map[string]any); ok {
 					delete(m, "duration_ms")
+					if db, ok := m["db"].(map[string]any); ok {
+						delete(db, "age_seconds")
+					}
 				}
 			}
 		}

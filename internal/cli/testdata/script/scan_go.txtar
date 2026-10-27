@@ -1,0 +1,31 @@
+# Escaneo de extremo a extremo sobre un proyecto Go vulnerable. El comando
+# scanjson ejecuta el escaneo dos veces, valida contra el esquema y comprueba
+# la reproducibilidad fuera de la sección run.
+scanjson $WORK/report.json $WORK/fixture
+
+-- fixture/go.mod --
+module example.com/vulnapp
+
+go 1.24
+
+require golang.org/x/text v0.3.0
+-- fixture/go.sum --
+golang.org/x/text v0.3.0 h1:g61tztE5qeGQ89tm6NTjjM9VPIm088od1l6aSorWRWg=
+golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
+-- fixture/main.go --
+package main
+
+import (
+	"fmt"
+
+	"golang.org/x/text/language"
+)
+
+func main() {
+	fmt.Println(language.English)
+}
+-- fixture/Dockerfile --
+FROM alpine:3.20
+USER root
+-- fixture/.env --
+GITHUB_TOKEN=ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8

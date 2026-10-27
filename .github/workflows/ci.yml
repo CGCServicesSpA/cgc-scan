@@ -10,7 +10,6 @@ permissions:
 
 env:
   GOFLAGS: -mod=readonly
-  CGO_ENABLED: "0"
 
 jobs:
   test:
@@ -101,5 +100,6 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
         run: |
           go build -trimpath -ldflags="-s -w" -o /dev/null ./cmd/cgc-scan

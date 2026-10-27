@@ -86,7 +86,7 @@ func (a *App) newScanCommand() *cobra.Command {
 prompt de remediación. La selección de rutas con --include y --exclude queda
 registrada en coverage y marca el escaneo como parcial cuando corresponde.`,
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := oneOf("format", format, "json", "text", "prompt"); err != nil {
 				return err
 			}
@@ -107,7 +107,16 @@ registrada en coverage y marca el escaneo como parcial cuando corresponde.`,
 			if concurrency < 0 {
 				return UsageErrorf("--concurrency no puede ser negativo")
 			}
-			return notImplemented("scan", "H1")
+			target := ""
+			if len(args) == 1 {
+				target = args[0]
+			}
+			return a.runScan(cmd, scanOptions{
+				Target: target, Format: format, FailOn: failOn, ReportOut: reportOut,
+				TrivyMode: trivyMode, NoAutoInstall: noAutoInstall, Offline: offline,
+				RequireIsolation: requireIsolation, Include: include, Exclude: exclude,
+				Timeout: timeout, Concurrency: concurrency,
+			})
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text|prompt")
