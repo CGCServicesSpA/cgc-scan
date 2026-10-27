@@ -133,18 +133,18 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| H1-01 | Manifiesto de confianza embebido y `tools/update-manifest` (descarga, verificación de firma y checksums, escritura de hashes) | Dev | H0-02, P-07 | 2 | ADR-07; design §7.1 || [x] |
-| H1-02 | Instalación del binario de Trivy: descarga con tope, SHA-256, extracción segura, instalación atómica, comprobación de versión | Dev | H1-01, H0-08 | 2.5 | RF-20, RF-21; design §7.2 · CA-29 || [x] |
-| H1-03 | Bloqueos de archivo con `flock` para instalación y caché | Dev | H0-07 | 1 | design §7.4 || [x] |
-| H1-04 | Runner global: entorno por lista permitida, HOME aislado, proxy inválido, grupos de procesos, timeouts, tope de salida | Dev | H0-08, P-09 | 3 | design §6.2, §6.4; RF-07 || [x] |
-| H1-05 | Constructor `trivyArgs` encapsulado y pruebas de referencia de los argumentos | Dev | P-07 | 1.5 | design T-01 || [x] |
-| H1-06 | Parser de Trivy (vulnerabilidades, secretos, configuraciones) hacia `Finding`, `Redact` y tolerancia a salida truncada; fuzzing | Dev | H1-05, H0-11 | 3 | design §5.2, §8 · CA-13 || [x] |
-| H1-07 | Modelo `Finding`, fingerprint v1 y pruebas de estabilidad | Dev | H0-09 | 1.5 | design §5.3, §9.1 || [x] |
-| H1-08 | Descubrimiento mínimo (Go) con `os.Root` y exclusiones por defecto; inventario de exclusiones en `coverage` | Dev | H0-02 | 2 | PRD §4.3, §4.4; ADR-10 || [x] |
-| H1-09 | Plan de cobertura y estado por unidad (completado, omitido, fallido) | Dev | H1-08 | 1 | RF-02 || [x] |
-| H1-10 | Orquestador: `errgroup`, cancelación, resultados parciales | Dev | H1-04, H1-09 | 1.5 | RF-08; design §12 || [x] |
-| H1-11 | Renderizador JSON determinista (orden estable, campos volátiles agrupados en `run`) | Dev | H0-09, H1-07 | 1.5 | design §10.1 || [x] |
-| H1-12 | `scan` de extremo a extremo sobre un fixture Go con `testscript`; JSON válido contra el esquema | Test | H1-02, H1-06, H1-10, H1-11 | 1.5 | Gate H1 || [x] |
+| H1-01 | Manifiesto de confianza embebido y `tools/update-manifest` (descarga, verificación de firma y checksums, escritura de hashes) | Dev | H0-02, P-07 | 2 | ADR-07; design §7.1 | [x] |
+| H1-02 | Instalación del binario de Trivy: descarga con tope, SHA-256, extracción segura, instalación atómica, comprobación de versión | Dev | H1-01, H0-08 | 2.5 | RF-20, RF-21; design §7.2 · CA-29 | [x] |
+| H1-03 | Bloqueos de archivo con `flock` para instalación y caché | Dev | H0-07 | 1 | design §7.4 | [x] |
+| H1-04 | Runner global: entorno por lista permitida, HOME aislado, proxy inválido, grupos de procesos, timeouts, tope de salida | Dev | H0-08, P-09 | 3 | design §6.2, §6.4; RF-07 | [x] |
+| H1-05 | Constructor `trivyArgs` encapsulado y pruebas de referencia de los argumentos | Dev | P-07 | 1.5 | design T-01 | [x] |
+| H1-06 | Parser de Trivy (vulnerabilidades, secretos, configuraciones) hacia `Finding`, `Redact` y tolerancia a salida truncada; fuzzing | Dev | H1-05, H0-11 | 3 | design §5.2, §8 · CA-13 | [x] |
+| H1-07 | Modelo `Finding`, fingerprint v1 y pruebas de estabilidad | Dev | H0-09 | 1.5 | design §5.3, §9.1 | [x] |
+| H1-08 | Descubrimiento mínimo (Go) con `os.Root` y exclusiones por defecto; inventario de exclusiones en `coverage` | Dev | H0-02 | 2 | PRD §4.3, §4.4; ADR-10 | [x] |
+| H1-09 | Plan de cobertura y estado por unidad (completado, omitido, fallido) | Dev | H1-08 | 1 | RF-02 | [x] |
+| H1-10 | Orquestador: `errgroup`, cancelación, resultados parciales | Dev | H1-04, H1-09 | 1.5 | RF-08; design §12 | [x] |
+| H1-11 | Renderizador JSON determinista (orden estable, campos volátiles agrupados en `run`) | Dev | H0-09, H1-07 | 1.5 | design §10.1 | [x] |
+| H1-12 | `scan` de extremo a extremo sobre un fixture Go con `testscript`; JSON válido contra el esquema | Test | H1-02, H1-06, H1-10, H1-11 | 1.5 | Gate H1 | [x] |
 | | **Subtotal H1** | | | **22** | | Cierre 2026-10-27: verificado con Trivy 0.76.1 real, base local de 1,6 GB, `scan --offline` reproducible y JSON validado contra el esquema |
 
 ### Hito H2 — Runner Docker, caché y bases
