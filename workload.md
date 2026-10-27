@@ -89,18 +89,18 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| P-01 | Decidir cómo se obtienen las herramientas de los adaptadores (ESLint, Psalm, Bandit, cargo-audit, govulncheck): aprovisionamiento verificado, sin scripts de instalación | Decisión | — | 0.5 | design O-1, §8.1; T-04 | [ ] |
-| P-02 | Decidir repositorio público o privado y plataforma de CI (define firmas sin clave y SLSA) | Decisión | — | 0.5 | design O-5 | [ ] |
-| P-03 | Verificar disponibilidad del nombre `cgc-scan`: paquetes, dominio y marca en INAPI; fijar el nombre definitivo | Decisión | — | 1 | PRD §15 | [ ] |
-| P-04 | Cerrar defaults pendientes: umbral `--fail-on`, antigüedad de bases, trato de archivos ignorados por Git (`.env`), prioridad 3 sobre 1, lotes del prompt y nombre del archivo de política del proyecto | Decisión | — | 1 | PRD §15; design O-4 | [ ] |
-| P-05 | Decidir runner de Semgrep (¿sigue a Trivy?) y quién mantiene las reglas propias de CGC con qué licencia | Decisión | — | 0.5 | PRD §5.2, §15 | [ ] |
-| P-06 | Revisión de licencias: Trivy, adaptadores, reglas, dependencias Go y licencia de la propia CLI | Legal | — | 1.5 | PRD R3, §12 | [ ] |
-| P-07 | Spike Trivy: validar flags reales (fs, offline, descarga de bases, base Java, checks, desactivar comprobación de versión) contra la versión candidata | Spike | — | 2 | design T-01, §6.1 | [ ] |
-| P-08 | Spike Docker: propiedad de archivos del volumen de caché (root y no root) en Linux y Docker Desktop macOS | Spike | — | 1.5 | design T-02, O-3 | [ ] |
-| P-09 | Spike aislamiento `configured`: comprobar con `strace` que Trivy no abre conexiones con las opciones previstas | Spike | P-07 | 1.5 | PRD R1; design §6.2 | [ ] |
-| P-10 | Spike govulncheck: base local y evaluar uso como biblioteca (`golang.org/x/vuln/scan`) | Spike | — | 1 | design O-2 | [ ] |
-| P-11 | Spike adaptadores: invocación y formato de salida de ESLint (JS y TSX), Psalm (taint), cargo-audit (base local) y Bandit sobre fixtures mínimos | Spike | P-01 | 3 | PRD §5; design §8 | [ ] |
-| P-12 | Actualizar PRD y design.md con las decisiones y hallazgos de la fase; registrar cambios | Doc | P-01, P-02, P-03, P-04, P-05, P-06, P-07, P-08, P-09, P-10, P-11 | 1 | — | [ ] |
+| P-01 | Decidir cómo se obtienen las herramientas de los adaptadores (ESLint, Psalm, Bandit, cargo-audit, govulncheck): aprovisionamiento verificado, sin scripts de instalación | Decisión | — | 0.5 | design O-1, §8.1; T-04 | [x] |
+| P-02 | Decidir repositorio público o privado y plataforma de CI (define firmas sin clave y SLSA) | Decisión | — | 0.5 | design O-5 | [x] |
+| P-03 | Verificar disponibilidad del nombre `cgc-scan`: paquetes, dominio y marca en INAPI; fijar el nombre definitivo | Decisión | — | 1 | PRD §15 | [~] |
+| P-04 | Cerrar defaults pendientes: umbral `--fail-on`, antigüedad de bases, trato de archivos ignorados por Git (`.env`), prioridad 3 sobre 1, lotes del prompt y nombre del archivo de política del proyecto | Decisión | — | 1 | PRD §15; design O-4 | [x] |
+| P-05 | Decidir runner de Semgrep (¿sigue a Trivy?) y quién mantiene las reglas propias de CGC con qué licencia | Decisión | — | 0.5 | PRD §5.2, §15 | [x] |
+| P-06 | Revisión de licencias: Trivy, adaptadores, reglas, dependencias Go y licencia de la propia CLI | Legal | — | 1.5 | PRD R3, §12 | [x] |
+| P-07 | Spike Trivy: validar flags reales (fs, offline, descarga de bases, base Java, checks, desactivar comprobación de versión) contra la versión candidata | Spike | — | 2 | design T-01, §6.1 | [x] |
+| P-08 | Spike Docker: propiedad de archivos del volumen de caché (root y no root) en Linux y Docker Desktop macOS | Spike | — | 1.5 | design T-02, O-3 | [x] |
+| P-09 | Spike aislamiento `configured`: comprobar con `strace` que Trivy no abre conexiones con las opciones previstas | Spike | P-07 | 1.5 | PRD R1; design §6.2 | [x] |
+| P-10 | Spike govulncheck: base local y evaluar uso como biblioteca (`golang.org/x/vuln/scan`) | Spike | — | 1 | design O-2 | [x] |
+| P-11 | Spike adaptadores: invocación y formato de salida de ESLint (JS y TSX), Psalm (taint), cargo-audit (base local) y Bandit sobre fixtures mínimos | Spike | P-01 | 3 | PRD §5; design §8 | [x] |
+| P-12 | Actualizar PRD y design.md con las decisiones y hallazgos de la fase; registrar cambios | Doc | P-01, P-02, P-03, P-04, P-05, P-06, P-07, P-08, P-09, P-10, P-11 | 1 | — | [x] |
 | | **Subtotal P** | | | **15** | | |
 
 ### Hito H0 — Fundaciones: repositorio, CI y esqueleto

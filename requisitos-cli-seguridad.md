@@ -70,7 +70,7 @@ Las metas numéricas se fijan después de los benchmarks (sección 12.1).
 | Aislamiento | Objetivo: que el código no salga del equipo y que el escaneo no dependa de terceros. Mecanismo en dos niveles declarados (sección 6.6) | Objetivo confirmado; mecanismo Propuesto |
 | Imágenes de contenedor | Fuera de v1; el foco son proyectos en el directorio local | Confirmado |
 | Códigos de salida | 2 solo para argumentos o configuración inválidos; fallos de preparación o ejecución son 3 | Confirmado |
-| Lenguaje de implementación | Por definir; no condiciona el contrato público | Pendiente |
+| Lenguaje de implementación | Go (ADR-01); no condiciona el contrato público | Confirmado |
 
 ## 4. Alcance de la primera versión
 
@@ -202,7 +202,7 @@ Guarda `trivy_mode=docker` o `trivy_mode=global`. Una elección global se respet
 
 **Actualización del motor.** El binario o la imagen se actualizan solo según una política explícita de actualización de herramientas, conservando compatibilidad. Es independiente de la actualización de bases (sección 6.4). No resolver `latest` ni reemplazar el motor en cada invocación.
 
-**Alcance.** Este aprovisionamiento aplica a Trivy; no implica instalar toolchains ni dependencias de los proyectos. Ampliarlo a las herramientas de los adaptadores (ESLint, Psalm, Bandit, cargo-audit, govulncheck) es una decisión **propuesta**, no confirmada, que debe resolverse antes de H4 (design §8.1, O-1).
+**Alcance.** Este aprovisionamiento aplica a Trivy; no implica instalar toolchains ni dependencias de los proyectos. La decisión D-01 (`docs/decisiones-preparacion.md`) **amplía el aprovisionamiento verificado a las herramientas de los adaptadores** (ESLint, Psalm, Bandit, cargo-audit, govulncheck) con las mismas garantías: versión y hash en el manifiesto, sin scripts de instalación y sin escribir en el proyecto. Los toolchains de los proyectos siguen sin instalarse: si faltan, el adaptador se omite y la ejecución es incompleta.
 
 ### 6.4 Bases y almacenamiento persistente
 
@@ -624,18 +624,18 @@ Los criterios relativos al agente validan el contenido del prompt y un flujo de 
 
 | Tema | Pregunta | Recomendación (Propuesto) |
 | --- | --- | --- |
-| Lenguaje de implementación | ¿En qué se escribe la CLI? | Go o Rust: binario único sin runtime, compilación cruzada amd64/arm64 y buen manejo de procesos. Elegir el que más rápido pueda mantener quien desarrolla. |
-| Nombre definitivo | ¿`cgc-scan` u otro? | Verificar conflictos de nombre (paquetes, dominio, registro de marca en INAPI) antes de fijarlo. |
-| Umbral por defecto | ¿Qué severidad bloquea con `--fail-on`? | `high`. |
-| Antigüedad de bases | ¿Cuándo advertir y cuándo bloquear en offline? | Advertir a las 72 h; bloquear a los 7 días en offline salvo política distinta. Ajustar con datos reales. |
-| Archivos ignorados por Git | ¿Se analizan (p. ej. `.env` local con secretos)? | Analizar secretos en archivos ignorados, con enmascarado; excluirlos del análisis de código. |
-| Prioridad 3 sobre 1 | Si la ejecución es incompleta y además hay hallazgos que incumplen el umbral, hoy sale 3 y se oculta el 1. | Mantener 3, pero evaluar si CI necesita bloquear por hallazgos confirmados aunque falte cobertura (dos flags o un código adicional). |
-| Prompts grandes | Con muchos hallazgos el prompt puede exceder el contexto del agente. | Dividir en lotes por unidad de parche, con índice y referencia al reporte completo (sin truncar silenciosamente). |
+| Lenguaje de implementación | ¿En qué se escribe la CLI? | **Cerrado: Go** (ADR-01, design §2). Binario único, compilación cruzada amd64/arm64 y manejo de procesos. |
+| Nombre definitivo | ¿`cgc-scan` u otro? | **Cerrado: `cgc-scan`** / CGC Scan. Paquetes (npm, PyPI, crates.io, RubyGems, NuGet), repositorio y dominios `.cl`, `.com`, `.io` libres al 27-10-2026. La búsqueda de marca en INAPI exige reCAPTCHA y se registra manualmente en H7-06 (D-03). |
+| Umbral por defecto | ¿Qué severidad bloquea con `--fail-on`? | **Cerrado: `high`.** `unknown` cuenta contra el umbral por defecto y la decisión queda registrada en `policy` (D-04). |
+| Antigüedad de bases | ¿Cuándo advertir y cuándo bloquear en offline? | **Cerrado:** advertir a las 72 h; bloquear a los 7 días (168 h) en offline, configurable en `config.toml` (D-04). |
+| Archivos ignorados por Git | ¿Se analizan (p. ej. `.env` local con secretos)? | **Cerrado:** se analizan solo para secretos, con enmascarado; quedan fuera del análisis de código (D-04). |
+| Prioridad 3 sobre 1 | Si la ejecución es incompleta y además hay hallazgos que incumplen el umbral, hoy sale 3 y se oculta el 1. | **Cerrado:** se mantiene 3; el JSON conserva siempre el resultado de política y el de ejecución (D-04). |
+| Prompts grandes | Con muchos hallazgos el prompt puede exceder el contexto del agente. | **Cerrado:** lotes de 120 000 caracteres por unidad de parche, con índice y referencia al reporte completo; nunca truncar en silencio (D-04). |
 | Windows nativo | ¿Se soporta fuera de WSL2? | Fuera de v1. |
-| Versiones de stacks | Versiones concretas de motores, parsers y reglas. | Tarea de validación previa a publicar v1. |
+| Versiones de stacks | Versiones concretas de motores, parsers y reglas. | **Cerrado al iniciar H1** (spikes P-07 a P-11): Trivy 0.76.1, govulncheck v1.9.0, ESLint 10.13.0, psalm 6.20.3, cargo-audit 0.22.2, Bandit 1.9.4. Semgrep se fija en H6. |
 | Segunda iteración | Alcance, hardware y runtime de IA. | Sin bloquear v1. |
-| Runner de Semgrep | ¿Sigue la modalidad de Trivy o es independiente? | Seguir la modalidad guardada: imagen fijada por digest en Docker; instalación aislada en el directorio de usuario en global. |
-| Reglas propias de CGC | ¿Quién las mantiene y con qué licencia? | Conjunto mínimo propio, con licencia permisiva y versionado; crecer por lenguaje según fixtures. |
+| Runner de Semgrep | ¿Sigue la modalidad de Trivy o es independiente? | **Cerrado:** sigue la modalidad guardada; imagen por digest en Docker, binario aislado en global (D-05). |
+| Reglas propias de CGC | ¿Quién las mantiene y con qué licencia? | **Cerrado:** equipo de seguridad de CGC, Apache-2.0, versionadas y con fixture por regla (D-05). |
 | Formato de configuración | ¿YAML o TOML para la política del proyecto? | **Cerrado: TOML.** La elección según el ecosistema del lenguaje de implementación ya no aplica. |
 | SARIF | ¿Entra en v1? | v1.1, con el esquema interno diseñado para mapearse sin pérdida. |
 | Aislamiento `enforced` en global | ¿Se implementa? | Fuera de v1; evaluar por plataforma tras medir el uso real. |

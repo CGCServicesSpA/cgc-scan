@@ -311,22 +311,24 @@ docker run --rm \
   "$IMAGEN_TRIVY@sha256:..." \
   fs --format json --scanners vuln,secret,misconfig \
      --skip-db-update --skip-java-db-update --offline-scan \
+     --skip-check-update --skip-version-check --disable-telemetry \
      --cache-dir /cache /src
 ```
 
 Decisiones de diseño:
 
 - **La salida va por stdout del contenedor** y la CLI la captura con tope de bytes (`MaxOutput`). No se monta ningún directorio de salida, lo que reduce la superficie.
-- **Contenedor actualizador separado**: con red y el volumen de caché en lectura/escritura, sin el proyecto montado (PRD §6.4). Usa `--download-db-only` y su equivalente para la base Java.
+- **El contenedor corre como root dentro del contenedor** (usuario por defecto de la imagen oficial), sin `--user`. Probado en P-08: un volumen creado por el daemon no permite escribir a un uid distinto de 0 sin un `chown` previo, y el `chown` exigiría privilegios que `scan` no pide. La caché contiene solo bases y metadatos, y el nombre del volumen es propio del usuario.
+- **El volumen de vulnerabilidades pesa ~1,6 GB** (P-07). La preparación dimensiona el timeout de descarga y nunca aplica el tope de stdout a la base.
+- **Contenedor actualizador separado**: con red y el volumen de caché en lectura/escritura, sin el proyecto montado (PRD §6.4). Usa `--download-db-only` y `--download-java-db-only`.
 - Se ejecuta `docker context inspect` antes de usar Docker: un contexto remoto no es elegible (PRD §6.3). La CLI nunca cambia el contexto global.
-- **El volumen de caché lleva el identificador de usuario en el nombre:** `cgc-scan-trivy-cache-<uid>`, y su nombre exacto se registra en `state.json`. Dos personas que comparten un daemon no comparten volumen, que es lo que hace efectiva la mitigación de envenenamiento de caché de la sección 13. La propiedad de los archivos dentro del volumen depende del usuario con que corra el contenedor y queda pendiente de validación (T-02).
-- **Pendiente de validación (T-02):** propiedad de archivos en el volumen cuando el contenedor corre como root frente a como usuario no root. Se prueba en Linux y en Docker Desktop antes de fijar `--user`.
+- **El volumen de caché lleva el identificador de usuario en el nombre:** `cgc-scan-trivy-cache-<uid>`, y su nombre exacto se registra en `state.json`. Dos personas que comparten un daemon no comparten volumen, que es lo que hace efectiva la mitigación de envenenamiento de caché de la sección 13. Pertenecer al grupo `docker` equivale a root en el host; la mitigación real es el aislamiento de red y no compartir volumen.
 
 ### 6.2 Runner global (`configured`)
 
 El binario se invoca por ruta absoluta con cinco capas, ninguna de las cuales sustituye a las demás:
 
-1. **Opciones offline del motor** (equivalentes a las de la plantilla anterior).
+1. **Opciones offline del motor** (equivalentes a las de la plantilla anterior). Para Trivy incluyen `--offline-scan`, `--skip-db-update`, `--skip-java-db-update`, `--skip-check-update`, **`--skip-version-check`** y `--disable-telemetry`. El spike P-09 demostró que sin `--skip-version-check` Trivy contacta `check.trivy.dev` aun con el resto de las opciones; la opción es obligatoria.
 2. **Entorno mínimo por lista permitida**, no por lista de exclusión: `PATH` acotado, `LANG`, `TMPDIR`, y `HOME` apuntando al directorio aislado **de ese motor**, para que un motor no pueda alterar el entorno de otro. Así un motor no lee `~/.npmrc`, `~/.aws`, ni configuraciones de otras herramientas con credenciales, ni hereda variables como `*_TOKEN`.
 3. **Variables de proxy hacia un destino inválido** (por ejemplo `HTTPS_PROXY=http://127.0.0.1:9`) como defensa adicional: los motores que respetan el proxy fallan en lugar de conectarse. El puerto debe estar **cerrado**; el criterio de la sección 15.2 admite conexiones a bucle local, así que un servicio escuchando en ese puerto invalidaría la prueba. No es una garantía; no cubre motores que lo ignoran.
 4. **Telemetría y comprobaciones de versión desactivadas** con las opciones y variables propias de cada motor.
@@ -378,7 +380,9 @@ Archivo `manifest/trust.json` embebido con `go:embed`. Se actualiza únicamente 
 }
 ```
 
-`tools/update-manifest` corre en CI: descarga los artefactos, verifica la firma y los checksums que publica el proyecto del motor y recién entonces escribe los hashes. En el equipo del usuario basta comparar el SHA-256 con el manifiesto, que viaja firmado dentro del release de la CLI.
+`tools/update-manifest` corre en CI: descarga los artefactos, verifica la firma y los checksums que publica el proyecto del motor y recién entonces escribe los hashes. En el equipo del usuario basta comparar el SHA-256 con el manifiesto, que viaja firmado dentro del release de la CLI. El artefacto se nombra como lo publica cada proyecto (`trivy_<versión>_macOS-ARM64.tar.gz`, `cargo-audit-aarch64-apple-darwin-v<versión>.tgz`, etc.).
+
+**Versiones fijadas al iniciar H1** (verificadas en los spikes P-07 a P-11): Trivy 0.76.1, govulncheck v1.9.0, ESLint 10.13.0 con eslint-plugin-security 4.2.0 y @typescript-eslint/parser 8.72.1, Psalm 6.20.3, cargo-audit 0.22.2, Bandit 1.9.4. La versión de Semgrep se fija en H6.
 
 **Política de actualización del motor.** El binario o la imagen se actualizan solo cuando la versión fijada en el manifiesto difiere de la instalada, y nunca durante un escaneo: la actualización es una tarea explícita, independiente de la actualización de bases (PRD §6.3). El estado de lo instalado vive en `state.json`, así que la comparación es directa. Un cambio de versión del motor exige repetir la validación de flags y la prueba de aislamiento por versión (sección 15.2).
 
@@ -449,16 +453,15 @@ Las señales de detección por lenguaje están en PRD §5. Esta tabla fija cómo
 
 **Candidatos de receta.** Cada adaptador conoce cómo se prueba y se construye su ecosistema, así que aporta los candidatos de receta que le corresponden: `go test ./...` y `go build ./...` en Go, los scripts de `package.json` en JavaScript y TypeScript, los de `composer.json` en PHP, `cargo test` y `cargo build` en Rust, `pytest` en Python. Son propuestas que el usuario confirma (sección 9.5); el adaptador nunca las publica por su cuenta como recetas de confianza.
 
-### 8.1 Cómo se obtienen las herramientas de los adaptadores (decisión abierta O-1)
+### 8.1 Cómo se obtienen las herramientas de los adaptadores (decisión cerrada, D-01)
 
-PRD §6.3 limita el aprovisionamiento automático a Trivy. Pero ESLint, Psalm, Bandit, cargo-audit y govulncheck también necesitan estar presentes en su versión fijada. **Propuesta:** extender el mecanismo de la sección 7 a estas herramientas:
+PRD §6.3 limita el aprovisionamiento automático a Trivy. La decisión **D-01** (`docs/decisiones-preparacion.md`) extiende el mecanismo de la sección 7 a las herramientas de los adaptadores, con las mismas garantías:
 
 - Binarios publicados (cargo-audit, Psalm en `.phar`): descarga y verificación contra el manifiesto, igual que Trivy.
 - Paquetes de ecosistema (ESLint y plugins, Bandit): instalación en `engines/<herramienta>/<versión>/` con el instalador del ecosistema **sin ejecutar scripts de instalación** (`--ignore-scripts` en npm; hashes requeridos en pip) y desde archivos de bloqueo con integridad.
-- govulncheck: evaluar enlazarlo como biblioteca (`golang.org/x/vuln/scan`), que evita distribuir otro binario. Sigue necesitando el toolchain Go del usuario en modo fuente.
+- govulncheck: se enlaza como biblioteca (`golang.org/x/vuln/scan`), validado en P-10. Sigue necesitando el toolchain Go del usuario en modo fuente.
 - Si falta el toolchain del ecosistema (Node, PHP, Python, Go, Rust), el adaptador se omite con `requirement_missing` y la ejecución es incompleta (PRD §5, regla común).
-
-Requiere decisión porque amplía el alcance del PRD §6.3.
+- Toda versión y hash se fijan en `manifest/trust.json`; nunca se resuelve `latest` y nunca se instala nada en el proyecto.
 
 ### 8.2 Normalización de severidad (Propuesto)
 
@@ -737,10 +740,10 @@ Los riesgos de producto y regulatorios están en PRD §14 y no se repiten.
 
 | ID | Riesgo | Impacto | Mitigación |
 | --- | --- | --- | --- |
-| T-01 | Los flags de Trivy cambian entre versiones | Alto | Constructor `trivyArgs` encapsulado, pruebas de referencia y validación obligatoria al actualizar el manifiesto |
-| T-02 | Permisos de archivos del volumen Docker según usuario del contenedor y Docker Desktop | Medio | Probar root y no root en Linux y macOS antes de fijar `--user`; documentar la elección |
+| T-01 | Los flags de Trivy cambian entre versiones | Alto | Constructor `trivyArgs` encapsulado, pruebas de referencia y validación obligatoria al actualizar el manifiesto. P-09 añadió `--skip-version-check`: sin él la comprobación de versión abre red |
+| T-02 | Permisos de archivos del volumen Docker según usuario del contenedor y Docker Desktop | Medio | Resuelto en P-08: contenedor como root, sin `--user`, volumen por uid y `--read-only` (ADR-13) |
 | T-03 | Montajes de solo lectura lentos en Docker Desktop sobre proyectos grandes | Medio | Benchmarks; recomendar la modalidad global para proyectos muy grandes |
-| T-04 | Distribución de las herramientas de los adaptadores (O-1) | Alto | Resolver la decisión antes de implementar los adaptadores |
+| T-04 | Distribución de las herramientas de los adaptadores (O-1) | Alto | Resuelto en D-01: aprovisionamiento verificado extendido; implementación en H4-02 |
 | T-05 | ESLint y Psalm pueden cargar código del proyecto durante el análisis | Medio | Configuración propia, sin plugins del repositorio, entorno mínimo, aislamiento de red |
 | T-06 | Cambios en formatos de salida de los motores | Medio | Parsers tolerantes, fuzzing, archivos de referencia por versión fijada |
 | T-07 | Bloqueos de archivo y conversión compartido/exclusivo | Bajo | Protocolo de la sección 7.4 (soltar y tomar de nuevo, leer metadatos después) |
@@ -763,6 +766,12 @@ Los riesgos de producto y regulatorios están en PRD §14 y no se repiten.
 | ADR-09 | Salida de Trivy en Docker | Por stdout del contenedor | Directorio de salida montado | Menos montajes, menor superficie | Propuesto |
 | ADR-10 | Confinamiento de rutas | `os.Root` (Go ≥ 1.24) | Comprobación manual de prefijos | La biblioteca estándar lo garantiza frente a enlaces y `..` | Propuesto |
 | ADR-11 | Enlace global de Trivy | Enlace simbólico al motor versionado | Copiar el binario sobre `PATH` | Actualización atómica y sin pisar instalaciones ajenas | Propuesto |
+| ADR-12 | Comprobación de versión de Trivy durante el escaneo | `--skip-version-check` obligatorio | Confiar en `--offline-scan` | P-09: sin el flag, Trivy contacta `check.trivy.dev` y `configured` sería falso | Confirmado |
+| ADR-13 | Usuario del contenedor Trivy | root dentro del contenedor (sin `--user`) | uid del host | P-08: el volumen del daemon no es escribible por otro uid y no se pide elevación | Confirmado |
+| ADR-14 | govulncheck | Biblioteca `golang.org/x/vuln/scan` | Binario externo | P-10: elimina un artefacto y reutiliza el parser; el toolchain Go sigue siendo requisito | Confirmado |
+| ADR-15 | Repositorio y CI | GitHub público + GitHub Actions | Repositorio privado + claves propias | Habilita cosign sin clave y SLSA; el producto debe ser verificable por terceros | Confirmado (D-02) |
+| ADR-16 | Nombre y licencia de la CLI | `cgc-scan`, Apache-2.0 | Nombre alternativo | Paquetes, dominios y repositorio libres; licencia compatible con todo el stack (D-03, D-06) | Confirmado; INAPI se verifica en H7-06 |
+| ADR-17 | Herramientas de adaptadores | Aprovisionamiento verificado extendido (D-01) | Instalación manual o con los gestores del proyecto | Cobertura reproducible sin ejecutar scripts ni tocar el proyecto | Confirmado |
 
 ---
 
@@ -785,10 +794,10 @@ Complementa la secuencia de PRD §16 con el orden técnico. El desglose de tarea
 
 ### 18.2 Preguntas abiertas
 
-| ID | Pregunta | Recomendación |
+| ID | Pregunta | Estado |
 | --- | --- | --- |
-| O-1 | ¿Cómo se obtienen las herramientas de los adaptadores? (sección 8.1) | Extender el aprovisionamiento verificado de Trivy a ellas, sin scripts de instalación |
-| O-2 | ¿Se enlaza govulncheck como biblioteca? | Evaluar en H4; mantener la opción de binario externo |
-| O-3 | Usuario del contenedor y propiedad del volumen (T-02) | Decidir tras pruebas en Linux y Docker Desktop |
-| O-4 | Nombre y ubicación definitivos del archivo de política del proyecto | `cgc-scan.toml` en la raíz del proyecto |
-| O-5 | ¿Se publica la CLI con repositorio público o privado? Define el uso de SLSA y de firmas sin clave | Decidir antes de H6 |
+| O-1 | ¿Cómo se obtienen las herramientas de los adaptadores? | **Cerrada (D-01):** aprovisionamiento verificado extendido, sin scripts de instalación (ADR-17) |
+| O-2 | ¿Se enlaza govulncheck como biblioteca? | **Cerrada (P-10):** sí, `golang.org/x/vuln/scan` (ADR-14) |
+| O-3 | Usuario del contenedor y propiedad del volumen (T-02) | **Cerrada (P-08):** root dentro del contenedor, sin `--user`, volumen por uid (ADR-13) |
+| O-4 | Nombre y ubicación definitivos del archivo de política del proyecto | **Cerrada (D-04):** `cgc-scan.toml` en la raíz detectada |
+| O-5 | ¿Se publica la CLI con repositorio público o privado? Define el uso de SLSA y de firmas sin clave | **Cerrada (D-02):** repositorio público + GitHub Actions (ADR-15) |
