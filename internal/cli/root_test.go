@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,10 +93,7 @@ func TestQuietAndVerboseConflict(t *testing.T) {
 func TestSkeletonCommandsReturnIncomplete(t *testing.T) {
 	app, _, stderr := newTestApp(t)
 	for _, args := range [][]string{
-		{"setup", "--trivy-mode", "docker", "--non-interactive"},
-		{"doctor"},
 		{"compare", "a.json", "b.json"},
-		{"update-db"},
 		{"recipes"},
 	} {
 		if code := app.Execute(context.Background(), args); code != 3 {
@@ -110,12 +108,48 @@ func TestSkeletonCommandsReturnIncomplete(t *testing.T) {
 func TestScanOfflineWithoutTrivyFailsFast(t *testing.T) {
 	app, _, stderr := newTestApp(t)
 	dir := t.TempDir()
-	code := app.Execute(context.Background(), []string{"scan", dir, "--offline", "--format", "json"})
+	code := app.Execute(context.Background(), []string{"scan", dir, "--offline", "--trivy-mode", "global", "--format", "json"})
 	if code != 3 {
 		t.Fatalf("código = %d, want 3 (stderr: %s)", code, stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "Trivy") {
 		t.Errorf("stderr no explica la falta de Trivy: %q", stderr.String())
+	}
+}
+
+func TestRequireIsolationEnforcedWithGlobalFailsBeforePreparation(t *testing.T) {
+	app, _, stderr := newTestApp(t)
+	dir := t.TempDir()
+	code := app.Execute(context.Background(), []string{
+		"scan", dir, "--trivy-mode", "global", "--require-isolation", "enforced", "--offline", "--format", "json",
+	})
+	if code != 3 {
+		t.Fatalf("código = %d, want 3 (stderr: %s)", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "aislamiento") {
+		t.Errorf("stderr no explica el aislamiento: %q", stderr.String())
+	}
+}
+
+func TestDoctorIsReadOnlyAndStructured(t *testing.T) {
+	app, stdout, stderr := newTestApp(t)
+	if code := app.Execute(context.Background(), []string{"doctor", "--format", "json"}); code != 0 {
+		t.Fatalf("código = %d: %s", code, stderr.String())
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &doc); err != nil {
+		t.Fatalf("doctor no emitió JSON: %v\n%s", err, stdout.String())
+	}
+	if doc["config"].(map[string]any)["present"] != false {
+		t.Error("doctor declaró una configuración inexistente como presente")
+	}
+	if _, ok := doc["adapters"]; !ok {
+		t.Error("faltan los adaptadores")
+	}
+	for _, dir := range []string{app.Paths.ConfigDir, app.Paths.DataDir, app.Paths.CacheDir} {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("doctor creó %s", dir)
+		}
 	}
 }
 

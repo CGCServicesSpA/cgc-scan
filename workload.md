@@ -111,19 +111,19 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| H0-01 | Crear repositorio, licencia, README, SECURITY.md y CONTRIBUTING | Ops | P-02, P-03, P-06 | 0.5 | PRD §6.7 | [ ] |
-| H0-02 | `go mod init`, fijar versión de Go y `toolchain`, crear estructura de paquetes | Dev | H0-01 | 0.5 | design §3 | [ ] |
-| H0-03 | CI: build y pruebas en matriz linux/macOS × amd64/arm64 con `-race` | Ops | H0-02 | 1.5 | design §15 | [ ] |
-| H0-04 | Linters y seguridad de la propia CLI: golangci-lint (gosec, errcheck, forbidigo para stdout), staticcheck, vet, `go mod verify`, govulncheck | Ops | H0-03 | 1 | design §15.3; CA-08 | [ ] |
-| H0-05 | `main`: `signal.NotifyContext`, `slog` hacia stderr, tipo `ExitError`, `os.Exit` único | Dev | H0-02 | 1 | design §11 | [ ] |
-| H0-06 | `policy.Decide` con pruebas de tabla de los códigos 0, 1, 2, 3 y 130 | Dev | H0-05 | 0.5 | PRD §8.1; design §5.4 | [ ] |
-| H0-07 | `platform/paths`: ubicaciones por plataforma, variables `CGC_SCAN_*_DIR` | Dev | H0-02 | 1 | design §4.1 | [ ] |
-| H0-08 | Escritura atómica (temporal, `fsync`, `os.Rename`) y helpers de permisos 0600/0700 | Dev | H0-07 | 0.5 | RF-35; design §4.3 · CA-55 | [ ] |
-| H0-09 | Esquema JSON del reporte v1.0.0, embebido, con validación en pruebas; declarar desde el inicio `coverage.partial`, `coverage.not_analyzed`, el origen de cada exclusión y la sección `validation` | Dev | H0-02 | 3 | PRD §9; ADR-06; RF-14, RF-37 | [ ] |
-| H0-10 | Esqueleto de `testdata/fixtures`, convención de archivos de referencia y helper que ignora campos volátiles | Test | H0-09 | 1 | design §15.1 | [ ] |
-| H0-11 | `masking`: enmascarado de secretos y saneado de texto (control, ANSI, bidi), con fuzzing | Dev | H0-02 | 1.5 | design §10.3, §13 | [ ] |
-| H0-12 | Cobra: comandos `setup`, `doctor`, `scan`, `compare`, `update-db`, `recipes`, `--version`, ayuda, completado, `NO_COLOR`, TTY; parámetro desconocido devuelve código 2 | Dev | H0-05 | 2 | RF-32; PRD §8.2 · CA-05 | [ ] |
-| | **Subtotal H0** | | | **14** | | |
+| H0-01 | Crear repositorio, licencia, README, SECURITY.md y CONTRIBUTING | Ops | P-02, P-03, P-06 | 0.5 | PRD §6.7 | [x] |
+| H0-02 | `go mod init`, fijar versión de Go y `toolchain`, crear estructura de paquetes | Dev | H0-01 | 0.5 | design §3 | [x] |
+| H0-03 | CI: build y pruebas en matriz linux/macOS × amd64/arm64 con `-race` | Ops | H0-02 | 1.5 | design §15 | [x] |
+| H0-04 | Linters y seguridad de la propia CLI: golangci-lint (gosec, errcheck, forbidigo para stdout), staticcheck, vet, `go mod verify`, govulncheck | Ops | H0-03 | 1 | design §15.3; CA-08 | [x] |
+| H0-05 | `main`: `signal.NotifyContext`, `slog` hacia stderr, tipo `ExitError`, `os.Exit` único | Dev | H0-02 | 1 | design §11 | [x] |
+| H0-06 | `policy.Decide` con pruebas de tabla de los códigos 0, 1, 2, 3 y 130 | Dev | H0-05 | 0.5 | PRD §8.1; design §5.4 | [x] |
+| H0-07 | `platform/paths`: ubicaciones por plataforma, variables `CGC_SCAN_*_DIR` | Dev | H0-02 | 1 | design §4.1 | [x] |
+| H0-08 | Escritura atómica (temporal, `fsync`, `os.Rename`) y helpers de permisos 0600/0700 | Dev | H0-07 | 0.5 | RF-35; design §4.3 · CA-55 | [x] |
+| H0-09 | Esquema JSON del reporte v1.0.0, embebido, con validación en pruebas; declarar desde el inicio `coverage.partial`, `coverage.not_analyzed`, el origen de cada exclusión y la sección `validation` | Dev | H0-02 | 3 | PRD §9; ADR-06; RF-14, RF-37 | [x] |
+| H0-10 | Esqueleto de `testdata/fixtures`, convención de archivos de referencia y helper que ignora campos volátiles | Test | H0-09 | 1 | design §15.1 | [x] |
+| H0-11 | `masking`: enmascarado de secretos y saneado de texto (control, ANSI, bidi), con fuzzing | Dev | H0-02 | 1.5 | design §10.3, §13 | [x] |
+| H0-12 | Cobra: comandos `setup`, `doctor`, `scan`, `compare`, `update-db`, `recipes`, `--version`, ayuda, completado, `NO_COLOR`, TTY; parámetro desconocido devuelve código 2 | Dev | H0-05 | 2 | RF-32; PRD §8.2 · CA-05 | [x] |
+| | **Subtotal H0** | | | **14** | | Cierre 2026-10-27: CI verde en linux/macOS × amd64/arm64, `--version` con esquema y motores fijados, códigos 0/1/2/3/130 probados |
 
 ### Hito H1 — Rebanada vertical: scan de Go con Trivy global
 
@@ -155,18 +155,18 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| H2-01 | Detección de Docker: daemon, contexto local, arquitectura soportada | Dev | H1-04 | 1 | PRD §6.3; design §6.1 | [ ] |
-| H2-02 | Runner Docker: red deshabilitada, solo lectura, capacidades eliminadas, límites, salida por stdout | Dev | H2-01, P-08 | 2.5 | design §6.1; ADR-09 | [ ] |
-| H2-03 | Resolución de runner: precedencia y matriz de comportamiento (`--trivy-mode`, `--no-auto-install`, `--offline`) con pruebas de tabla | Dev | H2-02, H1-02 | 2 | RF-19, RF-22; PRD §6.2 | [ ] |
-| H2-04 | Preparación de la imagen por digest y del volumen de caché nombrado | Dev | H2-02 | 1.5 | RF-26; PRD §6.4 | [ ] |
-| H2-05 | Contenedor actualizador con red y volumen, sin el proyecto montado | Dev | H2-04 | 1.5 | RF-27; PRD §6.4 | [ ] |
-| H2-06 | Interfaz `DBSource` y fuentes de Trivy (base, base Java, checks) | Dev | H2-05, H1-03 | 2 | design §7.4 | [ ] |
-| H2-07 | Protocolo de bloqueo exclusivo y compartido; leer metadatos de la base tras tomar el compartido | Dev | H2-06 | 1.5 | RF-27; design §7.4 | [ ] |
-| H2-08 | Comando `update-db` | Dev | H2-06 | 0.5 | PRD §8 | [ ] |
-| H2-09 | Modo `--offline`: validación de antigüedad, errores estructurados y código 3 | Dev | H2-07 | 1.5 | RF-22, RF-28 | [ ] |
-| H2-10 | Fallos de actualización: no declarar bases vigentes, mensajes accionables | Dev | H2-06 | 1 | PRD §6.4, §6.5 | [ ] |
-| H2-11 | Pruebas de runner, bases y concurrencia | Test | H2-03, H2-07, H2-09, H2-10 | 3 | Gate H2 · CA-24, CA-25, CA-26, CA-27, CA-28, CA-30, CA-38, CA-39, CA-40, CA-41 | [ ] |
-| | **Subtotal H2** | | | **18** | | |
+| H2-01 | Detección de Docker: daemon, contexto local, arquitectura soportada | Dev | H1-04 | 1 | PRD §6.3; design §6.1 | [x] |
+| H2-02 | Runner Docker: red deshabilitada, solo lectura, capacidades eliminadas, límites, salida por stdout | Dev | H2-01, P-08 | 2.5 | design §6.1; ADR-09 | [x] |
+| H2-03 | Resolución de runner: precedencia y matriz de comportamiento (`--trivy-mode`, `--no-auto-install`, `--offline`) con pruebas de tabla | Dev | H2-02, H1-02 | 2 | RF-19, RF-22; PRD §6.2 | [x] |
+| H2-04 | Preparación de la imagen por digest y del volumen de caché nombrado | Dev | H2-02 | 1.5 | RF-26; PRD §6.4 | [x] |
+| H2-05 | Contenedor actualizador con red y volumen, sin el proyecto montado | Dev | H2-04 | 1.5 | RF-27; PRD §6.4 | [x] |
+| H2-06 | Interfaz `DBSource` y fuentes de Trivy (base, base Java, checks) | Dev | H2-05, H1-03 | 2 | design §7.4 | [x] |
+| H2-07 | Protocolo de bloqueo exclusivo y compartido; leer metadatos de la base tras tomar el compartido | Dev | H2-06 | 1.5 | RF-27; design §7.4 | [x] |
+| H2-08 | Comando `update-db` | Dev | H2-06 | 0.5 | PRD §8 | [x] |
+| H2-09 | Modo `--offline`: validación de antigüedad, errores estructurados y código 3 | Dev | H2-07 | 1.5 | RF-22, RF-28 | [x] |
+| H2-10 | Fallos de actualización: no declarar bases vigentes, mensajes accionables | Dev | H2-06 | 1 | PRD §6.4, §6.5 | [x] |
+| H2-11 | Pruebas de runner, bases y concurrencia | Test | H2-03, H2-07, H2-09, H2-10 | 3 | Gate H2 · CA-24, CA-25, CA-26, CA-27, CA-28, CA-30, CA-38, CA-39, CA-40, CA-41 | [x] |
+| | **Subtotal H2** | | | **18** | | Cierre 2026-10-27: Docker real (enforced) y global offline producen el mismo escaneo; volumen por uid, actualizador sin proyecto y update-db verificados |
 
 ### Hito H3 — Setup, configuración y política del proyecto
 
@@ -176,17 +176,17 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| H3-01 | `config.toml` de usuario: lectura, escritura y validación | Dev | H0-07 | 1 | design §4.2 | [ ] |
-| H3-02 | `state.json`: esquema, escritura atómica, registro de instalaciones y ediciones de perfil | Dev | H0-08 | 1 | design §4.3 | [ ] |
-| H3-03 | `setup` interactivo: detección de Docker, preguntas de Trivy y Semgrep, cancelación segura | Dev | H3-01, H3-02, H2-01 | 2 | RF-23; PRD §6.2 | [ ] |
-| H3-04 | `setup` no interactivo (`--trivy-mode`, `--semgrep`, `--non-interactive`) | Dev | H3-03 | 1 | RF-24 | [ ] |
-| H3-05 | Instalación global: enlace en `~/.local/bin`, no pisar instalaciones ajenas, versión incompatible | Dev | H1-02, H3-02 | 1.5 | RF-25; ADR-11 | [ ] |
-| H3-06 | Edición idempotente del perfil de shell (zsh, bash, fish) con respaldo y registro | Dev | H3-02 | 2 | RF-25; design §7.3 | [ ] |
-| H3-07 | `doctor`: diagnóstico de solo lectura de motores, bases, aislamiento y adaptadores | Dev | H2-03 | 2 | RF-03 | [ ] |
-| H3-08 | Política del proyecto `cgc-scan.toml`: lista de claves permitidas, errores de política, solo endurece el umbral, excepciones con vencimiento; registrar `exclude` con origen `policy` y marcar `coverage.partial` cuando aplique | Dev | H0-12, P-04 | 3.5 | RF-33; PRD §6.8; design §9.4, O-4 | [ ] |
-| H3-09 | Precedencia de configuración y registro del origen de cada valor | Dev | H3-01, H3-08 | 1 | PRD §6.8 | [ ] |
-| H3-10 | Pruebas de `setup`, instalación global, perfil y política | Test | H3-04, H3-05, H3-06, H3-08 | 2.5 | Gate H3 · CA-31, CA-32, CA-33, CA-34, CA-35, CA-36, CA-37, CA-52, CA-53 | [ ] |
-| | **Subtotal H3** | | | **17.5** | | |
+| H3-01 | `config.toml` de usuario: lectura, escritura y validación | Dev | H0-07 | 1 | design §4.2 | [x] |
+| H3-02 | `state.json`: esquema, escritura atómica, registro de instalaciones y ediciones de perfil | Dev | H0-08 | 1 | design §4.3 | [x] |
+| H3-03 | `setup` interactivo: detección de Docker, preguntas de Trivy y Semgrep, cancelación segura | Dev | H3-01, H3-02, H2-01 | 2 | RF-23; PRD §6.2 | [x] |
+| H3-04 | `setup` no interactivo (`--trivy-mode`, `--semgrep`, `--non-interactive`) | Dev | H3-03 | 1 | RF-24 | [x] |
+| H3-05 | Instalación global: enlace en `~/.local/bin`, no pisar instalaciones ajenas, versión incompatible | Dev | H1-02, H3-02 | 1.5 | RF-25; ADR-11 | [x] |
+| H3-06 | Edición idempotente del perfil de shell (zsh, bash, fish) con respaldo y registro | Dev | H3-02 | 2 | RF-25; design §7.3 | [x] |
+| H3-07 | `doctor`: diagnóstico de solo lectura de motores, bases, aislamiento y adaptadores | Dev | H2-03 | 2 | RF-03 | [x] |
+| H3-08 | Política del proyecto `cgc-scan.toml`: lista de claves permitidas, errores de política, solo endurece el umbral, excepciones con vencimiento; registrar `exclude` con origen `policy` y marcar `coverage.partial` cuando aplique | Dev | H0-12, P-04 | 3.5 | RF-33; PRD §6.8; design §9.4, O-4 | [x] |
+| H3-09 | Precedencia de configuración y registro del origen de cada valor | Dev | H3-01, H3-08 | 1 | PRD §6.8 | [x] |
+| H3-10 | Pruebas de `setup`, instalación global, perfil y política | Test | H3-04, H3-05, H3-06, H3-08 | 2.5 | Gate H3 · CA-31, CA-32, CA-33, CA-34, CA-35, CA-36, CA-37, CA-52, CA-53 | [x] |
+| | **Subtotal H3** | | | **17.5** | | Cierre 2026-10-27: setup interactivo/no interactivo, enlace y perfil idempotentes, doctor de solo lectura y política del proyecto con umbral/exclusiones/excepciones |
 
 ### Hito H4 — Adaptadores por lenguaje y monorepos
 

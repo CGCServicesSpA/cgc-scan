@@ -83,11 +83,12 @@ func Args(cacheDir string, skipDirs, skipFiles []string) []string {
 // Invocations produce una ejecución de Trivy para la unidad.
 func (a *Adapter) Invocations(u discovery.Unit, p plan.Plan) ([]runner.Invocation, error) {
 	inv := runner.Invocation{
-		Engine: ID,
-		Binary: a.Binary,
-		Dir:    filepath.Join(p.Root, u.Path),
-		Args:   Args(a.CacheDir, skipDirs(p), skipFiles(p)),
-		Env:    map[string]string{"TRIVY_SKIP_VERSION_CHECK": "true"},
+		Engine:    ID,
+		Binary:    a.Binary,
+		Dir:       filepath.Join(p.Root, u.Path),
+		ProjectRO: p.Root,
+		Args:      Args(a.CacheDir, skipDirs(p), skipFiles(p)),
+		Env:       map[string]string{"TRIVY_SKIP_VERSION_CHECK": "true"},
 	}
 	return []runner.Invocation{inv}, nil
 }

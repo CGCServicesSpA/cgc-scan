@@ -99,6 +99,19 @@ func TestDecodeRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+func TestEmptyProjectUnitValidates(t *testing.T) {
+	doc := minimalDoc()
+	doc.Target.Units = []UnitInfo{{ID: "project", Path: ".", Kind: "repository"}}
+	doc.Coverage.Units = []UnitCoverage{{ID: "project", Path: ".", Status: "completed", Engines: []EngineState{{ID: "trivy", Status: "completed"}}}}
+	if err := ValidateDocument(doc); err != nil {
+		t.Fatalf("una unidad sin lenguajes debe serializarse como [] y validar: %v", err)
+	}
+	data, _ := RenderJSON(doc)
+	if strings.Contains(string(data), `"languages": null`) {
+		t.Fatal("languages se serializó como null")
+	}
+}
+
 func TestFindingOrderIsStable(t *testing.T) {
 	doc := minimalDoc()
 	low := normalize.Finding{Fingerprint: strings.Repeat("b", 32), Kind: normalize.KindCode, Title: "b", Severity: normalize.SeverityInfo{Normalized: normalize.SeverityLow, Source: "x"}, Sources: []normalize.SourceRef{{Engine: "x"}}}

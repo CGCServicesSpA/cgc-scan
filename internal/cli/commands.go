@@ -28,7 +28,7 @@ func (a *App) newSetupCommand() *cobra.Command {
 contenedor o como binario global, decide si se habilita Semgrep CE y guarda la
 elección en la configuración de usuario. Nunca modifica el proyecto.`,
 		Args: cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if trivyMode != "" {
 				if err := oneOf("trivy-mode", trivyMode, "docker", "global"); err != nil {
 					return err
@@ -39,7 +39,7 @@ elección en la configuración de usuario. Nunca modifica el proyecto.`,
 					return err
 				}
 			}
-			return notImplemented("setup", "H3")
+			return a.runSetup(cmd, setupOptions{TrivyMode: trivyMode, Semgrep: semgrep, NonInteractive: nonInteractive})
 		},
 	}
 	cmd.Flags().StringVar(&trivyMode, "trivy-mode", "", "modalidad de Trivy: docker|global")
@@ -54,11 +54,11 @@ func (a *App) newDoctorCommand() *cobra.Command {
 		Use:   "doctor",
 		Short: "Diagnostica motores, bases, aislamiento y adaptadores",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := oneOf("format", format, "text", "json"); err != nil {
 				return err
 			}
-			return notImplemented("doctor", "H3")
+			return a.runDoctor(cmd, format)
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "text", "formato de salida: text|json")
@@ -155,8 +155,8 @@ func (a *App) newUpdateDBCommand() *cobra.Command {
 		Use:   "update-db",
 		Short: "Actualiza las bases de datos de los motores",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return notImplemented("update-db", "H2")
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return a.runUpdateDB(cmd)
 		},
 	}
 	return cmd

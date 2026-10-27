@@ -36,6 +36,10 @@ func ReadDBInfo(cacheDir string) (DBInfo, error) {
 		}
 		return DBInfo{}, fmt.Errorf("leer metadatos de la base: %w", err)
 	}
+	return parseDBMetadata(data)
+}
+
+func parseDBMetadata(data []byte) (DBInfo, error) {
 	var meta struct {
 		Version      int    `json:"Version"`
 		UpdatedAt    string `json:"UpdatedAt"`
@@ -56,7 +60,6 @@ func ReadDBInfo(cacheDir string) (DBInfo, error) {
 		Source:     "trivy-db",
 		UpdatedAt:  t.UTC(),
 		Schema:     meta.Version,
-		Path:       path,
 		AgeSeconds: int64(time.Since(t).Seconds()),
 	}, nil
 }
@@ -99,17 +102,29 @@ func CheckDBOffline(cacheDir string, warnAfter, blockAfter time.Duration) (DBInf
 	if err != nil {
 		return DBInfo{}, err
 	}
+	if err := CheckDBAge(&info, warnAfter, blockAfter); err != nil {
+		return info, err
+	}
+	return info, nil
+}
+
+// CheckDBAge aplica la política de antigüedad a una base ya leída.
+func CheckDBAge(info *DBInfo, warnAfter, blockAfter time.Duration) error {
+	if info.UpdatedAt.IsZero() {
+		info.Status = "missing"
+		return ErrDBAbsent
+	}
 	age := time.Since(info.UpdatedAt)
 	switch {
 	case blockAfter > 0 && age > blockAfter:
 		info.Status = "stale"
-		return info, fmt.Errorf("la base local tiene %s de antigüedad y supera el máximo offline de %s", age.Round(time.Hour), blockAfter)
+		return fmt.Errorf("la base local tiene %s de antigüedad y supera el máximo offline de %s", age.Round(time.Hour), blockAfter)
 	case warnAfter > 0 && age > warnAfter:
 		info.Status = "stale"
 	default:
 		info.Status = "offline"
 	}
-	return info, nil
+	return nil
 }
 
 func lastLine(b []byte) string {

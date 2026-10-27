@@ -30,10 +30,15 @@ func (l IsolationLevel) Rank() int {
 // Invocation describe una ejecución concreta.
 type Invocation struct {
 	Engine string
-	Binary string            // ruta absoluta al ejecutable
-	Args   []string          // nunca pasan por shell
-	Dir    string            // directorio de trabajo (vacío = raíz del proyecto)
-	Env    map[string]string // se suma a la lista permitida base
+	Binary string   // ruta absoluta al ejecutable
+	Args   []string // nunca pasan por shell
+	Dir    string   // directorio de trabajo (vacío = raíz del proyecto)
+	// ProjectRO es la raíz del proyecto que el runner Docker monta en /src en
+	// solo lectura. El runner global no la usa.
+	ProjectRO string
+	// Entrypoint sustituye el entrypoint de la imagen (solo runner Docker).
+	Entrypoint string
+	Env        map[string]string // se suma a la lista permitida base
 	// AllowNetwork solo se usa en la fase de preparación (descarga de bases).
 	// Durante el escaneo debe ser falso: el proxy apunta a un destino cerrado.
 	AllowNetwork bool

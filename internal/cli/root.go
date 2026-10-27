@@ -22,6 +22,7 @@ import (
 
 // App agrupa el estado de una ejecución de la CLI. Es inyectable para pruebas.
 type App struct {
+	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
 	Paths  platform.Paths
@@ -41,6 +42,9 @@ func WithNow(now func() time.Time) Option { return func(a *App) { a.Now = now } 
 // WithTTY fuerza la detección de terminal.
 func WithTTY(tty bool) Option { return func(a *App) { a.IsTTY = tty } }
 
+// WithStdin sustituye la entrada estándar (para setup interactivo en pruebas).
+func WithStdin(r io.Reader) Option { return func(a *App) { a.Stdin = r } }
+
 // New construye la App resolviendo las ubicaciones de plataforma.
 func New(stdout, stderr io.Writer, opts ...Option) (*App, error) {
 	p, err := platform.Resolve()
@@ -48,6 +52,7 @@ func New(stdout, stderr io.Writer, opts ...Option) (*App, error) {
 		return nil, err
 	}
 	a := &App{
+		Stdin:  os.Stdin,
 		Stdout: stdout,
 		Stderr: stderr,
 		Paths:  p,

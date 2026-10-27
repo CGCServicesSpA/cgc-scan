@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,14 +12,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CGCServicesSpA/cgc-scan/internal/adapter/trivy"
+	"github.com/CGCServicesSpA/cgc-scan/internal/config"
 	"github.com/CGCServicesSpA/cgc-scan/internal/discovery"
 	"github.com/CGCServicesSpA/cgc-scan/internal/masking"
 	"github.com/CGCServicesSpA/cgc-scan/internal/normalize"
 	"github.com/CGCServicesSpA/cgc-scan/internal/orchestrator"
 	"github.com/CGCServicesSpA/cgc-scan/internal/plan"
-	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policy"
-	"github.com/CGCServicesSpA/cgc-scan/internal/provision"
+	"github.com/CGCServicesSpA/cgc-scan/internal/policyfile"
 	"github.com/CGCServicesSpA/cgc-scan/internal/report"
 	"github.com/CGCServicesSpA/cgc-scan/internal/runner"
 	"github.com/CGCServicesSpA/cgc-scan/internal/version"
@@ -41,7 +42,7 @@ type scanOptions struct {
 	Concurrency      int
 }
 
-func (a *App) runScan(cmd *cobra.Command, opts scanOptions) error {
+func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	started := a.Now()
 	if opts.Target == "" {
 		wd, err := os.Getwd()
@@ -58,14 +59,28 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) error {
 	if err := a.Paths.EnsureDirs(); err != nil {
 		return IncompleteErrorf("preparar directorios: %v", err)
 	}
-
-	// Paso 2: resolver el runner antes de leer el proyecto (design §1.2).
-	mode := opts.TrivyMode
-	if mode == "" {
-		mode = "global" // H2 incorpora la detección de Docker
+	cfg, err := config.Load(a.Paths.ConfigFile())
+	if err != nil {
+		return UsageErrorf("%v", err)
 	}
-	if mode != "global" {
-		return IncompleteErrorf("la modalidad %q de Trivy se habilita en H2", mode)
+	targetRef := target
+	emitted := false
+	defer func() {
+		if retErr == nil || emitted || opts.Format != "json" {
+			return
+		}
+		var ee *ExitError
+		if !errors.As(retErr, &ee) || ee.Code != 3 {
+			return
+		}
+		doc := failureDocument(started, targetRef, retErr)
+		_ = report.Emit(a.Stdout, doc, "json")
+	}()
+
+	rootGuess := discovery.DetectRoot(target)
+	pol, err := policyfile.Load(rootGuess, started)
+	if err != nil {
+		return IncompleteErrorf("%v", err)
 	}
 
 	ms, err := manifest.Load()
@@ -77,78 +92,36 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) error {
 		return IncompleteErrorf("%v", err)
 	}
 
-	globalRunner := &runner.Global{Paths: a.Paths}
-	level, err := globalRunner.Isolation(cmd.Context())
+	slog.Info("preparando Trivy", "version", engine.Version, "mode", opts.TrivyMode)
+	setup, err := a.setupEngine(cmd.Context(), opts, cfg, ms, engine)
+	if err != nil {
+		return IncompleteErrorf("%v", err)
+	}
+	defer func() { _ = setup.Shared.Release() }()
+	if setup.FallbackReason != "" {
+		slog.Warn("selección de runner", "mode", setup.Mode, "reason", setup.FallbackReason)
+	}
+	level, err := setup.Runner.Isolation(cmd.Context())
 	if err != nil {
 		return IncompleteErrorf("determinar aislamiento: %v", err)
 	}
-	required := runner.IsolationLevel(opts.RequireIsolation)
-	if required.Rank() > level.Rank() {
-		return IncompleteErrorf("se exigió aislamiento %s y el runner global ofrece %s; el proyecto no se analizó", required, level)
-	}
 
-	slog.Info("preparando Trivy", "version", engine.Version, "mode", mode)
-
-	var binPath string
-	if opts.Offline || opts.NoAutoInstall {
-		candidate := filepath.Join(a.Paths.EngineDir("trivy", engine.Version), "trivy")
-		if _, statErr := os.Stat(candidate); statErr != nil {
-			return IncompleteErrorf("no hay un Trivy %s instalado y %s prohíbe descargarlo", engine.Version,
-				map[bool]string{true: "--offline", false: "--no-auto-install"}[opts.Offline])
-		}
-		binPath = candidate
-	} else {
-		res, err := provision.EnsureTrivy(cmd.Context(), provision.Options{Paths: a.Paths, Manifest: ms})
-		if err != nil {
-			return IncompleteErrorf("%v", err)
-		}
-		binPath = res.Path
-		if res.Installed {
-			slog.Info("Trivy instalado", "path", binPath)
-		}
-	}
-
-	// Paso 3: bloqueo exclusivo, base, bloqueo compartido durante el escaneo.
-	cacheDir := a.Paths.TrivyCacheDir()
-	lockPath := filepath.Join(a.Paths.LocksDir(), "trivy-cache.lock")
-	exclusive, err := platform.Acquire(cmd.Context(), lockPath, false, 5*time.Minute)
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	var dbInfo provision.DBInfo
-	var prep []report.Preparation
-	if opts.Offline {
-		dbInfo, err = provision.CheckDBOffline(cacheDir, 72*time.Hour, 7*24*time.Hour)
-		if err != nil {
-			_ = exclusive.Release()
-			return IncompleteErrorf("%v", err)
-		}
-		prep = append(prep, report.Preparation{Action: "db", Status: "ok", Detail: "offline: base local validada"})
-	} else {
-		dbInfo, err = provision.UpdateDB(cmd.Context(), globalRunner, binPath, cacheDir, 15*time.Minute)
-		if err != nil {
-			_ = exclusive.Release()
-			return IncompleteErrorf("%v", err)
-		}
-		prep = append(prep, report.Preparation{Action: "db", Status: "ok", Detail: "base actualizada"})
-	}
-	if err := exclusive.Release(); err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	shared, err := platform.Acquire(cmd.Context(), lockPath, true, 5*time.Minute)
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	defer func() { _ = shared.Release() }()
-
-	// Paso 4: aislamiento ya verificado; requisitos dependientes del proyecto
-	// se comprueban en el adaptador.
 	// Paso 5: descubrimiento y plan.
-	exclusions := make([]discovery.Exclusion, 0, len(opts.Exclude))
-	for _, p := range opts.Exclude {
-		exclusions = append(exclusions, discovery.Exclusion{
-			Pattern: p, Origin: discovery.OriginCLI, Reason: "exclusión de la línea de comandos",
-		})
+	var exclusions []discovery.Exclusion
+	if len(opts.Exclude) > 0 {
+		// --exclude reemplaza las exclusiones de usuario y de política
+		// (PRD §6.8); las intrínsecas se conservan siempre.
+		for _, p := range opts.Exclude {
+			exclusions = append(exclusions, discovery.Exclusion{
+				Pattern: p, Origin: discovery.OriginCLI, Reason: "exclusión de la línea de comandos",
+			})
+		}
+	} else {
+		for _, p := range pol.Exclude {
+			exclusions = append(exclusions, discovery.Exclusion{
+				Pattern: p, Origin: discovery.OriginPolicy, Reason: "exclusión de la política del proyecto",
+			})
+		}
 	}
 	disc, err := discovery.Discover(cmd.Context(), discovery.Options{
 		Target: target, Exclude: exclusions, ReportOut: opts.ReportOut,
@@ -170,9 +143,9 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) error {
 		return IncompleteErrorf("%v", err)
 	}
 	trivyAdapter := trivy.New(masker)
-	trivyAdapter.CacheDir = cacheDir
-	trivyAdapter.Binary = binPath
-	trivyAdapter.RunnerKind = mode
+	trivyAdapter.CacheDir = setup.CacheDir
+	trivyAdapter.Binary = setup.Binary
+	trivyAdapter.RunnerKind = setup.Mode
 
 	// Paso 6: ejecución.
 	concurrency := opts.Concurrency
@@ -182,18 +155,20 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) error {
 	out := orchestrator.Execute(cmd.Context(), p, []orchestrator.Engine{{
 		ID:        trivy.ID,
 		Version:   engine.Version,
-		Mode:      mode,
+		Mode:      setup.Mode,
 		Adapter:   trivyAdapter,
-		Runner:    globalRunner,
+		Runner:    setup.Runner,
 		Isolation: level,
 	}}, concurrency)
 
 	// Pasos 7 y 8: política.
-	failOn := normalizeSeverity(opts.FailOn)
-	eval := policy.Evaluate(out.Findings, failOn, true, nil)
+	failOn, thresholdIssues := policyfile.EffectiveFailOn(
+		cmd.Flags().Changed("fail-on"), opts.FailOn, pol, normalize.SeverityHigh)
+	pol.Issues = append(pol.Issues, thresholdIssues...)
+	eval := policy.Evaluate(out.Findings, failOn, true, pol.Exceptions)
 
 	// Paso 9: reporte.
-	doc := buildDocument(cmd, opts, started, time.Since(started), disc, out, dbInfo, prep, binPath, level, eval, engine.Image)
+	doc := buildDocument(cmd, opts, cfg, pol, failOn, setup, disc, out, started, time.Since(started), level, eval)
 
 	if opts.ReportOut != "" {
 		if err := a.validateReportOut(target, doc, opts.ReportOut); err != nil {
@@ -204,8 +179,10 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) error {
 		}
 	}
 	if err := report.Emit(a.Stdout, doc, opts.Format); err != nil {
+		emitted = true
 		return IncompleteErrorf("%v", err)
 	}
+	emitted = true
 
 	code := policy.Decide(
 		policy.RunOutcome{Complete: out.Complete, Canceled: out.Canceled},
@@ -217,21 +194,32 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) error {
 	return nil
 }
 
-func normalizeSeverity(s string) normalize.Severity {
-	switch strings.ToLower(s) {
-	case "critical":
-		return normalize.SeverityCritical
-	case "high", "":
-		return normalize.SeverityHigh
-	case "medium":
-		return normalize.SeverityMedium
-	case "low":
-		return normalize.SeverityLow
-	case "info":
-		return normalize.SeverityInformational
-	default:
-		return normalize.SeverityUnknown
+// failureDocument construye un reporte mínimo con el error estructurado, para
+// que un consumidor de JSON nunca reciba stdout vacío ante un fallo de
+// preparación (PRD §9, RF-08).
+func failureDocument(started time.Time, target string, cause error) *report.Document {
+	doc := &report.Document{
+		SchemaVersion: version.SchemaVersion,
+		Run:           report.NewRun(report.NewRunID(started), started, time.Since(started), map[string]any{"failed": true}),
+		Target: report.Target{
+			Root: target, LocalID: report.LocalID(target),
+			VCS: report.VCS{Available: false}, Units: []report.UnitInfo{},
+		},
+		Coverage: report.Coverage{
+			Partial:     true,
+			Scope:       report.Scope{Root: target},
+			Limitations: []string{"la preparación o el escaneo no se completaron"},
+		},
+		Tools:      report.Tools{Engines: []report.EngineReport{}},
+		Isolation:  report.Isolation{Level: "configured", VerifiedBy: ""},
+		Validation: report.Validation{},
+		Policy:     report.Policy{FailOn: "high", UnknownCounts: true},
+		Errors: []report.Error{{
+			Code: "scan_failed", Scope: "scan", Message: cause.Error(), Retryable: true,
+		}},
 	}
+	doc.Normalize()
+	return doc
 }
 
 // validateReportOut impide sobrescribir código del proyecto y exige que el
@@ -251,9 +239,9 @@ func (a *App) validateReportOut(root string, _ *report.Document, path string) er
 	return nil
 }
 
-func buildDocument(cmd *cobra.Command, opts scanOptions, started time.Time, elapsed time.Duration,
-	disc discovery.Result, out orchestrator.Outcome, db provision.DBInfo, prep []report.Preparation,
-	binPath string, level runner.IsolationLevel, eval policy.Evaluation, image string) *report.Document {
+func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol policyfile.Policy,
+	failOn normalize.Severity, setup *engineSetup, disc discovery.Result, out orchestrator.Outcome,
+	started time.Time, elapsed time.Duration, level runner.IsolationLevel, eval policy.Evaluation) *report.Document {
 
 	units := make([]report.UnitInfo, 0, len(disc.Units))
 	for _, u := range disc.Units {
@@ -274,7 +262,6 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, started time.Time, elap
 		})
 	}
 
-	// Estado por unidad y contadores por motor.
 	findingsByUnitEngine := map[string]map[string]int{}
 	for _, e := range out.Engines {
 		for _, st := range e.Units {
@@ -304,25 +291,29 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, started time.Time, elap
 		er := report.EngineReport{
 			ID: e.ID, Version: e.Version, Status: e.Status, Mode: e.Mode,
 			Isolation: string(e.Isolation), DurationMS: e.Duration.Milliseconds(),
-			Path: binPath, Image: image,
+			Path: setup.Binary, Image: setup.Image,
 		}
 		for _, st := range e.Units {
 			er.Units = append(er.Units, report.EngineState{
 				ID: st.Unit, Status: st.Status, Reason: st.Reason, Findings: st.Findings,
 			})
 		}
-		updated := db.UpdatedAt.UTC().Format(time.RFC3339)
-		age := db.AgeSeconds
-		schema := db.Schema
+		updated := setup.DB.UpdatedAt.UTC().Format(time.RFC3339)
+		age := setup.DB.AgeSeconds
+		schema := setup.DB.Schema
 		er.DB = &report.DBState{
-			Source: "trivy-db", Status: db.Status, UpdatedAt: &updated,
+			Source: "trivy-db", Status: setup.DB.Status, UpdatedAt: &updated,
 			AgeSeconds: &age, Schema: &schema,
 		}
-		er.Preparation = prep
-		if db.Status == "stale" {
+		er.Preparation = setup.Preparations
+		if setup.DB.Status == "stale" {
 			er.Limitations = append(er.Limitations, "base con antigüedad superior al aviso")
 		}
-		er.Limitations = append(er.Limitations, "checks de configuración embebidos (sin bundle descargado)")
+		for _, p := range setup.Preparations {
+			if p.Action == "checks" && p.Status == "failed" {
+				er.Limitations = append(er.Limitations, "checks de configuración embebidos (el bundle no se pudo actualizar)")
+			}
+		}
 		engines = append(engines, er)
 	}
 
@@ -333,34 +324,73 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, started time.Time, elap
 	if opts.Offline {
 		limitations = append(limitations, "modo offline: no se actualizaron motores ni bases")
 	}
+	if setup.FallbackReason != "" {
+		limitations = append(limitations, setup.FallbackReason)
+	}
+	for _, issue := range pol.Issues {
+		if issue.Code == "policy_key_ignored" || issue.Code == "policy_invalid_toml" {
+			limitations = append(limitations, "la política del proyecto se aplicó parcialmente")
+			break
+		}
+	}
 
 	include := opts.Include
 	if include == nil {
 		include = []string{}
 	}
-	exclude := opts.Exclude
-	if exclude == nil {
-		exclude = []string{}
+	excludeList := opts.Exclude
+	if excludeList == nil {
+		excludeList = []string{}
+	}
+	mode := "global"
+	if len(out.Engines) > 0 {
+		mode = out.Engines[0].Mode
 	}
 	args := map[string]any{
 		"format":            opts.Format,
-		"fail_on":           opts.FailOn,
+		"fail_on":           string(failOn),
 		"offline":           opts.Offline,
-		"trivy_mode":        out.Engines[0].Mode,
+		"trivy_mode":        mode,
 		"require_isolation": opts.RequireIsolation,
 		"no_auto_install":   opts.NoAutoInstall,
 		"include":           include,
-		"exclude":           exclude,
+		"exclude":           excludeList,
+	}
+	failOnOrigin := "default"
+	switch {
+	case cmd != nil && cmd.Flags().Changed("fail-on"):
+		failOnOrigin = "flag"
+	case pol.FailOn != "":
+		failOnOrigin = "project_policy"
+	}
+	modeOrigin := "default"
+	switch {
+	case opts.TrivyMode != "":
+		modeOrigin = "flag"
+	case cfg.TrivyMode != "":
+		modeOrigin = "setup"
 	}
 	origins := []report.ConfigOrigin{
-		{Key: "fail_on", Value: opts.FailOn, Origin: originOf(cmd, "fail-on", "default")},
-		{Key: "trivy_mode", Value: out.Engines[0].Mode, Origin: originOf(cmd, "trivy-mode", "default")},
+		{Key: "fail_on", Value: string(failOn), Origin: failOnOrigin},
+		{Key: "trivy_mode", Value: mode, Origin: modeOrigin},
 		{Key: "offline", Value: opts.Offline, Origin: originOf(cmd, "offline", "default")},
+		{Key: "cache_dir", Value: setup.CacheDir, Origin: cacheOrigin(cfg)},
 	}
 
-	errs := make([]report.Error, 0, len(out.Errors))
+	errs := make([]report.Error, 0, len(out.Errors)+len(pol.Issues))
 	for _, e := range out.Errors {
 		errs = append(errs, report.Error{Code: e.Code, Scope: e.Scope, Message: e.Message, Retryable: e.Retryable})
+	}
+	for _, issue := range pol.Issues {
+		errs = append(errs, report.Error{Code: issue.Code, Scope: "policy", Message: issue.Message, Retryable: false})
+	}
+
+	exceptions := make([]report.ExceptionReport, 0, len(pol.Exceptions))
+	for _, ex := range pol.Exceptions {
+		exceptions = append(exceptions, report.ExceptionReport{
+			Fingerprint: ex.Fingerprint, Reason: ex.Reason, Owner: ex.Owner,
+			Expires: ex.Expires, Effective: ex.Effective,
+		})
 	}
 
 	doc := &report.Document{
@@ -372,7 +402,7 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, started time.Time, elap
 		},
 		Coverage: report.Coverage{
 			Partial:     out.Plan.Partial,
-			Scope:       report.Scope{Root: disc.Root, Include: opts.Include, Exclude: opts.Exclude},
+			Scope:       report.Scope{Root: disc.Root, Include: include, Exclude: excludeList},
 			Exclusions:  exclusions,
 			NotAnalyzed: notAnalyzed,
 			Units:       coverageUnits,
@@ -383,8 +413,8 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, started time.Time, elap
 		Validation: report.Validation{Recipes: []report.Recipe{}, Unresolved: []report.Unresolved{}},
 		Findings:   out.Findings,
 		Policy: report.Policy{
-			FailOn: string(eval.FailOn), Violated: eval.Violated, UnknownCounts: eval.UnknownCounts,
-			Exceptions: []report.ExceptionReport{}, SuppressedCount: eval.SuppressedCount,
+			FailOn: string(failOn), Violated: eval.Violated, UnknownCounts: eval.UnknownCounts,
+			Exceptions: exceptions, SuppressedCount: eval.SuppressedCount,
 		},
 		Errors: errs,
 	}
@@ -394,6 +424,13 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, started time.Time, elap
 	}
 	doc.Normalize()
 	return doc
+}
+
+func cacheOrigin(cfg config.Config) string {
+	if cfg.Cache.Dir != "" {
+		return "user"
+	}
+	return "default"
 }
 
 func originOf(cmd *cobra.Command, flag, fallback string) string {

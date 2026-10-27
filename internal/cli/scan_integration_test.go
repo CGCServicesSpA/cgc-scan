@@ -19,7 +19,9 @@ import (
 	"github.com/rogpeppe/go-internal/testscript"
 
 	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
+	"github.com/CGCServicesSpA/cgc-scan/internal/provision"
 	"github.com/CGCServicesSpA/cgc-scan/internal/report"
+	"github.com/CGCServicesSpA/cgc-scan/internal/runner"
 )
 
 func TestScanGoFixtureIntegration(t *testing.T) {
@@ -159,4 +161,72 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, data, 0o755)
+}
+
+// TestScanDockerIntegration ejecuta el runner Docker real. Requiere
+// CGC_SCAN_TEST_DOCKER=1 y un volumen con base preparada (cgc-scan update-db).
+func TestScanDockerIntegration(t *testing.T) {
+	if os.Getenv("CGC_SCAN_TEST_DOCKER") == "" {
+		t.Skip("define CGC_SCAN_TEST_DOCKER=1 para probar el runner Docker")
+	}
+	ctx := context.Background()
+	if _, err := runner.DetectDocker(ctx); err != nil {
+		t.Skipf("Docker no disponible: %v", err)
+	}
+	volume := runner.VolumeName(os.Getuid())
+	if _, err := provision.EnsureVolume(ctx, "docker", volume); err != nil {
+		t.Fatalf("volumen: %v", err)
+	}
+	d := &runner.Docker{Image: "ghcr.io/aquasecurity/trivy@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c", Volume: volume}
+	if _, err := provision.DockerDBMetadata(ctx, d); err != nil {
+		t.Skipf("el volumen no tiene base; ejecuta cgc-scan update-db: %v", err)
+	}
+
+	fixture := t.TempDir()
+	writeFixture(t, fixture)
+	paths := platform.Paths{
+		ConfigDir: filepath.Join(t.TempDir(), "cfg"),
+		DataDir:   filepath.Join(t.TempDir(), "data"),
+		CacheDir:  filepath.Join(t.TempDir(), "cache"),
+	}
+	var stdout, stderr bytes.Buffer
+	app, err := New(&stdout, &stderr, WithTTY(false), WithPaths(paths))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := app.Execute(ctx, []string{"scan", fixture, "--trivy-mode", "docker", "--offline", "--format", "json"})
+	if code != 1 {
+		t.Fatalf("código = %d, want 1: %s", code, stderr.String())
+	}
+	if err := report.Validate(stdout.Bytes()); err != nil {
+		t.Fatalf("reporte inválido: %v", err)
+	}
+	var doc map[string]any
+	_ = json.Unmarshal(stdout.Bytes(), &doc)
+	eng := doc["tools"].(map[string]any)["engines"].([]any)[0].(map[string]any)
+	if eng["mode"] != "docker" || eng["isolation"] != "enforced" {
+		t.Fatalf("motor = %v", eng)
+	}
+	if doc["isolation"].(map[string]any)["level"] != "enforced" {
+		t.Fatalf("isolation = %v", doc["isolation"])
+	}
+	if n := len(doc["findings"].([]any)); n < 6 {
+		t.Fatalf("hallazgos = %d", n)
+	}
+}
+
+func writeFixture(t *testing.T, dir string) {
+	t.Helper()
+	files := map[string]string{
+		"go.mod":     "module example.com/vulnapp\n\ngo 1.24\n\nrequire golang.org/x/text v0.3.0\n",
+		"go.sum":     "golang.org/x/text v0.3.0 h1:g61tztE5qeGQ89tm6NTjjM9VPIm088od1l6aSorWRWg=\ngolang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=\n",
+		"main.go":    "package main\n\nimport \"golang.org/x/text/language\"\n\nfunc main() { _ = language.English }\n",
+		"Dockerfile": "FROM alpine:3.20\nUSER root\n",
+		".env":       "GITHUB_TOKEN=ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8\n",
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

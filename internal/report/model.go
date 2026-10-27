@@ -304,6 +304,21 @@ func (d *Document) Normalize() {
 	if d.Validation.Unresolved == nil {
 		d.Validation.Unresolved = []Unresolved{}
 	}
+	for i := range d.Target.Units {
+		if d.Target.Units[i].Languages == nil {
+			d.Target.Units[i].Languages = []discovery.Language{}
+		}
+	}
+	for i := range d.Coverage.Units {
+		if d.Coverage.Units[i].Languages == nil {
+			d.Coverage.Units[i].Languages = []discovery.Language{}
+		}
+	}
+	for i := range d.Tools.Engines {
+		if d.Tools.Engines[i].Units == nil {
+			d.Tools.Engines[i].Units = []EngineState{}
+		}
+	}
 	if d.Findings == nil {
 		d.Findings = []normalize.Finding{}
 	}
