@@ -1,0 +1,65 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errcheck
+    - errorlint
+    - forbidigo
+    - gocritic
+    - gosec
+    - nilerr
+    - nolintlint
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+  settings:
+    forbidigo:
+      forbid:
+        - pattern: '^fmt\.Print.*$'
+          msg: "stdout fuera del renderizador: usa slog hacia stderr (design §10.2)"
+        - pattern: '^os\.Stdout$'
+          msg: "stdout fuera del renderizador: usa slog hacia stderr (design §10.2)"
+        - pattern: '^print$'
+          msg: "println escribe en stderr sin estructura; usa slog"
+        - pattern: '^println$'
+          msg: "println escribe en stderr sin estructura; usa slog"
+    gosec:
+      excludes:
+        - G104 # errcheck ya cubre los errores ignorados de forma explícita
+        - G304 # la CLI lee rutas locales validadas por sus llamadores; os.Root se usa en descubrimiento
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: false
+  exclusions:
+    rules:
+      # El renderizador de reportes es el único que puede escribir en stdout.
+      - path: internal/report/
+        linters: [forbidigo]
+      # Los tests pueden usar fmt para construir entradas hostiles.
+      - path: _test\.go
+        linters: [forbidigo, gosec, unparam]
+      # La utilidad de manifiesto escribe su resultado por stdout (es una
+      # herramienta de CI, no la CLI).
+      - path: tools/update-manifest/
+        linters: [forbidigo]
+      # main conecta os.Stdout con la App; no escribe contenido por sí mismo.
+      - path: cmd/cgc-scan/
+        linters: [forbidigo]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

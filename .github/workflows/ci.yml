@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=readonly
+  CGO_ENABLED: "0"
+
+jobs:
+  test:
+    name: test ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - macos-13
+          - macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verificar módulos
+        run: go mod verify
+      - name: Compilar
+        run: go build -trimpath ./cmd/cgc-scan
+      - name: Vet
+        run: go vet ./...
+      - name: Pruebas con -race
+        run: go test -race -shuffle=on ./...
+      - name: Verificar que go.mod no cambió
+        run: git diff --exit-code -- go.mod go.sum
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
+          args: --timeout=5m
+      - name: staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@2026.2.2
+          staticcheck ./...
+      - name: govulncheck (CLI propia)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          govulncheck ./...
+
+  fuzz-seeds:
+    name: fuzz (semillas)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      # Ejecuta cada fuzz con un tiempo corto en CI; H7-02 corre campañas
+      # sostenidas y registra los hallazgos.
+      - name: Sanitize y Redact
+        run: |
+          go test ./internal/masking -run=^$ -fuzz=FuzzSanitize -fuzztime=20s
+          go test ./internal/masking -run=^$ -fuzz=FuzzRedact -fuzztime=20s
+
+  build-matrix:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Compilación cruzada
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -trimpath -ldflags="-s -w" -o /dev/null ./cmd/cgc-scan
