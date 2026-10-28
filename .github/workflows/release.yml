@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -31,6 +32,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Atestación de procedencia (SLSA build provenance)
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*.tar.gz"
       - name: Publicar checksums en el resumen
         run: |
           echo "### Checksums" >> "$GITHUB_STEP_SUMMARY"
