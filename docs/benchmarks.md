@@ -9,6 +9,7 @@
 | Pequeño | Fixture Go con 1 módulo y 5 CVEs | 4,46 s | 4,15–4,76 s |
 | Mediano | Monorepo de 3 unidades (Go, JS, Python) | 8,33 s | 7,62–9,05 s |
 | Grande | Repositorio de la propia CLI (varios módulos y fixtures) | 43,6 s | 41,6–45,7 s (ejecución incompleta por govulncheck) |
+| Global (mismo fixture pequeño) | Runner global, caché caliente | 1,08 s | 0,96–1,27 s |
 
 El caso grande quedó incompleto: `govulncheck` no pudo cargar el módulo raíz en
 modo offline por la resolución del toolchain. Es el comportamiento correcto
@@ -23,8 +24,14 @@ metas de rendimiento.
   se parece a estas cifras; el volumen/caché la reutiliza en las siguientes.
 - Semgrep añade un contenedor por unidad; en proyectos pequeños el coste fijo es
   visible.
-- No se midieron Linux, amd64, el runner global ni proyectos de más de 50 000
-  archivos. Queda pendiente ampliar la matriz (H7-01).
+- El runner global es ~4× más rápido que Docker en el caso pequeño por el coste
+  fijo del contenedor. En proyectos muy grandes el montaje de solo lectura de
+  Docker Desktop puede invertir la relación.
+- No se midieron proyectos de más de 50 000 archivos ni una matriz completa de
+  Linux/amd64 con adaptadores. Queda pendiente ampliar la matriz (H7-01).
+- Prueba de máquina limpia Linux/amd64 con el RC: `setup` global y `update-db`
+  (Trivy, Java, checks, Go, RustSec) completaron; el escaneo offline produjo
+  reporte y devolvió 3 porque el contenedor no tenía toolchain Go.
 
 ## Valores por defecto
 

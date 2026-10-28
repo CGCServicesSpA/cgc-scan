@@ -101,7 +101,7 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 | P-10 | Spike govulncheck: base local y evaluar uso como biblioteca (`golang.org/x/vuln/scan`) | Spike | — | 1 | design O-2 | [x] |
 | P-11 | Spike adaptadores: invocación y formato de salida de ESLint (JS y TSX), Psalm (taint), cargo-audit (base local) y Bandit sobre fixtures mínimos | Spike | P-01 | 3 | PRD §5; design §8 | [x] |
 | P-12 | Actualizar PRD y design.md con las decisiones y hallazgos de la fase; registrar cambios | Doc | P-01, P-02, P-03, P-04, P-05, P-06, P-07, P-08, P-09, P-10, P-11 | 1 | — | [x] |
-| | **Subtotal P** | | | **15** | | |
+| | **Subtotal P** | | | **15** | | P-03 queda abierto solo por la búsqueda manual de marca en INAPI (reCAPTCHA), trasladada a H7-06 |
 
 ### Hito H0 — Fundaciones: repositorio, CI y esqueleto
 
@@ -274,7 +274,7 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 | H7-10 | Proceso de soporte y de divulgación de vulnerabilidades (contacto, plazos, triage) | Ops | H0-01 | 1 | PRD §6.7 | [x] |
 | H7-11 | Release candidate: pruebas en máquinas limpias macOS y Linux (amd64 y arm64) y corrección de bloqueantes | Test | H7-04, H7-05, H7-06, H7-07, H7-09 | 3 | Gate H7 | [ ] |
 | H7-12 | Publicar v1.0.0 y comunicarlo | Release | H7-11 | 1 | — | [ ] |
-| | **Subtotal H7** | | | **26.5** | | |
+| | **Subtotal H7** | | | **26.5** | | Parcial: documentación, revisión de seguridad, matriz CA y agente consumidor cerrados; H7-01, H7-06, H7-11 y H7-12 permanecen abiertos por benchmarks completos, INAPI y pruebas en cuatro máquinas limpias |
 
 ---
 
