@@ -5,7 +5,7 @@ Cada release de CGC Scan publica:
 - `cgc-scan_<versión>_<os>_<arch>.tar.gz` para linux/darwin × amd64/arm64.
 - `checksums.txt` con SHA-256 de cada archivo.
 - `checksums.txt.sigstore.json`: firma sin clave de Sigstore sobre los checksums.
-- `<archivo>.cdx.json` o el SBOM CycloneDX que genere GoReleaser/Syft.
+- `<archivo>.sbom.json` en CycloneDX 1.6.
 - La atestación de procedencia SLSA cuando el flujo de release la produzca.
 
 ## 1. Verificar la firma de los checksums
@@ -35,7 +35,7 @@ motores fijados.
 ## 3. Revisar el SBOM
 
 ```bash
-syft convert <archivo>.cdx.json -o table
+syft convert <archivo>.sbom.json -o table
 ```
 
 El SBOM enumera las dependencias Go y sus licencias. El release incluye también
@@ -43,11 +43,16 @@ El SBOM enumera las dependencias Go y sus licencias. El release incluye también
 
 ## 4. Procedencia
 
-Si el release incluye `*.intoto.jsonl`, se verifica con
-`slsa-verifier verify-artifact --provenance-path ... --source-uri github.com/CGCServicesSpA/cgc-scan`.
-La publicación de la atestación SLSA está condicionada a que el repositorio y la
-CI la soporten; hasta entonces, la firma de Sigstore y los checksums son la
-garantía mínima y así se documenta en las notas.
+El release publica atestaciones de procedencia de compilación de GitHub
+(SLSA build provenance). Se verifican con:
+
+```bash
+gh attestation verify cgc-scan_<versión>_<os>_<arch>.tar.gz \
+  --repo CGCServicesSpA/cgc-scan
+```
+
+La verificación se ejecutó sobre `v0.1.0-rc.1` y `v0.1.0-rc.2`: firma
+`Verified OK`, checksums correctos, SBOM CycloneDX 1.6 y procedencia verificada.
 
 ## 5. Reportar un problema
 
