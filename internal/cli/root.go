@@ -23,12 +23,13 @@ import (
 
 // App agrupa el estado de una ejecución de la CLI. Es inyectable para pruebas.
 type App struct {
-	Stdin  io.Reader
-	Stdout io.Writer
-	Stderr io.Writer
-	Paths  platform.Paths
-	Now    func() time.Time
-	IsTTY  bool
+	Stdin     io.Reader
+	Stdout    io.Writer
+	Stderr    io.Writer
+	Paths     platform.Paths
+	Now       func() time.Time
+	IsTTY     bool
+	LogFormat string
 }
 
 // Option permite ajustar la App en pruebas.
@@ -93,7 +94,11 @@ func (a *App) Execute(ctx context.Context, args []string) int {
 		// Un código de política no es un error de la CLI: no se imprime.
 		var ee *ExitError
 		if !errors.As(err, &ee) || ee.Err != nil {
-			_, _ = fmt.Fprintf(a.Stderr, "%s: %v\n", version.Name, err)
+			if a.LogFormat == "json" {
+				slog.Error("el comando falló", "error", err)
+			} else {
+				_, _ = fmt.Fprintf(a.Stderr, "%s: %v\n", version.Name, err)
+			}
 		}
 		return CodeOf(err)
 	}
@@ -139,6 +144,7 @@ resultado limpio si la cobertura fue incompleta.`,
 			}
 			var handler slog.Handler
 			opts := &slog.HandlerOptions{Level: level}
+			a.LogFormat = logFormat
 			if logFormat == "json" {
 				handler = slog.NewJSONHandler(a.Stderr, opts)
 			} else {

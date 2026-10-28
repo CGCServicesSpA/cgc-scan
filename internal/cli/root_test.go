@@ -208,3 +208,32 @@ func TestValidateReportOutRefusesToOverwriteSource(t *testing.T) {
 		t.Fatalf("se rechazó un destino fuera del proyecto: %v", err)
 	}
 }
+
+func TestLogFormatJSONProducesStructuredStderr(t *testing.T) {
+	app, _, stderr := newTestApp(t)
+	dir := t.TempDir()
+	_ = app.Execute(context.Background(), []string{
+		"scan", dir, "--offline", "--trivy-mode", "global", "--format", "json", "--log-format", "json",
+	})
+	lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		t.Fatal("no se emitió ningún log")
+	}
+	for _, line := range lines {
+		var doc map[string]any
+		if err := json.Unmarshal([]byte(line), &doc); err != nil {
+			t.Fatalf("línea de stderr no es JSON: %q", line)
+		}
+		if doc["level"] == nil || doc["msg"] == nil {
+			t.Fatalf("log sin level/msg: %q", line)
+		}
+	}
+}
+
+func TestScanRejectsSemgrepFlag(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	dir := t.TempDir()
+	if code := app.Execute(context.Background(), []string{"scan", dir, "--semgrep", "enable"}); code != 2 {
+		t.Fatalf("código = %d, want 2", code)
+	}
+}

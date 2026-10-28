@@ -32,7 +32,7 @@
 | CA-20 | Verificado | `TestPromptSanitizesHostileEvidence` y contador de delimitadores |
 | CA-21 | Verificado | `TestPromptNoFindings`: no inventa parches ni promete ausencia |
 | CA-22 | Verificado | `--report-out` atómico y equivalente; error de escritura no declara éxito |
-| CA-23 | Parcial | El prompt distingue estado previo y pide evidencia, pero no se probó con un agente real |
+| CA-23 | Verificado | `docs/agente-prueba.md`: ciclo real parche → tests → build → reescaneo → compare |
 | CA-24 | Verificado | Matriz de selección y preparación Docker real |
 | CA-25 | Verificado | Fallback a global `configured`; escaneo global real |
 | CA-26 | Verificado | `TestResolveMatrix`: Docker remoto/caído no cambia una elección explícita |
@@ -42,35 +42,36 @@
 | CA-30 | Verificado | `TestEnsureTrivyConcurrentInstallsOnce` con bloqueo |
 | CA-31 | Verificado | Setup no usa sudo, no toca el proyecto y escribe progreso en stderr |
 | CA-32 | Verificado | `--no-auto-install` no descarga y falla con 3 |
-| CA-33 | Parcial | Preguntas interactivas probadas con entrada simulada, no en TTY real |
+| CA-33 | Verificado | Setup interactivo en PTY real: elige global, Semgrep y persiste la decisión |
 | CA-34 | Verificado | Setup global crea el enlace y el bloque de PATH; segunda ejecución no duplica |
 | CA-35 | Verificado | Setup no interactivo real, sin esperar entrada |
 | CA-36 | Verificado | Preferencia guardada que falla devuelve error sin fallback |
 | CA-37 | Verificado | Setup repetido es idempotente; cancelar no escribe configuración |
 | CA-38 | Verificado | Volumen y base sobreviven a contenedores; segundo proyecto lo reutiliza |
-| CA-39 | Parcial | Protocolo exclusivo→compartido probado con bloqueos; falta prueba de escaneo concurrente completo |
+| CA-39 | Verificado | Dos escaneos concurrentes con la misma caché: ambos completos, 10 hallazgos y sin errores |
 | CA-40 | Verificado | Fallo de actualización no declara base vigente |
 | CA-41 | Verificado | Actualizador con red y volumen, sin proyecto; args y ejecución real |
-| CA-42 | Parcial | Se leen archivos de disco, pero no hay prueba específica de cambios sin commit |
+| CA-42 | Verificado | Repo Git con `main.go` modificado y `.env` no rastreado: dos secretos detectados |
 | CA-43 | Verificado | Fixtures sin Git escaneados correctamente |
-| CA-44 | Parcial | `scan` sin ruta usa el directorio actual por construcción; no hay prueba de ruta explícita con Docker |
+| CA-44 | Verificado | `scan` sin ruta en un proyecto fuera de Git: raíz y hallazgos de ese directorio |
 | CA-45 | Verificado | Dos ejecuciones idénticas salvo `run` y duraciones |
 | CA-46 | Verificado | `--exclude` real: `partial=true`, `not_analyzed`, origen `cli` |
 | CA-47 | Verificado | Semgrep desactivado: `disabled`, sin descarga, sin código 3 |
 | CA-48 | Verificado | Semgrep habilitado: reglas locales, métricas/versión off, 3 reglas |
 | CA-49 | Verificado | `scan` no expone `--semgrep`; sin configuración queda desactivado |
 | CA-50 | Verificado | `enforced` con adaptadores falla antes de analizar y con código 3 |
-| CA-51 | Parcial | `--version` y `NO_COLOR` probados; falta prueba de `--log-format json` como contrato |
+| CA-51 | Verificado | `--log-format json`: stdout solo JSON y stderr con líneas JSON (`level`, `msg`) |
 | CA-52 | Verificado | Claves prohibidas ignoradas con error de política; controles intactos |
 | CA-53 | Verificado | Exclusiones/excepciones visibles; excepción sin `expires` rechazada |
-| CA-54 | Pendiente | Firma, SBOM y checksums configurados; falta un release real que verificar |
+| CA-54 | Verificado | RC v0.1.0-rc.1: cosign `Verified OK`, checksums OK, SBOM SPDX y atestación de procedencia verificada |
 | CA-55 | Verificado | Reportes y salidas 0600; directorios 0700; `--report-out` privado |
 | CA-56 | Verificado | CVSS de Trivy, alcanzabilidad de govulncheck; campos ausentes nulos; orden estable |
 | CA-57 | Verificado | `recipes` detecta candidatos y solo publica recetas confirmadas; prompt bloquea el resto |
 | CA-58 | Verificado | Severidad máxima entre fuentes y `severity_others`; `info` no bloquea; `unknown` según política |
 
-## Pendientes para cerrar H7-04
+## Estado
 
-1. CA-54: ejecutar un release real y verificar firma, SBOM y checksums.
-2. CA-23 y CA-33: prueba con agente consumidor real y TTY interactivo.
-3. CA-39, CA-42, CA-44, CA-51: ampliar pruebas de concurrencia, Git y contrato de logs.
+Los 58 criterios quedan verificados con pruebas automatizadas o ejecuciones
+reales registradas. El release RC `v0.1.0-rc.1` se usó para verificar firma,
+checksums, SBOM y procedencia. La prueba en máquinas limpias y la publicación de
+v1.0.0 dependen de H7-11 y H7-12.

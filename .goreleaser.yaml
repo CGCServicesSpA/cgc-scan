@@ -40,6 +40,11 @@ checksum:
 
 sboms:
   - artifacts: archive
+    cmd: syft
+    args:
+      - "$artifact"
+      - "--output"
+      - "cyclonedx-json=$document"
 
 signs:
   - cmd: cosign
