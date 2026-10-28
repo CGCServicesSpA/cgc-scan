@@ -33,6 +33,9 @@ archives:
       - LICENSE
       - README.md
       - SECURITY.md
+      - THIRD_PARTY_NOTICES.md
+      - VERSION
+      - install.sh
 
 checksum:
   name_template: checksums.txt

@@ -20,12 +20,18 @@ CLI local de análisis de seguridad para proyectos de software. Combina **Trivy*
 - Docker local (opcional, para el runner aislado) o conexión a internet para la preparación inicial.
 - Los toolchains de los proyectos que se quieran analizar con adaptadores: Go, Node, PHP/Composer, Rust y Python.
 
-## Compilar
+## Compilar e instalar localmente
 
 ```bash
-go build ./cmd/cgc-scan
-./cgc-scan --version
+./install.sh                 # compila, empaqueta e instala en ~/.local/bin
+./install.sh --package       # además deja el tar.gz y su SHA-256 en dist/
+./install.sh --prefix DIR    # instala en otro prefijo
+./install.sh --uninstall     # elimina el binario, sin tocar la configuración
 ```
+
+El instalador verifica la versión y el esquema antes de publicar el binario, y
+conserva el anterior como `cgc-scan.bak`. El paquete generado incluye un
+`install.sh` que instala sin necesidad de Go ni de red.
 
 ## Uso
 

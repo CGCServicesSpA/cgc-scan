@@ -35,6 +35,33 @@ cgc-scan --version
 ```bash
 git clone https://github.com/CGCServicesSpA/cgc-scan.git
 cd cgc-scan
+./install.sh
+```
+
+`install.sh` compila con la versión de `VERSION`, verifica que el binario
+responda con esa versión y el esquema 1.0.0, y lo instala de forma atómica en
+`~/.local/bin` (o en `--prefix`). Conserva el binario anterior como
+`cgc-scan.bak`.
+
+Para probar el flujo de paquete:
+
+```bash
+./install.sh --package
+# deja dist/cgc-scan_<versión>_<os>_<arch>.tar.gz y su .sha256
+mkdir -p /tmp/cgc-install && tar -xzf dist/cgc-scan_*.tar.gz -C /tmp/cgc-install
+/tmp/cgc-install/cgc-scan_*/install.sh --prefix /tmp/cgc-bin
+```
+
+Ese `install.sh` empaquetado instala el binario que lo acompaña sin Go ni red.
+También se puede instalar un artefacto ya generado:
+
+```bash
+./install.sh --from dist/cgc-scan_<versión>_<os>_<arch>.tar.gz
+```
+
+Para desarrollo sin instalar:
+
+```bash
 go build -trimpath -o cgc-scan ./cmd/cgc-scan
 ./cgc-scan --version
 ```

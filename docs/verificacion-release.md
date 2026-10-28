@@ -8,6 +8,12 @@ Cada release de CGC Scan publica:
 - `<archivo>.sbom.json` en CycloneDX 1.6.
 - La atestación de procedencia SLSA cuando el flujo de release la produzca.
 
+## Antes de etiquetar
+
+1. Actualiza `VERSION` y `CHANGELOG.md`.
+2. Ejecuta `./install.sh --package` y prueba el paquete en un prefijo temporal.
+3. Crea el tag `v<VERSION>`; el flujo de release usa ese tag para GoReleaser.
+
 ## 1. Verificar la firma de los checksums
 
 ```bash
