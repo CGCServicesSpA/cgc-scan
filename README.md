@@ -2,7 +2,11 @@
 
 CLI local de análisis de seguridad para proyectos de software. Combina **Trivy** (dependencias, secretos y configuraciones) con adaptadores por lenguaje —**govulncheck, ESLint, Psalm, cargo-audit y Bandit**— y, de forma opcional, **Semgrep CE** con reglas locales. Entrega un reporte determinista en JSON, texto legible o un prompt de remediación para agentes.
 
-> **Estado:** desarrollo previo a v1.0.0. La CLI compila y sus comandos de fundación funcionan; los hitos H1 a H7 están en construcción. Este README se actualiza junto con el release.
+> **Estado:** release candidate interno. La CLI implementa el contrato de v1
+> (escaneo con Trivy y cinco adaptadores, Semgrep opcional, formatos JSON/texto/
+> prompt, comparación, política y recetas). Falta cerrar el release firmado
+> (H6-08/H6-09) y la matriz completa de aceptación (H7). No se publica v1.0.0
+> hasta completarlos.
 
 ## Principios
 
@@ -38,7 +42,14 @@ cgc-scan update-db
 
 Los códigos de salida son estables: `0` sin incumplimiento, `1` política incumplida, `2` argumentos o configuración inválidos, `3` ejecución incompleta o fallida y `130` cancelación.
 
-La documentación completa de instalación, flags, cobertura y privacidad se publica en H7. El contrato del reporte vive en [`schemas/report.schema.json`](schemas/report.schema.json).
+Documentación:
+
+- [Instalación](docs/instalacion.md) · [Uso](docs/uso.md) · [Cobertura](docs/cobertura.md)
+- [Privacidad](docs/privacidad.md) · [FAQ](docs/faq.md) · [Integración con agentes](docs/integracion-agentes.md)
+- [Verificación de releases](docs/verificacion-release.md) · [Soporte](docs/soporte.md) · [Legal](docs/legal.md)
+- [Matriz de aceptación](docs/aceptacion.md) · [Revisión de seguridad](docs/revision-seguridad.md) · [Benchmarks](docs/benchmarks.md)
+
+El contrato del reporte vive en [`schemas/report.schema.json`](schemas/report.schema.json).
 
 ## Desarrollo
 

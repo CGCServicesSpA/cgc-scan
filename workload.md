@@ -262,16 +262,16 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| H7-01 | Benchmarks por tamaño de proyecto y plataforma; fijar timeouts y concurrencia por defecto | Test | H5-10, H6-10 | 3 | design §15.4, §12 | [ ] |
-| H7-02 | Fuzzing sostenido de parsers, saneado y política | Test | H5-10 | 1.5 | design §15.1 | [ ] |
-| H7-03 | Revisión de seguridad propia contra el modelo de amenazas y corrección de hallazgos | Dev | H6-10 | 3 | design §13 | [ ] |
-| H7-04 | Ejecutar y registrar la matriz completa de criterios de aceptación CA-01 a CA-56 | Test | H7-01, H7-02, H7-03 | 3 | PRD §13 | [ ] |
+| H7-01 | Benchmarks por tamaño de proyecto y plataforma; fijar timeouts y concurrencia por defecto | Test | H5-10, H6-10 | 3 | design §15.4, §12 | [~] |
+| H7-02 | Fuzzing sostenido de parsers, saneado y política | Test | H5-10 | 1.5 | design §15.1 | [x] |
+| H7-03 | Revisión de seguridad propia contra el modelo de amenazas y corrección de hallazgos | Dev | H6-10 | 3 | design §13 | [x] |
+| H7-04 | Ejecutar y registrar la matriz completa de criterios de aceptación CA-01 a CA-56 | Test | H7-01, H7-02, H7-03 | 3 | PRD §13 | [~] |
 | H7-05 | Prueba con un agente consumidor real: JSON y prompt, ciclo parche, tests, build y reescaneo | Test | H5-10 | 3 | PRD §16 paso 5 | [ ] |
-| H7-06 | Revisión legal final: licencias empaquetadas y Ley 21.719 | Legal | P-06, H6-10 | 1.5 | design §14 | [ ] |
-| H7-07 | Documentación de usuario: instalación, `setup`, flags, cobertura, privacidad y preguntas frecuentes | Doc | H6-10 | 3 | PRD §2 | [ ] |
-| H7-08 | Guía de integración para agentes con ejemplos de JSON y prompt | Doc | H5-10 | 1.5 | PRD §2 | [ ] |
+| H7-06 | Revisión legal final: licencias empaquetadas y Ley 21.719 | Legal | P-06, H6-10 | 1.5 | design §14 | [~] |
+| H7-07 | Documentación de usuario: instalación, `setup`, flags, cobertura, privacidad y preguntas frecuentes | Doc | H6-10 | 3 | PRD §2 | [x] |
+| H7-08 | Guía de integración para agentes con ejemplos de JSON y prompt | Doc | H5-10 | 1.5 | PRD §2 | [x] |
 | H7-09 | Canal de distribución: releases con checksums y fórmula de instalación (por ejemplo Homebrew) | Release | H6-08 | 2 | PRD §6.7 | [ ] |
-| H7-10 | Proceso de soporte y de divulgación de vulnerabilidades (contacto, plazos, triage) | Ops | H0-01 | 1 | PRD §6.7 | [ ] |
+| H7-10 | Proceso de soporte y de divulgación de vulnerabilidades (contacto, plazos, triage) | Ops | H0-01 | 1 | PRD §6.7 | [x] |
 | H7-11 | Release candidate: pruebas en máquinas limpias macOS y Linux (amd64 y arm64) y corrección de bloqueantes | Test | H7-04, H7-05, H7-06, H7-07, H7-09 | 3 | Gate H7 | [ ] |
 | H7-12 | Publicar v1.0.0 y comunicarlo | Release | H7-11 | 1 | — | [ ] |
 | | **Subtotal H7** | | | **26.5** | | |

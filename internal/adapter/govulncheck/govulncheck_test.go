@@ -91,3 +91,23 @@ func TestRequirements(t *testing.T) {
 		}
 	}
 }
+
+func FuzzParse(f *testing.F) {
+	raw, _ := os.ReadFile(filepath.Join("testdata", "govulncheck-1.9.0.json"))
+	f.Add(raw)
+	f.Add([]byte(`{"config":{}}`))
+	f.Add([]byte(`{"finding":{"osv":"GO-2021-0113"}}`))
+	m, _ := masking.NewMasker([]byte("0123456789abcdef0123456789abcdef"))
+	a := New("/proyecto", "/db", "go", m)
+	f.Fuzz(func(t *testing.T, b []byte) {
+		parsed, err := a.Parse(b)
+		if err != nil {
+			return
+		}
+		for _, finding := range parsed.Findings {
+			if len(finding.Fingerprint) != 32 {
+				t.Fatalf("huella inválida")
+			}
+		}
+	})
+}

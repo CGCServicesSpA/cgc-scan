@@ -144,3 +144,30 @@ func TestEffectiveFailOnOnlyHardens(t *testing.T) {
 		t.Fatalf("el flag debe tener precedencia: %s", got)
 	}
 }
+
+func FuzzLoadPolicy(f *testing.F) {
+	f.Add([]byte(`fail_on = "critical"`))
+	f.Add([]byte("[[exception]]\nfingerprint=\"x\"\nreason=\"r\"\nowner=\"o\"\nexpires=2027-01-01\n"))
+	f.Add([]byte("exclude = [\"docs/**\"]\n"))
+	f.Add([]byte("no es toml ["))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, FileName), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		p, err := Load(dir, now)
+		if err != nil {
+			return
+		}
+		// Un archivo hostil nunca debe producir pánico ni una política más
+		// permisiva que la permitida.
+		if p.FailOn != "" && !p.FailOn.Valid() {
+			t.Fatalf("severidad inválida %q para %q", p.FailOn, data)
+		}
+		for _, pat := range p.Exclude {
+			if pat == "" || filepath.IsAbs(pat) {
+				t.Fatalf("exclusión inválida %q", pat)
+			}
+		}
+	})
+}
