@@ -166,13 +166,20 @@ func LoadFile(path, project string) ([]config.Recipe, error) {
 	return f.Recipes, nil
 }
 
-// Merge reemplaza las recetas del proyecto y conserva las de otros proyectos.
+// Merge actualiza las unidades declaradas en entries y conserva las recetas de
+// las demás unidades del proyecto y de otros proyectos. Confirmar una unidad no
+// borra las recetas ya confirmadas de otra.
 func Merge(cfg *config.Config, project string, entries []config.Recipe) {
-	kept := make([]config.Recipe, 0, len(cfg.Recipes))
+	updated := map[string]bool{}
+	for _, e := range entries {
+		updated[filepath.Clean(e.Project)+"|"+e.Unit] = true
+	}
+	kept := make([]config.Recipe, 0, len(cfg.Recipes)+len(entries))
 	for _, r := range cfg.Recipes {
-		if filepath.Clean(r.Project) != filepath.Clean(project) {
-			kept = append(kept, r)
+		if updated[filepath.Clean(r.Project)+"|"+r.Unit] {
+			continue
 		}
+		kept = append(kept, r)
 	}
 	kept = append(kept, entries...)
 	cfg.Recipes = kept

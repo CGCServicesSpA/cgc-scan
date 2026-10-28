@@ -126,7 +126,9 @@ command = "npm run build"
 workdir = "svc/api"
 ```
 
-`project` se completa con la raíz actual. Sin receta confirmada, el prompt y el
+`project` se completa con la raíz actual. `--set` actualiza solo las unidades
+declaradas en el archivo: confirmar una unidad no borra las recetas de las demás.
+Sin receta confirmada, el prompt y el
 reporte declaran la validación de esa unidad como bloqueada; nunca inventan un
 comando. Cada hallazgo incluye `verification` con las recetas confirmadas
 aplicables a su unidad, los candidatos detectados como `suggested` (no son de

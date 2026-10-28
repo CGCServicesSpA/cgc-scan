@@ -59,13 +59,18 @@ func TestMergeAndClear(t *testing.T) {
 	}}
 	entries := []config.Recipe{{Project: "/proj", Unit: "svc", Test: &config.Command{Command: "go test ./..."}}}
 	Merge(&cfg, "/proj", entries)
-	if len(Confirmed(cfg, "/proj")) != 1 || Confirmed(cfg, "/proj")[0].Unit != "svc" {
-		t.Fatalf("recetas = %+v", cfg.Recipes)
+	if len(Confirmed(cfg, "/proj")) != 2 {
+		t.Fatalf("se perdieron recetas de otra unidad: %+v", cfg.Recipes)
+	}
+	// Confirmar la misma unidad la actualiza, no la duplica.
+	Merge(&cfg, "/proj", []config.Recipe{{Project: "/proj", Unit: "svc", Build: &config.Command{Command: "go build ./..."}}})
+	if len(Confirmed(cfg, "/proj")) != 2 {
+		t.Fatalf("se duplicó una unidad: %+v", cfg.Recipes)
 	}
 	if len(Confirmed(cfg, "/otro")) != 1 {
 		t.Fatal("se perdieron recetas de otro proyecto")
 	}
-	if n := Clear(&cfg, "/proj"); n != 1 {
+	if n := Clear(&cfg, "/proj"); n != 2 {
 		t.Fatalf("eliminadas = %d", n)
 	}
 	if len(Confirmed(cfg, "/proj")) != 0 {
