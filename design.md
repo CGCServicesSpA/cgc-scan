@@ -65,7 +65,7 @@ Principios de diseño derivados del PRD §1:
 
 | Capa | Tecnología | Alternativas descartadas | Razón | Costo/mes |
 | --- | --- | --- | --- | --- |
-| Lenguaje | Go, `CGO_ENABLED=0`, versión estable más reciente fijada en `go.mod` con directiva `toolchain` | Rust, Node/TypeScript | Binario único y estático, compilación cruzada amd64/arm64 trivial, buen manejo de procesos y concurrencia, ecosistema de seguridad (Trivy, govulncheck) en Go. Se requiere Go ≥ 1.24 por `os.Root` | 0 |
+| Lenguaje | Go, `CGO_ENABLED=0`, versión estable más reciente fijada en `go.mod` con directiva `toolchain` | Rust, Node/TypeScript | Binario único y estático, compilación cruzada amd64/arm64 trivial, buen manejo de procesos y concurrencia, ecosistema de seguridad (Trivy, govulncheck) en Go. Se fija Go 1.27.3 en `go.mod`; `os.Root` requiere ≥ 1.24 | 0 |
 | CLI | `spf13/cobra` | `urfave/cli`, parser propio | Subcomandos, ayuda y completado de shell (RF-32) sin código propio | 0 |
 | Configuración | TOML con `pelletier/go-toml/v2` | YAML | Sin tipado implícito ni anclas; adecuado para archivos que provienen de repositorios no confiables (ADR-04) | 0 |
 | Procesos | `os/exec` de la biblioteca estándar | Bibliotecas de terceros | Control total de entorno, grupos de procesos y cancelación | 0 |
@@ -764,7 +764,7 @@ Los riesgos de producto y regulatorios están en PRD §14 y no se repiten.
 | ADR-07 | Manifiesto de motores | Embebido, verificado en CI, hashes en el binario | Resolver versiones al ejecutar | Reproducibilidad y defensa ante descargas manipuladas | Propuesto |
 | ADR-08 | Huella de secretos | HMAC con sal por instalación | SHA-256 sin sal | Evita adivinar valores débiles desde reportes compartidos; degrada la comparación entre equipos | Propuesto |
 | ADR-09 | Salida de Trivy en Docker | Por stdout del contenedor | Directorio de salida montado | Menos montajes, menor superficie | Propuesto |
-| ADR-10 | Confinamiento de rutas | `os.Root` (Go ≥ 1.24) | Comprobación manual de prefijos | La biblioteca estándar lo garantiza frente a enlaces y `..` | Propuesto |
+| ADR-10 | Confinamiento de rutas | `os.Root` (Go ≥ 1.24; fijado 1.27.3) | Comprobación manual de prefijos | La biblioteca estándar lo garantiza frente a enlaces y `..` | Propuesto |
 | ADR-11 | Enlace global de Trivy | Enlace simbólico al motor versionado | Copiar el binario sobre `PATH` | Actualización atómica y sin pisar instalaciones ajenas | Propuesto |
 | ADR-12 | Comprobación de versión de Trivy durante el escaneo | `--skip-version-check` obligatorio | Confiar en `--offline-scan` | P-09: sin el flag, Trivy contacta `check.trivy.dev` y `configured` sería falso | Confirmado |
 | ADR-13 | Usuario del contenedor Trivy | root dentro del contenedor (sin `--user`) | uid del host | P-08: el volumen del daemon no es escribible por otro uid y no se pide elevación | Confirmado |

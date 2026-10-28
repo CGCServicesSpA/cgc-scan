@@ -1,8 +1,6 @@
 module github.com/CGCServicesSpA/cgc-scan
 
-go 1.26.0
-
-toolchain go1.26.10
+go 1.27.3
 
 require (
 	github.com/bmatcuk/doublestar/v4 v4.10.4
@@ -17,10 +15,10 @@ require (
 
 require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	golang.org/x/mod v0.42.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
-	golang.org/x/telemetry v0.0.0-20261010193011-f71dc92da45e // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/telemetry v0.0.0-20261021172232-6cd571d43fbb // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect
 )

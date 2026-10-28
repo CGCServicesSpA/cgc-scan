@@ -2,7 +2,9 @@
 
 > Medición del 27-10-2026 en macOS 27, Apple Silicon (arm64), Docker 29.9.2,
 > Trivy 0.76.1, base de vulnerabilidades caliente y caché de motores preparada.
-> Dos ejecuciones por caso, `--offline --format json`, modalidad Docker.
+> Dos ejecuciones por caso, `--offline --format json`, modalidad Docker. Las
+> mediciones se tomaron con Go 1.26.10; tras actualizar a **Go 1.27.3** se repitió
+> el caso global en caliente: 0,78–0,81 s por ejecución.
 
 | Caso | Contenido | Media | Rango |
 | --- | --- | --- | --- |

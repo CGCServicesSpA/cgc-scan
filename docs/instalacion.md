@@ -8,7 +8,7 @@ arm64). Windows se usa mediante WSL2.
 | Componente | Cuándo hace falta |
 | --- | --- |
 | Docker local o conexión a internet | Preparación inicial de Trivy y bases |
-| Go 1.24+ | Adaptador de Go (`govulncheck`) y compilar desde fuente |
+| Go 1.27.3 | Adaptador de Go (`govulncheck`) y compilar desde fuente |
 | Node 20+ | Adaptadores JavaScript y TypeScript (ESLint) |
 | PHP 8.2+ y Composer | Adaptador PHP (Psalm) |
 | Rust/Cargo | Adaptador Rust (cargo-audit); la base RustSec la prepara la CLI |

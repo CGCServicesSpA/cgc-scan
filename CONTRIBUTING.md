@@ -11,7 +11,7 @@ Gracias por querer contribuir. Este documento describe el flujo y las reglas que
 ## Entorno
 
 ```bash
-go version          # 1.24 o superior (el CI usa la versión de go.mod)
+go version          # 1.27.3 (la versión fijada en go.mod)
 go build ./cmd/cgc-scan
 go test -race ./...
 ```
