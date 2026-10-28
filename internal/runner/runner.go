@@ -38,7 +38,10 @@ type Invocation struct {
 	ProjectRO string
 	// Entrypoint sustituye el entrypoint de la imagen (solo runner Docker).
 	Entrypoint string
-	Env        map[string]string // se suma a la lista permitida base
+	// Local ejecuta el motor en el proceso actual (bibliotecas, p. ej.
+	// govulncheck). Recibe el entorno ya saneado por el runner.
+	Local func(ctx context.Context, env []string) (Result, error)
+	Env   map[string]string // se suma a la lista permitida base
 	// AllowNetwork solo se usa en la fase de preparación (descarga de bases).
 	// Durante el escaneo debe ser falso: el proxy apunta a un destino cerrado.
 	AllowNetwork bool

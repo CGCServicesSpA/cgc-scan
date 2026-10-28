@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"strings"
+
 	"github.com/bmatcuk/doublestar/v4"
 
 	"github.com/CGCServicesSpA/cgc-scan/internal/discovery"
@@ -19,15 +21,33 @@ func ApplySelection(p *Plan) {
 	if len(p.Include) > 0 {
 		p.Partial = true
 	}
+	// Los patrones de la CLI se interpretan respecto del objetivo del escaneo,
+	// mientras que las rutas del reporte son relativas a la raíz detectada.
+	prefix := ""
+	for _, u := range p.Units {
+		if u.Unit.ID == "project" && u.Unit.Path != "." {
+			prefix = u.Unit.Path
+		}
+	}
+	candidates := func(unitPath string) []string {
+		out := []string{unitPath}
+		if prefix != "" {
+			if trimmed := strings.TrimPrefix(unitPath, prefix+"/"); trimmed != unitPath {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	}
 	kept := make([]UnitPlan, 0, len(p.Units))
 	for _, u := range p.Units {
-		if reason, patterns := excludedUnit(u.Unit.Path, p.Exclusions); reason != "" {
+		paths := candidates(u.Unit.Path)
+		if reason, patterns := excludedUnit(paths, p.Exclusions); reason != "" {
 			p.NotAnalyzed = append(p.NotAnalyzed, NotAnalyzed{
 				Unit: u.Unit.ID, Path: u.Unit.Path, Reason: reason, Patterns: patterns,
 			})
 			continue
 		}
-		if len(p.Include) > 0 && !includedUnit(u.Unit.Path, p.Include) {
+		if len(p.Include) > 0 && !includedUnit(paths, p.Include) {
 			p.NotAnalyzed = append(p.NotAnalyzed, NotAnalyzed{
 				Unit: u.Unit.ID, Path: u.Unit.Path, Reason: "fuera de --include", Patterns: p.Include,
 			})
@@ -47,14 +67,17 @@ func hasElected(ex []discovery.Exclusion) bool {
 	return false
 }
 
-func excludedUnit(unitPath string, ex []discovery.Exclusion) (string, []string) {
+func excludedUnit(paths []string, ex []discovery.Exclusion) (string, []string) {
 	var patterns []string
 	for _, e := range ex {
 		if !e.Origin.Elected() {
 			continue
 		}
-		if matches(e.Pattern, unitPath) {
-			patterns = append(patterns, e.Pattern)
+		for _, u := range paths {
+			if matches(e.Pattern, u) {
+				patterns = append(patterns, e.Pattern)
+				break
+			}
 		}
 	}
 	if len(patterns) > 0 {
@@ -63,15 +86,12 @@ func excludedUnit(unitPath string, ex []discovery.Exclusion) (string, []string) 
 	return "", nil
 }
 
-func includedUnit(unitPath string, patterns []string) bool {
+func includedUnit(paths []string, patterns []string) bool {
 	for _, p := range patterns {
-		if matches(p, unitPath) || matches(p, unitPath+"/**") {
-			return true
-		}
-		// Un patrón que apunta a un archivo dentro de la unidad también la
-		// incluye, porque los motores reciben la unidad completa.
-		if matches(p, unitPath+"/x") {
-			return true
+		for _, u := range paths {
+			if matches(p, u) || matches(p, u+"/**") || matches(p, u+"/x") {
+				return true
+			}
 		}
 	}
 	return false

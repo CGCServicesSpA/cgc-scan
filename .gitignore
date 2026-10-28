@@ -7,3 +7,5 @@
 /reporte.json
 /report.json
 /testdata/tmp/
+vendor/
+node_modules/

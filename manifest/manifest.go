@@ -30,10 +30,23 @@ type Engine struct {
 	Archives map[string]Archive `json:"archives,omitempty"`
 }
 
+// Adapter describe una herramienta de adaptador fijada.
+type Adapter struct {
+	Version            string             `json:"version"`
+	Mode               string             `json:"mode"` // library | npm | phar | binary | venv
+	DB                 string             `json:"db,omitempty"`
+	URL                string             `json:"url,omitempty"`
+	SHA256             string             `json:"sha256,omitempty"`
+	LockfileSHA256     string             `json:"lockfile_sha256,omitempty"`
+	RequirementsSHA256 string             `json:"requirements_sha256,omitempty"`
+	Archives           map[string]Archive `json:"archives,omitempty"`
+}
+
 // Manifest es el contenido de manifest/trust.json.
 type Manifest struct {
-	Schema  int               `json:"schema"`
-	Engines map[string]Engine `json:"engines"`
+	Schema   int                `json:"schema"`
+	Engines  map[string]Engine  `json:"engines"`
+	Adapters map[string]Adapter `json:"adapters"`
 }
 
 var (
@@ -85,7 +98,61 @@ func (m *Manifest) Validate() error {
 			}
 		}
 	}
+	for id, a := range m.Adapters {
+		if id == "" {
+			return fmt.Errorf("manifiesto: adaptador sin identificador")
+		}
+		if !semverRe.MatchString(a.Version) {
+			return fmt.Errorf("manifiesto: adaptador %s tiene versión inválida %q", id, a.Version)
+		}
+		switch a.Mode {
+		case "library", "npm", "phar", "binary", "venv":
+		default:
+			return fmt.Errorf("manifiesto: adaptador %s tiene modo inválido %q", id, a.Mode)
+		}
+		for name, sum := range map[string]string{
+			"sha256": a.SHA256, "lockfile_sha256": a.LockfileSHA256,
+			"requirements_sha256": a.RequirementsSHA256,
+		} {
+			if sum != "" && !sha256Re.MatchString(sum) {
+				return fmt.Errorf("manifiesto: adaptador %s tiene %s inválido", id, name)
+			}
+		}
+		if a.URL != "" && (len(a.URL) < 8 || a.URL[:8] != "https://") {
+			return fmt.Errorf("manifiesto: adaptador %s no usa https", id)
+		}
+		if a.Mode == "binary" && len(a.Archives) == 0 {
+			return fmt.Errorf("manifiesto: adaptador binario %s sin archivos", id)
+		}
+		for platform, ar := range a.Archives {
+			if platform == "" || ar.URL == "" || !sha256Re.MatchString(ar.SHA256) {
+				return fmt.Errorf("manifiesto: adaptador %s/%s incompleto", id, platform)
+			}
+		}
+	}
+	if len(m.Adapters) == 0 {
+		return fmt.Errorf("manifiesto: no hay adaptadores")
+	}
 	return nil
+}
+
+// Adapter devuelve un adaptador por identificador.
+func (m *Manifest) Adapter(id string) (Adapter, error) {
+	a, ok := m.Adapters[id]
+	if !ok {
+		return Adapter{}, fmt.Errorf("el adaptador %q no está en el manifiesto", id)
+	}
+	return a, nil
+}
+
+// Archive devuelve el artefacto de un adaptador binario.
+func (a Adapter) Archive(goos, goarch string) (Archive, error) {
+	key := PlatformKey(goos, goarch)
+	ar, ok := a.Archives[key]
+	if !ok {
+		return Archive{}, fmt.Errorf("no hay artefacto para %s", key)
+	}
+	return ar, nil
 }
 
 // Engine devuelve un motor por identificador.
@@ -125,9 +192,12 @@ func (e Engine) Platforms() []string {
 // PinnedVersions devuelve las versiones fijadas, ordenadas por motor. Se usa
 // en --version y en el reporte (RF-12).
 func (m *Manifest) PinnedVersions() map[string]string {
-	out := make(map[string]string, len(m.Engines))
+	out := make(map[string]string, len(m.Engines)+len(m.Adapters))
 	for id, e := range m.Engines {
 		out[id] = e.Version
+	}
+	for id, a := range m.Adapters {
+		out[id] = a.Version
 	}
 	return out
 }

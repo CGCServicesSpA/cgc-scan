@@ -78,6 +78,10 @@ func (a *App) runUpdateDB(cmd *cobra.Command) error {
 	defer func() { _ = lock.Release() }()
 
 	sources := provision.Sources(r, dockerR, binary, cacheDir, 30*time.Minute)
+	sources = append(sources,
+		&provision.GoVulnSource{Dir: filepath.Join(a.Paths.CacheDir, "go-vulndb")},
+		&provision.RustSecSource{Dir: filepath.Join(a.Paths.CacheDir, "rustsec")},
+	)
 	var failures []string
 	for _, src := range sources {
 		slog.Info("actualizando fuente", "source", src.ID())

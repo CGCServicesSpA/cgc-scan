@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -121,4 +122,40 @@ func Sources(r runner.Runner, docker *runner.Docker, binary, cacheDir string, ti
 		&TrivySource{Kind: "trivy-checks", Runner: r, Docker: docker, Binary: binary, CacheDir: cacheDir, Timeout: timeout},
 	}
 	return out
+}
+
+// GoVulnSource actualiza el espejo local de la base de Go.
+type GoVulnSource struct {
+	Dir    string
+	Client *http.Client
+}
+
+func (s *GoVulnSource) ID() string { return "go-vulndb" }
+func (s *GoVulnSource) Update(ctx context.Context) (DBInfo, error) {
+	return EnsureGoVulnDB(ctx, s.Client, s.Dir, false)
+}
+func (s *GoVulnSource) State(context.Context) (DBInfo, error) {
+	info, ok := goVulnState(s.Dir)
+	if !ok {
+		return DBInfo{}, ErrDBAbsent
+	}
+	return info, nil
+}
+
+// RustSecSource actualiza el snapshot de RustSec.
+type RustSecSource struct {
+	Dir    string
+	Client *http.Client
+}
+
+func (s *RustSecSource) ID() string { return "rustsec" }
+func (s *RustSecSource) Update(ctx context.Context) (DBInfo, error) {
+	return EnsureRustSecDB(ctx, s.Client, s.Dir, false)
+}
+func (s *RustSecSource) State(context.Context) (DBInfo, error) {
+	sha, ok := rustSecState(s.Dir)
+	if !ok {
+		return DBInfo{}, ErrDBAbsent
+	}
+	return DBInfo{Source: "rustsec", Status: "present", Detail: sha}, nil
 }

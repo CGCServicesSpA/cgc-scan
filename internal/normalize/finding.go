@@ -213,21 +213,22 @@ type Correlation struct {
 
 // Finding es el hallazgo normalizado del contrato.
 type Finding struct {
-	Fingerprint  string        `json:"fingerprint"`
-	Kind         Kind          `json:"kind"`
-	Title        string        `json:"title"`
-	Descriptions []Description `json:"descriptions,omitempty"`
-	Severity     SeverityInfo  `json:"severity"`
-	Confidence   *Confidence   `json:"confidence,omitempty"`
-	IDs          []Identifier  `json:"ids,omitempty"`
-	Package      *PackageRef   `json:"package,omitempty"`
-	Locations    []Location    `json:"locations,omitempty"`
-	Evidence     Evidence      `json:"evidence"`
-	Sources      []SourceRef   `json:"sources"`
-	Remediation  []Remediation `json:"remediation,omitempty"`
-	Priority     *Priority     `json:"priority,omitempty"`
-	Policy       FindingPolicy `json:"policy"`
-	Correlation  *Correlation  `json:"correlation,omitempty"`
+	Fingerprint    string         `json:"fingerprint"`
+	Kind           Kind           `json:"kind"`
+	Title          string         `json:"title"`
+	Descriptions   []Description  `json:"descriptions,omitempty"`
+	Severity       SeverityInfo   `json:"severity"`
+	SeverityOthers []SeverityInfo `json:"severity_others,omitempty"`
+	Confidence     *Confidence    `json:"confidence,omitempty"`
+	IDs            []Identifier   `json:"ids,omitempty"`
+	Package        *PackageRef    `json:"package,omitempty"`
+	Locations      []Location     `json:"locations,omitempty"`
+	Evidence       Evidence       `json:"evidence"`
+	Sources        []SourceRef    `json:"sources"`
+	Remediation    []Remediation  `json:"remediation,omitempty"`
+	Priority       *Priority      `json:"priority,omitempty"`
+	Policy         FindingPolicy  `json:"policy"`
+	Correlation    *Correlation   `json:"correlation,omitempty"`
 }
 
 // Fingerprint calcula la huella v1 a partir de la identidad estable. Es

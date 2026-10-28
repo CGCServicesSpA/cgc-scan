@@ -196,22 +196,22 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| H4-01 | Descubrimiento completo: seis lenguajes, unidades, monorepos, workspaces y `go.work`; detección de la raíz del proyecto (`go.work`, `composer.json`, workspaces de `package.json`, raíz de Git) | Dev | H1-08 | 3.5 | RF-01; PRD §5; design §9.4 | [ ] |
-| H4-02 | Infraestructura común de aprovisionamiento de herramientas de adaptadores (según P-01): manifiesto, verificación, instalación sin scripts | Dev | P-01, H1-02 | 3 | design §8.1 | [ ] |
-| H4-03 | Contrato `Requirements()` y estado omitido con `requirement_missing`; contrato de candidatos de receta de validación y candidatos por lenguaje refinados con los scripts del manifiesto del proyecto | Dev | H4-02 | 2.5 | PRD §5, regla común; design §9.5 | [ ] |
-| H4-04 | Adaptador Go: govulncheck (modo fuente, base local, flujo JSON, alcanzabilidad) | Dev | H4-03, P-10 | 3.5 | PRD §5; design §8 | [ ] |
-| H4-05 | Adaptador JavaScript y TypeScript: ESLint con configuración propia y reglas de seguridad; fixtures JS y TSX | Dev | H4-03, P-11 | 4 | PRD §5; design §8 | [ ] |
-| H4-06 | Adaptador PHP: Psalm con análisis de taint | Dev | H4-03, P-11 | 3.5 | PRD §5; design §8 | [ ] |
-| H4-07 | Adaptador Rust: cargo-audit con base local sin consultas | Dev | H4-03, P-11 | 2.5 | PRD §5.1 | [ ] |
-| H4-08 | Adaptador Python: Bandit | Dev | H4-03, P-11 | 2 | PRD §5 | [ ] |
-| H4-09 | Fuentes de datos RustSec y vulndb de Go dentro de `update-db` | Dev | H2-06, H4-04, H4-07 | 2 | design §7.4 | [ ] |
-| H4-10 | Fixtures vulnerables y corregidos por lenguaje (seis) y un monorepo mixto | Test | H0-10 | 4 | CA-01, CA-02 | [ ] |
-| H4-11 | Normalización de severidad por motor y por categoría de riesgo de regla (ESLint y Psalm), con la escala común y sus pruebas | Dev | H1-07 | 1 | PRD §9; design §8.2, §8.3; CA-58 | [ ] |
-| H4-12 | Correlación de hallazgos de dependencias y de código, con pruebas | Dev | H4-11 | 3 | RF-06; design §9.2 | [ ] |
-| H4-13 | `Redact` por adaptador y persistencia de salidas originales enmascaradas | Dev | H1-06 | 1.5 | design §5.2 | [ ] |
-| H4-15 | Selección de rutas: `--include` y `--exclude` repetibles, coincidencia con `**`, matriz de precedencia contra la política del proyecto, `coverage.partial` y `coverage.not_analyzed`, y propagación de las exclusiones a cada motor | Dev | H3-08, H4-01, H4-03 | 3 | RF-14; PRD §4.4, §6.8; design §9.4 | [ ] |
-| H4-14 | Pruebas de cobertura por lenguaje, monorepo, herramienta faltante, timeouts, no modificación y proyecto hostil | Test | H4-04, H4-05, H4-06, H4-07, H4-08, H4-10, H4-12, H4-15 | 3 | Gate H4 · CA-01, CA-02, CA-06, CA-07, CA-10, CA-11, CA-14, CA-46 | [ ] |
-| | **Subtotal H4** | | | **42** | | |
+| H4-01 | Descubrimiento completo: seis lenguajes, unidades, monorepos, workspaces y `go.work`; detección de la raíz del proyecto (`go.work`, `composer.json`, workspaces de `package.json`, raíz de Git) | Dev | H1-08 | 3.5 | RF-01; PRD §5; design §9.4 | [x] |
+| H4-02 | Infraestructura común de aprovisionamiento de herramientas de adaptadores (según P-01): manifiesto, verificación, instalación sin scripts | Dev | P-01, H1-02 | 3 | design §8.1 | [x] |
+| H4-03 | Contrato `Requirements()` y estado omitido con `requirement_missing`; contrato de candidatos de receta de validación y candidatos por lenguaje refinados con los scripts del manifiesto del proyecto | Dev | H4-02 | 2.5 | PRD §5, regla común; design §9.5 | [x] |
+| H4-04 | Adaptador Go: govulncheck (modo fuente, base local, flujo JSON, alcanzabilidad) | Dev | H4-03, P-10 | 3.5 | PRD §5; design §8 | [x] |
+| H4-05 | Adaptador JavaScript y TypeScript: ESLint con configuración propia y reglas de seguridad; fixtures JS y TSX | Dev | H4-03, P-11 | 4 | PRD §5; design §8 | [x] |
+| H4-06 | Adaptador PHP: Psalm con análisis de taint | Dev | H4-03, P-11 | 3.5 | PRD §5; design §8 | [x] |
+| H4-07 | Adaptador Rust: cargo-audit con base local sin consultas | Dev | H4-03, P-11 | 2.5 | PRD §5.1 | [x] |
+| H4-08 | Adaptador Python: Bandit | Dev | H4-03, P-11 | 2 | PRD §5 | [x] |
+| H4-09 | Fuentes de datos RustSec y vulndb de Go dentro de `update-db` | Dev | H2-06, H4-04, H4-07 | 2 | design §7.4 | [x] |
+| H4-10 | Fixtures vulnerables y corregidos por lenguaje (seis) y un monorepo mixto | Test | H0-10 | 4 | CA-01, CA-02 | [x] |
+| H4-11 | Normalización de severidad por motor y por categoría de riesgo de regla (ESLint y Psalm), con la escala común y sus pruebas | Dev | H1-07 | 1 | PRD §9; design §8.2, §8.3; CA-58 | [x] |
+| H4-12 | Correlación de hallazgos de dependencias y de código, con pruebas | Dev | H4-11 | 3 | RF-06; design §9.2 | [x] |
+| H4-13 | `Redact` por adaptador y persistencia de salidas originales enmascaradas | Dev | H1-06 | 1.5 | design §5.2 | [x] |
+| H4-15 | Selección de rutas: `--include` y `--exclude` repetibles, coincidencia con `**`, matriz de precedencia contra la política del proyecto, `coverage.partial` y `coverage.not_analyzed`, y propagación de las exclusiones a cada motor | Dev | H3-08, H4-01, H4-03 | 3 | RF-14; PRD §4.4, §6.8; design §9.4 | [x] |
+| H4-14 | Pruebas de cobertura por lenguaje, monorepo, herramienta faltante, timeouts, no modificación y proyecto hostil | Test | H4-04, H4-05, H4-06, H4-07, H4-08, H4-10, H4-12, H4-15 | 3 | Gate H4 · CA-01, CA-02, CA-06, CA-07, CA-10, CA-11, CA-14, CA-46 | [x] |
+| | **Subtotal H4** | | | **42** | | Cierre 2026-10-27: seis lenguajes y monorepo mixto verificados con motores reales; herramientas aprovisionadas sin scripts; fixtures vulnerable/corregido y ausencia de modificación del proyecto comprobadas |
 
 ### Hito H5 — Política, comparación y formato prompt
 

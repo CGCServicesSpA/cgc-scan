@@ -1,0 +1,1 @@
+{"name":"cgc/fixture-php","type":"project","require":{},"scripts":{"test":"php index.php"}}

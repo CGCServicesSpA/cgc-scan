@@ -1,0 +1,1 @@
+{"name":"cgc-fixture-js","private":true,"version":"0.0.0","scripts":{"test":"node app.js","build":"node build.js"}}

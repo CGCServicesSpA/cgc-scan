@@ -68,19 +68,21 @@ func Discover(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 
-	units, err := discoverUnits(ctx, root, target)
+	relTarget, relErr := Rel(root, target)
+	if relErr != nil {
+		relTarget = "."
+	}
+	units, err := discoverUnits(ctx, root, relTarget)
 	if err != nil {
 		return Result{}, err
 	}
-	// Unidad de proyecto: Trivy analiza el árbol completo una sola vez, de modo
-	// que secretos y configuraciones fuera de los módulos también se cubren.
-	if rel, err := Rel(root, target); err == nil {
-		res.Units = append([]Unit{{
-			ID: "project", Path: rel, Kind: "repository", Languages: unionLanguages(units),
-		}}, units...)
-	} else {
-		res.Units = units
-	}
+	// Unidad de proyecto: Trivy analiza el árbol objetivo completo una sola
+	// vez, de modo que secretos y configuraciones fuera de los módulos también
+	// se cubren. La raíz detectada es más amplia y solo sirve para enumerar lo
+	// que quedó fuera del objetivo.
+	res.Units = append([]Unit{{
+		ID: "project", Path: relTarget, Kind: "repository", Languages: unionLanguages(units),
+	}}, units...)
 	return res, nil
 }
 
@@ -127,21 +129,32 @@ func hasPackageWorkspaces(path string) bool {
 	return len(pkg.Workspaces) > 0
 }
 
-// discoverUnits recorre la raíz con os.Root. Solo se consideran unidades los
-// directorios con go.mod; el resto del proyecto queda fuera del inventario y,
-// por lo tanto, no se presenta como analizado.
-func discoverUnits(ctx context.Context, root, target string) ([]Unit, error) {
+// discoverUnits recorre la raíz con os.Root y construye una unidad por
+// directorio con manifiesto. Los lenguajes y manifiestos de un mismo
+// directorio se agrupan en una sola unidad (monorepos mixtos).
+func discoverUnits(ctx context.Context, root, walkRoot string) ([]Unit, error) {
 	rt, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, fmt.Errorf("abrir raíz %s: %w", root, err)
 	}
 	defer func() { _ = rt.Close() }()
 
-	var units []Unit
-	err = fs.WalkDir(rt.FS(), ".", func(p string, d fs.DirEntry, walkErr error) error {
+	byDir := map[string]*Unit{}
+	sourceDir := map[Language]string{}
+	add := func(dir string, lang Language, manifest string) {
+		u, ok := byDir[dir]
+		if !ok {
+			u = &Unit{ID: unitID(dir), Path: dir, Kind: kindFor(lang), Languages: []Language{}}
+			byDir[dir] = u
+		}
+		u.Languages = appendUniqueLanguage(u.Languages, lang)
+		if manifest != "" {
+			u.Manifests = appendUniqueString(u.Manifests, manifest)
+		}
+	}
+
+	err = fs.WalkDir(rt.FS(), walkRoot, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			// Un enlace roto o un permiso denegado no debe tumbar el
-			// descubrimiento: se omite y la cobertura lo refleja.
 			if d != nil && d.IsDir() {
 				return fs.SkipDir
 			}
@@ -151,58 +164,147 @@ func discoverUnits(ctx context.Context, root, target string) ([]Unit, error) {
 			return err
 		}
 		if d.IsDir() {
-			if p != "." && discardedDirs[d.Name()] {
+			if p != walkRoot && discardedDirs[d.Name()] {
 				return fs.SkipDir
 			}
 			return nil
 		}
-		if d.Name() != "go.mod" {
+		dir := path.Dir(p)
+		name := d.Name()
+		lang, isManifest, unitKind := classify(name)
+		if isManifest && name != "go.work" {
+			add(dir, lang, p)
+			if unitKind == "module" {
+				byDir[dir].Kind = "module"
+			}
 			return nil
 		}
-		dir := path.Dir(p)
-		if dir == "." {
-			dir = "."
+		if lang != Language("") {
+			if _, ok := sourceDir[lang]; !ok {
+				sourceDir[lang] = dir
+			}
 		}
-		units = append(units, Unit{
-			ID:        unitID(dir),
-			Path:      dir,
-			Kind:      "module",
-			Languages: []Language{Go},
-			Manifests: []string{p},
-		})
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("recorrer %s: %w", root, err)
 	}
-	if len(units) == 0 {
-		// Sin manifiestos Go, si hay archivos .go se ofrece una unidad de
-		// directorio para no ocultar código analizable.
-		if hasGoFiles(rt) {
-			rel, _ := Rel(root, target)
-			if rel == "" {
-				rel = "."
+
+	// Los lenguajes con código pero sin manifiesto no desaparecen: se ofrece
+	// una unidad de directorio para que el adaptador declare su estado.
+	for _, lang := range []Language{Go, JavaScript, TypeScript, PHP, Rust, Python} {
+		if !languageDetected(byDir, lang) {
+			if dir, ok := sourceDir[lang]; ok {
+				add(dir, lang, "")
+				byDir[dir].Kind = "directory"
 			}
-			units = append(units, Unit{ID: unitID(rel), Path: rel, Kind: "directory", Languages: []Language{Go}})
 		}
+	}
+	// Un tsconfig sin package.json crea su propia unidad TypeScript.
+	units := make([]Unit, 0, len(byDir))
+	for _, u := range byDir {
+		sort.Slice(u.Languages, func(i, j int) bool { return u.Languages[i] < u.Languages[j] })
+		sort.Strings(u.Manifests)
+		units = append(units, *u)
+	}
+	if len(units) == 0 && hasAnySourceFile(rt, walkRoot) {
+		units = append(units, Unit{ID: unitID(walkRoot), Path: walkRoot, Kind: "directory"})
 	}
 	SortUnits(units)
 	return units, nil
 }
 
-func hasGoFiles(rt *os.Root) bool {
+// classify mapea un nombre de archivo a lenguaje, si es manifiesto, y el tipo
+// de unidad que implica.
+func classify(name string) (Language, bool, string) {
+	lower := strings.ToLower(name)
+	switch lower {
+	case "go.mod":
+		return Go, true, "module"
+	case "go.work":
+		return Go, true, "workspace"
+	case "package.json":
+		return JavaScript, true, "package"
+	case "tsconfig.json":
+		return TypeScript, true, "package"
+	case "composer.json":
+		return PHP, true, "package"
+	case "cargo.toml":
+		return Rust, true, "package"
+	case "pyproject.toml", "pipfile", "setup.py", "setup.cfg":
+		return Python, true, "package"
+	}
+	if strings.HasPrefix(lower, "requirements") && strings.HasSuffix(lower, ".txt") {
+		return Python, true, "package"
+	}
+	for lang, exts := range map[Language][]string{
+		Go:         {".go"},
+		JavaScript: {".js", ".jsx", ".mjs", ".cjs"},
+		TypeScript: {".ts", ".tsx"},
+		PHP:        {".php"},
+		Rust:       {".rs"},
+		Python:     {".py"},
+	} {
+		for _, ext := range exts {
+			if strings.HasSuffix(lower, ext) {
+				return lang, false, ""
+			}
+		}
+	}
+	return Language(""), false, ""
+}
+
+func kindFor(l Language) string {
+	switch l {
+	case Go, Rust:
+		return "module"
+	default:
+		return "package"
+	}
+}
+
+func languageDetected(byDir map[string]*Unit, l Language) bool {
+	for _, u := range byDir {
+		for _, x := range u.Languages {
+			if x == l {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func appendUniqueLanguage(dst []Language, l Language) []Language {
+	for _, x := range dst {
+		if x == l {
+			return dst
+		}
+	}
+	return append(dst, l)
+}
+
+func appendUniqueString(dst []string, s string) []string {
+	for _, x := range dst {
+		if x == s {
+			return dst
+		}
+	}
+	return append(dst, s)
+}
+
+func hasAnySourceFile(rt *os.Root, walkRoot string) bool {
 	found := false
-	_ = fs.WalkDir(rt.FS(), ".", func(p string, d fs.DirEntry, err error) error {
+	_ = fs.WalkDir(rt.FS(), walkRoot, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || found {
-			return nil //nolint:nilerr // un error de recorrido solo omite el archivo
+			return nil //nolint:nilerr
 		}
 		if d.IsDir() {
-			if p != "." && discardedDirs[d.Name()] {
+			if p != walkRoot && discardedDirs[d.Name()] {
 				return fs.SkipDir
 			}
 			return nil
 		}
-		if strings.HasSuffix(d.Name(), ".go") {
+		if lang, _, _ := classify(d.Name()); lang != Language("") {
 			found = true
 		}
 		return nil

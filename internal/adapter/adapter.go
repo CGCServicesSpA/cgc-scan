@@ -31,6 +31,27 @@ type Parsed struct {
 	Diagnostics []Diagnostic
 }
 
+// ExitPolicy permite que un adaptador declare códigos de salida que significan
+// "ejecución completa con hallazgos" en lugar de fallo.
+type ExitPolicy interface {
+	AcceptExit(code int) bool
+}
+
+// RecipeCandidate es una propuesta de comando de validación detectada en el
+// proyecto. Nunca es una receta de confianza hasta que el usuario la confirma.
+type RecipeCandidate struct {
+	Unit    string `json:"unit"`
+	Kind    string `json:"kind"` // test | build
+	Command string `json:"command"`
+	Workdir string `json:"workdir"`
+	Origin  string `json:"origin"` // package.json | composer.json | Makefile | pyproject.toml | adapter
+}
+
+// RecipeProvider expone los candidatos que conoce el adaptador.
+type RecipeProvider interface {
+	RecipeCandidates(u discovery.Unit) []RecipeCandidate
+}
+
 // Adapter es el contrato de un motor específico.
 type Adapter interface {
 	// ID identifica el motor en el reporte.

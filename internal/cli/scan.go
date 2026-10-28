@@ -18,6 +18,7 @@ import (
 	"github.com/CGCServicesSpA/cgc-scan/internal/normalize"
 	"github.com/CGCServicesSpA/cgc-scan/internal/orchestrator"
 	"github.com/CGCServicesSpA/cgc-scan/internal/plan"
+	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policy"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policyfile"
 	"github.com/CGCServicesSpA/cgc-scan/internal/report"
@@ -44,6 +45,7 @@ type scanOptions struct {
 
 func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	started := a.Now()
+	runID := report.NewRunID(started)
 	if opts.Target == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -147,19 +149,49 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	trivyAdapter.Binary = setup.Binary
 	trivyAdapter.RunnerKind = setup.Mode
 
+	// Requisitos dependientes del proyecto: adaptadores y sus bases.
+	runDir := filepath.Join(a.Paths.CacheDir, "runs", runID)
+	adapterSetup := a.prepareAdapters(cmd.Context(), ms, disc, masker, opts, runDir)
+	engines := append([]orchestrator.Engine{{
+		ID:         trivy.ID,
+		Version:    engine.Version,
+		Mode:       setup.Mode,
+		Adapter:    trivyAdapter,
+		Runner:     setup.Runner,
+		Isolation:  level,
+		Image:      setup.Image,
+		BinaryPath: setup.Binary,
+	}}, adapterSetup.Engines...)
+
+	overall := level
+	for _, e := range engines {
+		if e.Isolation.Rank() < overall.Rank() {
+			overall = e.Isolation
+		}
+	}
+	if opts.RequireIsolation == "enforced" && overall.Rank() < runner.IsolationEnforced.Rank() {
+		return IncompleteErrorf("se exigió aislamiento enforced, pero los adaptadores de este proyecto se ejecutan en el host (configured); no se analizó el proyecto")
+	}
+
 	// Paso 6: ejecución.
 	concurrency := opts.Concurrency
 	if concurrency == 0 {
 		concurrency = 4
 	}
-	out := orchestrator.Execute(cmd.Context(), p, []orchestrator.Engine{{
-		ID:        trivy.ID,
-		Version:   engine.Version,
-		Mode:      setup.Mode,
-		Adapter:   trivyAdapter,
-		Runner:    setup.Runner,
-		Isolation: level,
-	}}, concurrency)
+	out := orchestrator.Execute(cmd.Context(), p, engines, concurrency)
+	for i := range out.Engines {
+		if out.Engines[i].ID == trivy.ID {
+			out.Engines[i].DB = &orchestrator.DBRef{
+				Source: setup.DB.Source, Status: setup.DB.Status,
+				UpdatedAt: setup.DB.UpdatedAt, Detail: setup.DB.Detail,
+			}
+		} else if db, ok := adapterSetup.DBs[out.Engines[i].ID]; ok {
+			db := db
+			out.Engines[i].DB = &db
+		}
+	}
+	out.Findings = normalize.Correlate(out.Findings)
+	a.writeRawOutputs(runID, out.RawOutputs)
 
 	// Pasos 7 y 8: política.
 	failOn, thresholdIssues := policyfile.EffectiveFailOn(
@@ -168,7 +200,7 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	eval := policy.Evaluate(out.Findings, failOn, true, pol.Exceptions)
 
 	// Paso 9: reporte.
-	doc := buildDocument(cmd, opts, cfg, pol, failOn, setup, disc, out, started, time.Since(started), level, eval)
+	doc := buildDocument(cmd, opts, cfg, pol, failOn, setup, disc, out, runID, started, time.Since(started), overall, eval, adapterSetup.Preparations)
 
 	if opts.ReportOut != "" {
 		if err := a.validateReportOut(target, doc, opts.ReportOut); err != nil {
@@ -198,9 +230,10 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 // que un consumidor de JSON nunca reciba stdout vacío ante un fallo de
 // preparación (PRD §9, RF-08).
 func failureDocument(started time.Time, target string, cause error) *report.Document {
+	runID := report.NewRunID(started)
 	doc := &report.Document{
 		SchemaVersion: version.SchemaVersion,
-		Run:           report.NewRun(report.NewRunID(started), started, time.Since(started), map[string]any{"failed": true}),
+		Run:           report.NewRun(runID, started, time.Since(started), map[string]any{"failed": true}),
 		Target: report.Target{
 			Root: target, LocalID: report.LocalID(target),
 			VCS: report.VCS{Available: false}, Units: []report.UnitInfo{},
@@ -241,7 +274,8 @@ func (a *App) validateReportOut(root string, _ *report.Document, path string) er
 
 func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol policyfile.Policy,
 	failOn normalize.Severity, setup *engineSetup, disc discovery.Result, out orchestrator.Outcome,
-	started time.Time, elapsed time.Duration, level runner.IsolationLevel, eval policy.Evaluation) *report.Document {
+	runID string, started time.Time, elapsed time.Duration, level runner.IsolationLevel,
+	eval policy.Evaluation, adapterPreps []report.Preparation) *report.Document {
 
 	units := make([]report.UnitInfo, 0, len(disc.Units))
 	for _, u := range disc.Units {
@@ -271,47 +305,74 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 			findingsByUnitEngine[st.Unit][e.ID] = st.Findings
 		}
 	}
+	unitEngines := map[string][]report.EngineState{}
+	for _, e := range out.Engines {
+		for _, st := range e.Units {
+			unitEngines[st.Unit] = append(unitEngines[st.Unit], report.EngineState{
+				ID: e.ID, Status: st.Status, Reason: st.Reason,
+				Findings: findingsByUnitEngine[st.Unit][e.ID],
+			})
+		}
+	}
 	coverageUnits := make([]report.UnitCoverage, 0, len(out.Plan.Units))
 	for _, u := range out.Plan.Units {
 		cu := report.UnitCoverage{
 			ID: u.Unit.ID, Path: u.Unit.Path, Languages: u.Unit.Languages,
-			Status: out.Plan.UnitStatus(u.Unit.ID),
-		}
-		for _, e := range u.Engines {
-			cu.Engines = append(cu.Engines, report.EngineState{
-				ID: e.ID, Status: e.Status, Reason: e.Reason,
-				Findings: findingsByUnitEngine[u.Unit.ID][e.ID],
-			})
+			Engines: unitEngines[u.Unit.ID],
+			Status:  aggregateUnitStatus(unitEngines[u.Unit.ID]),
 		}
 		coverageUnits = append(coverageUnits, cu)
 	}
 
+	allPreps := append(append([]report.Preparation{}, setup.Preparations...), adapterPreps...)
 	engines := make([]report.EngineReport, 0, len(out.Engines))
 	for _, e := range out.Engines {
 		er := report.EngineReport{
 			ID: e.ID, Version: e.Version, Status: e.Status, Mode: e.Mode,
 			Isolation: string(e.Isolation), DurationMS: e.Duration.Milliseconds(),
-			Path: setup.Binary, Image: setup.Image,
+			Path: e.Path, Image: e.Image,
 		}
 		for _, st := range e.Units {
 			er.Units = append(er.Units, report.EngineState{
 				ID: st.Unit, Status: st.Status, Reason: st.Reason, Findings: st.Findings,
 			})
 		}
-		updated := setup.DB.UpdatedAt.UTC().Format(time.RFC3339)
-		age := setup.DB.AgeSeconds
-		schema := setup.DB.Schema
-		er.DB = &report.DBState{
-			Source: "trivy-db", Status: setup.DB.Status, UpdatedAt: &updated,
-			AgeSeconds: &age, Schema: &schema,
+		if e.DB != nil {
+			db := &report.DBState{Source: e.DB.Source, Status: e.DB.Status, Detail: e.DB.Detail}
+			if !e.DB.UpdatedAt.IsZero() {
+				updated := e.DB.UpdatedAt.UTC().Format(time.RFC3339)
+				db.UpdatedAt = &updated
+			}
+			er.DB = db
+		} else if e.ID == trivy.ID {
+			updated := setup.DB.UpdatedAt.UTC().Format(time.RFC3339)
+			age := setup.DB.AgeSeconds
+			schema := setup.DB.Schema
+			er.DB = &report.DBState{
+				Source: "trivy-db", Status: setup.DB.Status, UpdatedAt: &updated,
+				AgeSeconds: &age, Schema: &schema,
+			}
+			if setup.DB.Status == "stale" {
+				er.Limitations = append(er.Limitations, "base con antigüedad superior al aviso")
+			}
+			for _, p := range setup.Preparations {
+				if p.Action == "checks" && p.Status == "failed" {
+					er.Limitations = append(er.Limitations, "checks de configuración embebidos (el bundle no se pudo actualizar)")
+				}
+			}
 		}
-		er.Preparation = setup.Preparations
-		if setup.DB.Status == "stale" {
-			er.Limitations = append(er.Limitations, "base con antigüedad superior al aviso")
+		er.Preparation = preparationsFor(e.ID, allPreps)
+		if e.Rules != nil {
+			er.Rules = &report.RulesState{Source: e.Rules.Source, Version: e.Rules.Version, Count: e.Rules.Count}
 		}
-		for _, p := range setup.Preparations {
-			if p.Action == "checks" && p.Status == "failed" {
-				er.Limitations = append(er.Limitations, "checks de configuración embebidos (el bundle no se pudo actualizar)")
+		if e.ID != trivy.ID {
+			for _, p := range adapterPreps {
+				if strings.HasPrefix(p.Action, "adapter:"+e.ID) && p.Status == "failed" {
+					er.Limitations = append(er.Limitations, p.Detail)
+				}
+				if strings.HasPrefix(p.Action, "db:") && p.Status == "failed" {
+					er.Limitations = append(er.Limitations, p.Detail)
+				}
 			}
 		}
 		engines = append(engines, er)
@@ -395,7 +456,7 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 
 	doc := &report.Document{
 		SchemaVersion: version.SchemaVersion,
-		Run:           report.NewRun(report.NewRunID(started), started, elapsed, args),
+		Run:           report.NewRun(runID, started, elapsed, args),
 		Target: report.Target{
 			Root: disc.Root, LocalID: report.LocalID(disc.Root),
 			VCS: report.VCS{Available: false}, Units: units,
@@ -424,6 +485,77 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 	}
 	doc.Normalize()
 	return doc
+}
+
+// aggregateUnitStatus resume el estado de la unidad a partir de todos los
+// motores que la tocaron.
+func aggregateUnitStatus(states []report.EngineState) string {
+	if len(states) == 0 {
+		return plan.StatusRequested
+	}
+	failed, completed, skipped := 0, 0, 0
+	for _, s := range states {
+		switch s.Status {
+		case plan.StatusFailed:
+			failed++
+		case plan.StatusCompleted:
+			completed++
+		case plan.StatusSkipped:
+			skipped++
+		}
+	}
+	switch {
+	case failed > 0:
+		return plan.StatusFailed
+	case completed > 0:
+		return plan.StatusCompleted
+	case skipped == len(states):
+		return plan.StatusSkipped
+	default:
+		return plan.StatusRequested
+	}
+}
+
+func preparationsFor(engineID string, all []report.Preparation) []report.Preparation {
+	var out []report.Preparation
+	for _, p := range all {
+		if strings.HasPrefix(p.Action, "adapter:") {
+			if p.Action == "adapter:"+engineID {
+				out = append(out, p)
+			}
+			continue
+		}
+		if strings.HasPrefix(p.Action, "db:") {
+			if (engineID == "govulncheck" && p.Action == "db:go-vulndb") ||
+				(engineID == "cargo-audit" && p.Action == "db:rustsec") {
+				out = append(out, p)
+			}
+			continue
+		}
+		if engineID == trivy.ID {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// writeRawOutputs persiste las salidas originales ya enmascaradas en la caché,
+// con permisos privados. Un fallo se registra y no altera el contrato.
+func (a *App) writeRawOutputs(runID string, raw []orchestrator.RawOutput) {
+	if len(raw) == 0 {
+		return
+	}
+	dir := filepath.Join(a.Paths.CacheDir, "runs", runID)
+	if err := platform.EnsurePrivateDir(dir); err != nil {
+		slog.Warn("no se pudo preparar el directorio de salidas", "error", err)
+		return
+	}
+	for _, r := range raw {
+		name := strings.NewReplacer("/", "_", string(filepath.Separator), "_", " ", "_").Replace(r.Engine+"-"+r.Unit) + ".json"
+		if err := platform.WritePrivateFile(filepath.Join(dir, name), r.Data); err != nil {
+			slog.Warn("no se pudo guardar la salida original", "engine", r.Engine, "unit", r.Unit, "error", err)
+		}
+	}
 }
 
 func cacheOrigin(cfg config.Config) string {
