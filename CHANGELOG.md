@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.0-rc.4 — 2026-10-28
+
+- `scan --confirm-recipes`: confirma en una sola orden los candidatos de
+  test/build detectados para las unidades del escaneo. Solo añade recetas
+  faltantes, no sobrescribe comandos del usuario y las guarda en la
+  configuración de usuario para los escaneos siguientes.
+- Corregido el caso en que la unidad de proyecto y un módulo comparten ruta
+  (`backoffice`): la receta del módulo se aplica al hallazgo.
+- `--set` actualiza solo las unidades declaradas y conserva las demás recetas
+  del proyecto.
+
 ## 0.1.0-rc.3 — 2026-10-28
 
 - Salida enriquecida: por hallazgo se muestran versión corregida, descripción,

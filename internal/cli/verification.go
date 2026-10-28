@@ -106,7 +106,7 @@ func unitForFinding(f *normalize.Finding, units []report.UnitInfo) report.UnitIn
 	}
 	for _, loc := range f.Locations {
 		for _, u := range units {
-			if u.Path == "" || u.Path == "." {
+			if u.ID == "project" || u.Path == "" || u.Path == "." {
 				continue
 			}
 			if loc.Path == u.Path || strings.HasPrefix(loc.Path, u.Path+"/") {

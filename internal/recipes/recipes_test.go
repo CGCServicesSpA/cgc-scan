@@ -105,3 +105,33 @@ workdir = "svc/api"
 		t.Fatal("se aceptó una receta sin test ni build")
 	}
 }
+
+func TestConfirmDetectedPreservesUserCommands(t *testing.T) {
+	cfg := config.Config{Recipes: []config.Recipe{{
+		Project: "/proj", Unit: "svc",
+		Test: &config.Command{Command: "make test", Workdir: "svc"},
+	}}}
+	candidates := []Candidate{
+		{Unit: "svc", Kind: "test", Command: "npm test", Workdir: "svc"},
+		{Unit: "svc", Kind: "build", Command: "npm run build", Workdir: "svc"},
+		{Unit: "otro", Kind: "test", Command: "pytest", Workdir: "otro"},
+	}
+	allowed := map[string]bool{"svc": true}
+	n := ConfirmDetected(&cfg, "/proj", candidates, allowed)
+	if n != 1 {
+		t.Fatalf("unidades = %d", n)
+	}
+	confirmed := Confirmed(cfg, "/proj")
+	if len(confirmed) != 1 {
+		t.Fatalf("recetas = %+v", confirmed)
+	}
+	if confirmed[0].Test == nil || confirmed[0].Test.Command != "make test" {
+		t.Fatalf("se sobrescribió una receta del usuario: %+v", confirmed[0].Test)
+	}
+	if confirmed[0].Build == nil || confirmed[0].Build.Command != "npm run build" {
+		t.Fatalf("no se añadió el build detectado: %+v", confirmed[0].Build)
+	}
+	if len(Confirmed(cfg, "/otro")) != 0 {
+		t.Fatal("se confirmó una unidad fuera del alcance")
+	}
+}

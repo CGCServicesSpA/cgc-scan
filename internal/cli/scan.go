@@ -43,6 +43,7 @@ type scanOptions struct {
 	Exclude          []string
 	Timeout          time.Duration
 	Concurrency      int
+	ConfirmRecipes   bool
 }
 
 func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
@@ -137,6 +138,29 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	p.Include = opts.Include
 	p.Exclude = opts.Exclude
 	plan.ApplySelection(&p)
+
+	if opts.ConfirmRecipes {
+		allowed := make(map[string]bool, len(p.Units))
+		for _, u := range p.Units {
+			allowed[u.Unit.ID] = true
+		}
+		candidates := recipes.Detect(disc.Root, disc.Units)
+		n := recipes.ConfirmDetected(&cfg, disc.Root, candidates, allowed)
+		if n > 0 {
+			if err := config.Save(a.Paths.ConfigFile(), cfg); err != nil {
+				return IncompleteErrorf("confirmar recetas detectadas: %v", err)
+			}
+			for _, c := range candidates {
+				if allowed[c.Unit] {
+					slog.Info("receta confirmada", "unidad", c.Unit, "tipo", c.Kind,
+						"comando", c.Command, "workdir", c.Workdir, "origen", c.Origin)
+				}
+			}
+			slog.Info("recetas confirmadas automáticamente", "unidades", n)
+		} else {
+			slog.Warn("no se detectaron recetas para confirmar en este proyecto")
+		}
+	}
 
 	salt, err := masking.LoadOrCreateSalt(a.Paths.SaltFile())
 	if err != nil {
@@ -452,6 +476,7 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		"no_auto_install":   opts.NoAutoInstall,
 		"include":           include,
 		"exclude":           excludeList,
+		"confirm_recipes":   opts.ConfirmRecipes,
 	}
 	failOnOrigin := "default"
 	switch {
@@ -472,6 +497,9 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		{Key: "trivy_mode", Value: mode, Origin: modeOrigin},
 		{Key: "offline", Value: opts.Offline, Origin: originOf(cmd, "offline", "default")},
 		{Key: "cache_dir", Value: setup.CacheDir, Origin: cacheOrigin(cfg)},
+	}
+	if opts.ConfirmRecipes {
+		origins = append(origins, report.ConfigOrigin{Key: "recipes", Value: "detected", Origin: "flag"})
 	}
 
 	errs := make([]report.Error, 0, len(out.Errors)+len(pol.Issues))

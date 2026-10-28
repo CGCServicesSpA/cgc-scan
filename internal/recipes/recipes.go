@@ -238,3 +238,48 @@ func (l Listing) Text() string {
 	}
 	return b.String()
 }
+
+// ConfirmDetected confirma automáticamente los candidatos detectados para las
+// unidades permitidas, sin sobrescribir comandos ya confirmados por el usuario.
+// Devuelve cuántas unidades quedaron con al menos una receta nueva.
+func ConfirmDetected(cfg *config.Config, project string, candidates []Candidate, allowed map[string]bool) int {
+	existing := map[string]config.Recipe{}
+	for _, r := range cfg.Recipes {
+		if filepath.Clean(r.Project) == filepath.Clean(project) {
+			existing[r.Unit] = r
+		}
+	}
+	byUnit := map[string]config.Recipe{}
+	for _, c := range candidates {
+		if allowed != nil && !allowed[c.Unit] {
+			continue
+		}
+		r, ok := byUnit[c.Unit]
+		if !ok {
+			r = existing[c.Unit]
+			r.Project = project
+			r.Unit = c.Unit
+		}
+		cmd := &config.Command{Command: c.Command, Workdir: c.Workdir}
+		switch c.Kind {
+		case "test":
+			if r.Test == nil {
+				r.Test = cmd
+			}
+		case "build":
+			if r.Build == nil {
+				r.Build = cmd
+			}
+		}
+		byUnit[c.Unit] = r
+	}
+	entries := make([]config.Recipe, 0, len(byUnit))
+	for _, r := range byUnit {
+		entries = append(entries, r)
+	}
+	if len(entries) == 0 {
+		return 0
+	}
+	Merge(cfg, project, entries)
+	return len(entries)
+}

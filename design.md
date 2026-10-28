@@ -569,7 +569,7 @@ Las recetas de tests y build son la única parte del prompt que el agente ejecut
 
 **Candidatos.** La CLI detecta candidatos leyendo los manifiestos del proyecto —scripts de `package.json` y `composer.json`, objetivos de `Makefile`, herramientas declaradas en `pyproject.toml`— y combinándolos con el stack que ya detectaron los adaptadores. Los candidatos se ofrecen **identificados como tales**: son propuestas, no recetas.
 
-**Confirmación.** `cgc-scan recipes` lista candidatos y recetas confirmadas para el proyecto actual; `cgc-scan recipes --set <archivo>` confirma en la configuración de usuario las recetas declaradas en ese archivo; `--clear` las elimina. Confirmar es un acto explícito del usuario: desde ese momento la receta es de confianza y aparece en el prompt con su directorio de trabajo y su unidad afectada.
+**Confirmación.** `cgc-scan recipes` lista candidatos y recetas confirmadas para el proyecto actual; `cgc-scan recipes --set <archivo>` confirma en la configuración de usuario las recetas declaradas en ese archivo; `--clear` las elimina. `cgc-scan scan --confirm-recipes` es la vía de un solo paso: detecta los candidatos de las unidades del escaneo y añade solo los test/build que falten, sin sobrescribir recetas ya confirmadas. Confirmar es un acto explícito del usuario: desde ese momento la receta es de confianza y aparece en el prompt con su directorio de trabajo y su unidad afectada.
 
 **Sin receta.** Si una unidad no tiene receta confirmada, el prompt la declara como campo sin resolver y la validación de esa unidad queda bloqueada (PRD §10.1). La CLI nunca inventa un comando ni afirma que se ejecutó.
 

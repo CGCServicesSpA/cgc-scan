@@ -62,6 +62,27 @@ func TestAttachVerificationPerFinding(t *testing.T) {
 	}
 }
 
+func TestAttachVerificationPrefersModuleWithSamePathAsProject(t *testing.T) {
+	doc := &report.Document{
+		Target: report.Target{Units: []report.UnitInfo{
+			{ID: "project", Path: "backoffice", Kind: "repository"},
+			{ID: "backoffice", Path: "backoffice", Kind: "package"},
+		}},
+		Validation: report.Validation{Recipes: []report.Recipe{
+			{Unit: "backoffice", Kind: "test", Command: "npm run test", Workdir: "backoffice", Origin: "user"},
+			{Unit: "backoffice", Kind: "build", Command: "npm run build", Workdir: "backoffice", Origin: "user"},
+		}},
+		Findings: []normalize.Finding{
+			{Fingerprint: strings.Repeat("f", 32), Locations: []normalize.Location{{Path: "backoffice/src/lib/catalog-forms.mjs"}}},
+		},
+	}
+	attachVerification(doc, nil)
+	v := doc.Findings[0].Verification
+	if v == nil || v.Unit != "backoffice" || v.Status != "ready" {
+		t.Fatalf("verificación = %+v", v)
+	}
+}
+
 func TestAttachVerificationFallsBackToProject(t *testing.T) {
 	doc := &report.Document{
 		Target: report.Target{Units: []report.UnitInfo{

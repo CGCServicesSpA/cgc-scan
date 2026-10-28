@@ -33,6 +33,7 @@ hace `clone`, `fetch` ni ninguna operación remota.
 | `--include <patrón>` / `--exclude <patrón>` | Repetibles; delimitan rutas |
 | `--timeout <duración>` | Tiempo máximo por invocación |
 | `--concurrency <n>` | Invocaciones concurrentes (0 = automático) |
+| `--confirm-recipes` | Detecta y confirma las recetas de test/build de las unidades del escaneo; solo añade las que faltan y las guarda en la configuración de usuario |
 | `--quiet` / `--verbose` | Progreso mínimo o detallado |
 | `--log-format text\|json` | Formato de logs en stderr |
 
@@ -112,6 +113,17 @@ cgc-scan recipes                     # candidatos detectados y recetas confirmad
 cgc-scan recipes --set ./recetas.toml
 cgc-scan recipes --clear
 ```
+
+Para no preparar el archivo a mano, la primera vez puedes confirmar los
+candidatos en el mismo escaneo:
+
+```bash
+cgc-scan scan backoffice --trivy-mode global --confirm-recipes
+```
+
+`--confirm-recipes` solo añade las recetas que faltan (no sobrescribe comandos
+ya confirmados), las guarda en la configuración de usuario y las usa en ese
+mismo escaneo. Los escaneos posteriores ya no necesitan el flag.
 
 Formato de `--set`:
 

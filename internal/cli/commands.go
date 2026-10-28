@@ -78,6 +78,7 @@ func (a *App) newScanCommand() *cobra.Command {
 		exclude          []string
 		timeout          time.Duration
 		concurrency      int
+		confirmRecipes   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "scan [ruta]",
@@ -116,6 +117,7 @@ registrada en coverage y marca el escaneo como parcial cuando corresponde.`,
 				TrivyMode: trivyMode, NoAutoInstall: noAutoInstall, Offline: offline,
 				RequireIsolation: requireIsolation, Include: include, Exclude: exclude,
 				Timeout: timeout, Concurrency: concurrency,
+				ConfirmRecipes: confirmRecipes,
 			})
 		},
 	}
@@ -130,6 +132,7 @@ registrada en coverage y marca el escaneo como parcial cuando corresponde.`,
 	cmd.Flags().StringArrayVar(&exclude, "exclude", nil, "patrón de rutas a excluir (repetible)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "tiempo máximo por invocación")
 	cmd.Flags().IntVar(&concurrency, "concurrency", 0, "invocaciones concurrentes (0 = automático)")
+	cmd.Flags().BoolVar(&confirmRecipes, "confirm-recipes", false, "confirma y guarda los candidatos detectados para este proyecto")
 	return cmd
 }
 

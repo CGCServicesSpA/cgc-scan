@@ -88,6 +88,8 @@ cgc-scan compare "$REPORTE_ANTERIOR" "$REPORTE_NUEVO" --format json
 ```
 
 - `new`, `persistent`, `resolved`, `not_evaluated`.
+- Si el reporte marca `verification.status=blocked`, confirma una vez las recetas
+  detectadas con `cgc-scan scan . --confirm-recipes` o con `cgc-scan recipes --set`.
 - Un hallazgo ausente en un escaneo parcial o con errores es `not_evaluated`.
 - Para declarar `resolved` hace falta cobertura comparable y el mismo ámbito.
 

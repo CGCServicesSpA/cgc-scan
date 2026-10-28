@@ -346,7 +346,7 @@ La columna "Verificado por" enlaza cada requisito con su criterio de aceptación
 | RF-34 | Releases firmados, con checksums, SBOM y procedencia de compilación; verificación documentada. | Propuesto | CA-54 |
 | RF-35 | Reportes, salidas originales, cachés y temporales con permisos restringidos al usuario. | Propuesto | CA-55 |
 | RF-36 | Enriquecer hallazgos con CVSS, versión corregida, EPSS y marca KEV solo cuando la fuente local los provea; nunca inventarlos. Orden estable de hallazgos. | Propuesto | CA-56 |
-| RF-37 | Recetas de validación de tests y build: detectar candidatos por lenguaje, permitir confirmarlos en la configuración de usuario y publicarlos en el prompt como recetas de confianza; sin receta confirmada, declarar la validación bloqueada. | Propuesto | CA-57 |
+| RF-37 | Recetas de validación de tests y build: detectar candidatos por lenguaje, permitir confirmarlos en la configuración de usuario (`recipes --set` o `scan --confirm-recipes`) y publicarlos en el prompt como recetas de confianza; sin receta confirmada, declarar la validación bloqueada. | Propuesto | CA-57 |
 
 Los filtros de visualización no deben ocultar el estado real de cobertura. Un hallazgo solo pasa a *resuelto* si su ámbito se analizó satisfactoriamente con cobertura comparable; la ausencia en un escaneo parcial significa *no evaluado*.
 
@@ -362,6 +362,7 @@ cgc-scan setup --trivy-mode docker --semgrep enable --non-interactive
 cgc-scan doctor --format json
 cgc-scan recipes
 cgc-scan recipes --set ./recetas.toml
+cgc-scan scan ./proyecto --confirm-recipes
 cgc-scan scan --format json
 cgc-scan scan ./proyecto --format json
 cgc-scan scan ./proyecto --trivy-mode docker --format json
@@ -383,6 +384,7 @@ cgc-scan update-db
 - `--include <patrón>` y `--exclude <patrón>` son repetibles y delimitan qué rutas se analizan (sección 4.4). `--include` restringe el universo; `--exclude` lo recorta. Las exclusiones siempre prevalecen sobre las inclusiones y las exclusiones intrínsecas no pueden desactivarse. `--exclude` de la línea de comandos reemplaza, por precedencia, las exclusiones de la política del proyecto y de la configuración de usuario. Todo recorte elegido marca el escaneo como parcial y enumera lo no analizado en `coverage.not_analyzed`.
 - `scan` no tiene parámetro para habilitar Semgrep: la decisión se toma en `setup` (sección 5.2).
 - `cgc-scan recipes` muestra, para el proyecto actual, los candidatos de receta detectados y las recetas ya confirmadas para él. `--set <archivo>` confirma en la configuración de usuario las recetas declaradas en ese archivo, con su directorio de trabajo y unidad afectada; `--clear` las elimina. Es la **única** vía para establecer recetas de confianza (sección 10.1): el archivo es una entrada del usuario, no un dato del repositorio.
+- `scan --confirm-recipes` es una confirmación explícita equivalente: detecta los candidatos de las unidades del escaneo, añade solo los test/build que falten y los guarda en la configuración de usuario. No sobrescribe recetas ya confirmadas ni confirma unidades fuera del alcance. Sin este flag, `scan` nunca convierte candidatos en recetas de confianza.
 
 ### 8.1 Códigos de salida
 
