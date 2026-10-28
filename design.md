@@ -573,7 +573,7 @@ Las recetas de tests y build son la única parte del prompt que el agente ejecut
 
 **Sin receta.** Si una unidad no tiene receta confirmada, el prompt la declara como campo sin resolver y la validación de esa unidad queda bloqueada (PRD §10.1). La CLI nunca inventa un comando ni afirma que se ejecutó.
 
-**Registro.** Las recetas efectivas y las unidades que quedaron sin receta se registran en `validation` del reporte: son parte de la configuración efectiva (RF-12) y su ausencia o su cambio altera el resultado de la validación.
+**Registro.** Las recetas efectivas y las unidades que quedaron sin receta se registran en `validation` del reporte: son parte de la configuración efectiva (RF-12) y su ausencia o su cambio altera el resultado de la validación. Además, cada hallazgo incluye `verification` con la receta aplicable a su unidad, las recetas faltantes y el comando de reescaneo, de modo que la verificación de una vulnerabilidad concreta no dependa de buscar su unidad en otra sección.
 
 ---
 

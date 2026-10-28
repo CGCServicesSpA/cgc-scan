@@ -32,6 +32,16 @@ cgc-scan scan "$PROYECTO" --format json --report-out "$REPORTE" --fail-on high
       "locations": [ { "path": "go.mod" } ],
       "references": [ "https://pkg.go.dev/vuln/GO-2026-6629" ],
       "remediation": [ { "description": "Actualizar a v0.41.0 o superior", "source": "advisory" } ],
+      "verification": {
+        "unit": "root",
+        "status": "ready",
+        "recipes": [
+          { "unit": "root", "kind": "test", "command": "go test ./...", "workdir": ".", "origin": "user" },
+          { "unit": "root", "kind": "build", "command": "go build ./...", "workdir": ".", "origin": "user" }
+        ],
+        "missing": [],
+        "rescan": "cgc-scan scan . --format json"
+      },
       "sources": [ { "engine": "trivy", "version": "0.76.1" } ]
     }
   ],
@@ -47,6 +57,9 @@ Reglas para el consumidor:
    ser nulos si la fuente no los entregó.
 4. Los `sources` y `severity_others` muestran diferencias entre motores; no las
    descartes.
+5. Cada hallazgo trae `verification`: la receta de tests/build de su unidad, el
+   comando de reescaneo y si la validación está `ready` o `blocked`. Si está
+   bloqueada, faltan recetas confirmadas por el usuario; no inventes comandos.
 
 ## Flujo por parche con el prompt
 

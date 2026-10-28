@@ -516,6 +516,14 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		Errors: errs,
 	}
 	doc.Run.ConfigOrigin = origins
+	suggested := map[string][]normalize.VerificationRecipe{}
+	for _, c := range recipes.Detect(disc.Root, disc.Units) {
+		suggested[c.Unit] = append(suggested[c.Unit], normalize.VerificationRecipe{
+			Unit: c.Unit, Kind: c.Kind, Command: c.Command,
+			Workdir: c.Workdir, Origin: "candidate",
+		})
+	}
+	attachVerification(doc, suggested)
 	if out.Canceled {
 		doc.Run.Cancelled = true
 	}

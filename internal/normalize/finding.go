@@ -206,6 +206,27 @@ type FindingPolicy struct {
 	ExceptionFingerprint string `json:"exception_fingerprint,omitempty"`
 }
 
+// VerificationRecipe es una receta de validación aplicable a un hallazgo.
+type VerificationRecipe struct {
+	Unit    string `json:"unit"`
+	Kind    string `json:"kind"`
+	Command string `json:"command"`
+	Workdir string `json:"workdir"`
+	Origin  string `json:"origin"`
+}
+
+// Verification describe cómo comprobar en el proyecto la corrección de un
+// hallazgo: recetas confirmadas, faltantes y comando de reescaneo.
+type Verification struct {
+	Unit      string               `json:"unit"`
+	Status    string               `json:"status"` // ready | blocked
+	Recipes   []VerificationRecipe `json:"recipes"`
+	Suggested []VerificationRecipe `json:"suggested,omitempty"`
+	Missing   []string             `json:"missing"`
+	Rescan    string               `json:"rescan"`
+	Note      string               `json:"note,omitempty"`
+}
+
 // Correlation conserva alias y huellas fusionadas.
 type Correlation struct {
 	Aliases            []string `json:"aliases,omitempty"`
@@ -228,6 +249,7 @@ type Finding struct {
 	Sources        []SourceRef    `json:"sources"`
 	Remediation    []Remediation  `json:"remediation,omitempty"`
 	References     []string       `json:"references,omitempty"`
+	Verification   *Verification  `json:"verification,omitempty"`
 	Priority       *Priority      `json:"priority,omitempty"`
 	Policy         FindingPolicy  `json:"policy"`
 	Correlation    *Correlation   `json:"correlation,omitempty"`

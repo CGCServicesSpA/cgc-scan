@@ -1054,6 +1054,9 @@
             "type": "string"
           },
           "description": "Enlaces o referencias publicadas por la fuente (advisory, regla, documentación)."
+        },
+        "verification": {
+          "$ref": "#/$defs/verification"
         }
       }
     },
@@ -1246,6 +1249,97 @@
         },
         "detail": {
           "type": "string"
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "status",
+        "recipes",
+        "missing",
+        "rescan"
+      ],
+      "properties": {
+        "unit": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ready",
+            "blocked"
+          ]
+        },
+        "recipes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verificationRecipe"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "test",
+              "build"
+            ]
+          }
+        },
+        "rescan": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string"
+        },
+        "suggested": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verificationRecipe"
+          },
+          "description": "Candidatos detectados, no confirmados por el usuario; no son recetas de confianza."
+        }
+      }
+    },
+    "verificationRecipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "kind",
+        "command",
+        "workdir",
+        "origin"
+      ],
+      "properties": {
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "test",
+            "build"
+          ]
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workdir": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "user",
+            "candidate"
+          ]
         }
       }
     }

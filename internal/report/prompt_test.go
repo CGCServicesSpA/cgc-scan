@@ -27,6 +27,12 @@ func promptDoc() *Document {
 		IDs:          []normalize.Identifier{{Type: "CVE", Value: "CVE-2026-0001"}},
 		Descriptions: []normalize.Description{{Text: "Descripción detallada de la vulnerabilidad.", Source: "trivy"}},
 		References:   []string{"https://example.test/advisory/CVE-2026-0001"},
+		Verification: &normalize.Verification{
+			Unit: "svc", Status: "blocked", Missing: []string{"build"},
+			Recipes: []normalize.VerificationRecipe{{Unit: "svc", Kind: "test", Command: "go test ./...", Workdir: "svc", Origin: "user"}},
+			Rescan:  "cgc-scan scan svc --format json",
+			Note:    "Faltan recetas confirmadas: build",
+		},
 	}
 	d.Findings = []normalize.Finding{f}
 	d.Normalize()
@@ -53,6 +59,9 @@ func TestPromptVersionedAndNonced(t *testing.T) {
 		"versión corregida: v0.41.0",
 		"Descripción detallada de la vulnerabilidad",
 		"https://example.test/advisory/CVE-2026-0001",
+		"validación: blocked (falta build)",
+		"receta: test: `go test ./...` en svc (user)",
+		"reescaneo: cgc-scan scan svc --format json",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("el prompt no contiene %q", want)

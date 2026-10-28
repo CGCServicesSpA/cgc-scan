@@ -33,22 +33,27 @@ type PromptOptions struct {
 }
 
 type promptFinding struct {
-	Index          int
-	Fingerprint    string
-	Kind           string
-	Severity       string
-	SeverityDetail string
-	Title          string
-	Locations      []string
-	Package        string
-	FixedVersion   string
-	IDs            string
-	Sources        string
-	Priority       string
-	Description    string
-	Evidence       string
-	Remediation    string
-	References     string
+	Index                 int
+	Fingerprint           string
+	Kind                  string
+	Severity              string
+	SeverityDetail        string
+	Title                 string
+	Locations             []string
+	Package               string
+	FixedVersion          string
+	IDs                   string
+	Sources               string
+	Priority              string
+	Description           string
+	Evidence              string
+	Remediation           string
+	References            string
+	VerificationStatus    string
+	VerificationRecipes   []string
+	VerificationSuggested []string
+	VerificationRescan    string
+	VerificationNote      string
 }
 
 type promptRecipe struct {
@@ -209,6 +214,22 @@ func promptFindingOf(index int, f normalize.Finding) promptFinding {
 		Priority:       masking.Sanitize(priorityString(f.Priority)),
 		Description:    masking.Sanitize(clipText(descriptionsString(f.Descriptions), 2000)),
 		References:     masking.Sanitize(clipText(referencesString(f.References), 600)),
+	}
+	if f.Verification != nil {
+		pf.VerificationStatus = f.Verification.Status
+		if len(f.Verification.Missing) > 0 {
+			pf.VerificationStatus += " (falta " + strings.Join(f.Verification.Missing, ", ") + ")"
+		}
+		for _, r := range f.Verification.Recipes {
+			pf.VerificationRecipes = append(pf.VerificationRecipes,
+				masking.Sanitize(r.Kind+": `"+r.Command+"` en "+r.Workdir+" ("+r.Origin+")"))
+		}
+		for _, r := range f.Verification.Suggested {
+			pf.VerificationSuggested = append(pf.VerificationSuggested,
+				masking.Sanitize(r.Kind+": `"+r.Command+"` en "+r.Workdir+" (candidato, no confirmado)"))
+		}
+		pf.VerificationRescan = masking.Sanitize(f.Verification.Rescan)
+		pf.VerificationNote = masking.Sanitize(f.Verification.Note)
 	}
 	for _, l := range f.Locations {
 		line := masking.Sanitize(l.Path)

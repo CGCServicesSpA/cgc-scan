@@ -178,6 +178,28 @@ func writeFinding(b *bytes.Buffer, index int, f normalize.Finding) {
 	if refs := referencesString(f.References); refs != "" {
 		writeField(b, "referencias", clipText(refs, 500))
 	}
+	if f.Verification != nil {
+		status := "lista"
+		if f.Verification.Status == "blocked" {
+			status = "bloqueada"
+			if len(f.Verification.Missing) > 0 {
+				status += " (falta " + strings.Join(f.Verification.Missing, ", ") + ")"
+			}
+		}
+		writeField(b, "validacion", status)
+		for _, r := range f.Verification.Recipes {
+			writeField(b, "receta "+r.Kind, "`"+r.Command+"` en "+r.Workdir+" ("+r.Origin+")")
+		}
+		for _, r := range f.Verification.Suggested {
+			writeField(b, "sugerencia "+r.Kind+" (no confirmada)", "`"+r.Command+"` en "+r.Workdir)
+		}
+		if f.Verification.Rescan != "" {
+			writeField(b, "reescaneo", "`"+f.Verification.Rescan+"`")
+		}
+		if f.Verification.Note != "" {
+			writeField(b, "nota", f.Verification.Note)
+		}
+	}
 	if f.Policy.Status == "suppressed" {
 		reason := f.Policy.SuppressedReason
 		if reason == "" {
@@ -291,7 +313,7 @@ func sourceString(sources []normalize.SourceRef) string {
 }
 
 func severityDetail(f normalize.Finding) string {
-	out := fmt.Sprintf("original %s (%s)", f.Severity.Original, f.Severity.Source)
+	out := fmt.Sprintf("%s (%s)", f.Severity.Original, f.Severity.Source)
 	if len(f.SeverityOthers) == 0 {
 		return out
 	}

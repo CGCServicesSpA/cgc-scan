@@ -52,6 +52,21 @@ Bandit y Semgrep sus opciones de exclusión. Un adaptador que no puede expresar
 una exclusión debe declararlo en `Requirements()` para no escanear contenido que
 la CLI declaró excluido.
 
+## Verificación por hallazgo
+
+Cada hallazgo incluye `verification`:
+
+- `recipes`: recetas de test/build **confirmadas** para su unidad.
+- `suggested`: candidatos detectados en los manifiestos, marcados como no
+  confiables hasta que el usuario los confirme.
+- `missing`: recetas que faltan; si hay alguna, `status` es `blocked`.
+- `rescan`: comando para volver a analizar el ámbito de la unidad con la misma
+  modalidad y modo offline.
+- `note`: explica el bloqueo o, para secretos, que hace falta revocar y rotar.
+
+Un secreto nunca se declara `ready`: el reescaneo por sí solo no valida la
+rotación.
+
 ## Cómo leer un reporte parcial
 
 1. Revisa `coverage.partial` y `coverage.not_analyzed`.

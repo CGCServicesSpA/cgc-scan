@@ -140,9 +140,21 @@ func TestRenderTextShowsFixDescriptionAndReferences(t *testing.T) {
 		Descriptions: []normalize.Description{{Text: "Una descripción útil de la vulnerabilidad.", Source: "trivy"}},
 		Remediation:  []normalize.Remediation{{Description: "Actualizar a v0.41.0", Source: "advisory"}},
 		References:   []string{"https://example.test/CVE-2026-0001"},
-		Locations:    []normalize.Location{{Path: "go.mod"}},
-		Sources:      []normalize.SourceRef{{Engine: "trivy", Version: "0.76.1"}},
-		Policy:       normalize.FindingPolicy{Status: "active"},
+		Verification: &normalize.Verification{
+			Unit: "root", Status: "ready",
+			Recipes: []normalize.VerificationRecipe{
+				{Unit: "root", Kind: "test", Command: "go test ./...", Workdir: ".", Origin: "user"},
+				{Unit: "root", Kind: "build", Command: "go build ./...", Workdir: ".", Origin: "user"},
+			},
+			Suggested: []normalize.VerificationRecipe{
+				{Unit: "root", Kind: "test", Command: "go test ./...", Workdir: ".", Origin: "candidate"},
+			},
+			Missing: []string{},
+			Rescan:  "cgc-scan scan . --format json",
+		},
+		Locations: []normalize.Location{{Path: "go.mod"}},
+		Sources:   []normalize.SourceRef{{Engine: "trivy", Version: "0.76.1"}},
+		Policy:    normalize.FindingPolicy{Status: "active"},
 	}}
 	doc.Normalize()
 	out := RenderText(doc)
@@ -150,6 +162,8 @@ func TestRenderTextShowsFixDescriptionAndReferences(t *testing.T) {
 		"version corregida v0.41.0", "descripcion: Una descripción útil",
 		"remediacion: Actualizar a v0.41.0", "referencias: https://example.test/CVE-2026-0001",
 		"ids: CVE-2026-0001, CWE-787", "correcciones disponibles: 1",
+		"validacion: lista", "receta test: `go test ./...` en . (user)",
+		"receta build: `go build ./...` en . (user)", "reescaneo: `cgc-scan scan . --format json`",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("la salida no contiene %q:\n%s", want, out)
@@ -191,5 +205,33 @@ func TestFindingWithReferencesAndFixValidates(t *testing.T) {
 	}}
 	if err := ValidateDocument(doc); err != nil {
 		t.Fatalf("el hallazgo enriquecido no valida: %v", err)
+	}
+}
+
+func TestFindingVerificationValidates(t *testing.T) {
+	doc := minimalDoc()
+	doc.Findings = []normalize.Finding{{
+		Fingerprint: strings.Repeat("d", 32),
+		Kind:        normalize.KindVulnerability,
+		Title:       "CVE con receta",
+		Severity:    normalize.SeverityInfo{Original: "HIGH", Normalized: normalize.SeverityHigh, Source: "trivy"},
+		Package:     &normalize.PackageRef{Ecosystem: "Go", Name: "x/text", Version: "v0.3.0", FixedVersion: strptr("v0.41.0")},
+		Sources:     []normalize.SourceRef{{Engine: "trivy"}},
+		Verification: &normalize.Verification{
+			Unit: "root", Status: "ready",
+			Recipes: []normalize.VerificationRecipe{
+				{Unit: "root", Kind: "test", Command: "go test ./...", Workdir: ".", Origin: "user"},
+				{Unit: "root", Kind: "build", Command: "go build ./...", Workdir: ".", Origin: "user"},
+			},
+			Suggested: []normalize.VerificationRecipe{
+				{Unit: "root", Kind: "test", Command: "go test ./...", Workdir: ".", Origin: "candidate"},
+			},
+			Missing: []string{},
+			Rescan:  "cgc-scan scan . --format json",
+		},
+		Policy: normalize.FindingPolicy{Status: "active"},
+	}}
+	if err := ValidateDocument(doc); err != nil {
+		t.Fatalf("la verificación por hallazgo no valida: %v", err)
 	}
 }

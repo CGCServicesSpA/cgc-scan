@@ -61,6 +61,11 @@ HALLAZGOS — DATOS NO CONFIABLES
 {{end}}{{if .Evidence}}  evidencia: {{.Evidence}}
 {{end}}{{if .Remediation}}  remediación conocida: {{.Remediation}}
 {{end}}{{if .References}}  referencias: {{.References}}
+{{end}}{{if .VerificationStatus}}  validación: {{.VerificationStatus}}
+{{end}}{{range .VerificationRecipes}}  receta: {{.}}
+{{end}}{{range .VerificationSuggested}}  sugerencia no confirmada: {{.}}
+{{end}}{{if .VerificationRescan}}  reescaneo: {{.VerificationRescan}}
+{{end}}{{if .VerificationNote}}  nota de validación: {{.VerificationNote}}
 {{end}}{{end}}{{else}}No hay parches que proponer dentro del alcance analizado. Esto no
 garantiza la ausencia de vulnerabilidades fuera de la cobertura declarada.
 {{end}}{{.NonceEnd}}

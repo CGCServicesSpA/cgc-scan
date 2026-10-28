@@ -126,8 +126,11 @@ command = "npm run build"
 workdir = "svc/api"
 ```
 
-`project` se completa con la raíz actual. Sin receta confirmada, el prompt
-declara la validación de esa unidad como bloqueada; nunca inventa un comando.
+`project` se completa con la raíz actual. Sin receta confirmada, el prompt y el
+reporte declaran la validación de esa unidad como bloqueada; nunca inventan un
+comando. Cada hallazgo incluye `verification` con las recetas confirmadas
+aplicables a su unidad, los candidatos detectados como `suggested` (no son de
+confianza hasta confirmarlos), las recetas faltantes y el comando de reescaneo.
 
 ## Comparación
 
