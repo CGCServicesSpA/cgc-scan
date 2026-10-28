@@ -125,3 +125,71 @@ func TestFindingOrderIsStable(t *testing.T) {
 		t.Fatalf("documento con hallazgos no valida: %v", err)
 	}
 }
+
+func TestRenderTextShowsFixDescriptionAndReferences(t *testing.T) {
+	doc := minimalDoc()
+	doc.Findings = []normalize.Finding{{
+		Fingerprint: strings.Repeat("a", 32),
+		Kind:        normalize.KindVulnerability,
+		Title:       "CVE en dependencia",
+		Severity:    normalize.SeverityInfo{Original: "HIGH", Normalized: normalize.SeverityHigh, Source: "trivy"},
+		Package: &normalize.PackageRef{
+			Ecosystem: "Go", Name: "golang.org/x/text", Version: "v0.3.0", FixedVersion: strptr("v0.41.0"),
+		},
+		IDs:          []normalize.Identifier{{Type: "CVE", Value: "CVE-2026-0001"}, {Type: "CWE", Value: "CWE-787"}},
+		Descriptions: []normalize.Description{{Text: "Una descripción útil de la vulnerabilidad.", Source: "trivy"}},
+		Remediation:  []normalize.Remediation{{Description: "Actualizar a v0.41.0", Source: "advisory"}},
+		References:   []string{"https://example.test/CVE-2026-0001"},
+		Locations:    []normalize.Location{{Path: "go.mod"}},
+		Sources:      []normalize.SourceRef{{Engine: "trivy", Version: "0.76.1"}},
+		Policy:       normalize.FindingPolicy{Status: "active"},
+	}}
+	doc.Normalize()
+	out := RenderText(doc)
+	for _, want := range []string{
+		"version corregida v0.41.0", "descripcion: Una descripción útil",
+		"remediacion: Actualizar a v0.41.0", "referencias: https://example.test/CVE-2026-0001",
+		"ids: CVE-2026-0001, CWE-787", "correcciones disponibles: 1",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("la salida no contiene %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestRenderTextMarksTruncatedDescription(t *testing.T) {
+	doc := minimalDoc()
+	doc.Findings = []normalize.Finding{{
+		Fingerprint:  strings.Repeat("b", 32),
+		Kind:         normalize.KindCode,
+		Title:        "hallazgo",
+		Severity:     normalize.SeverityInfo{Original: "error", Normalized: normalize.SeverityHigh, Source: "eslint"},
+		Descriptions: []normalize.Description{{Text: strings.Repeat("x", 2000), Source: "eslint"}},
+		Sources:      []normalize.SourceRef{{Engine: "eslint"}},
+		Policy:       normalize.FindingPolicy{Status: "active"},
+	}}
+	doc.Normalize()
+	out := RenderText(doc)
+	if !strings.Contains(out, "texto truncado") || !strings.Contains(out, "consulta el reporte JSON") {
+		t.Fatalf("no se marcó el truncamiento:\n%s", out)
+	}
+}
+
+func TestFindingWithReferencesAndFixValidates(t *testing.T) {
+	doc := minimalDoc()
+	doc.Findings = []normalize.Finding{{
+		Fingerprint:  strings.Repeat("c", 32),
+		Kind:         normalize.KindVulnerability,
+		Title:        "CVE con corrección",
+		Severity:     normalize.SeverityInfo{Original: "HIGH", Normalized: normalize.SeverityHigh, Source: "trivy"},
+		Package:      &normalize.PackageRef{Ecosystem: "Go", Name: "golang.org/x/text", Version: "v0.3.0", FixedVersion: strptr("v0.41.0")},
+		Descriptions: []normalize.Description{{Text: "descripción", Source: "trivy"}},
+		References:   []string{"https://pkg.go.dev/vuln/GO-2026-6629"},
+		Remediation:  []normalize.Remediation{{Description: "Actualizar a v0.41.0", Source: "advisory"}},
+		Sources:      []normalize.SourceRef{{Engine: "trivy", Version: "0.76.1"}},
+		Policy:       normalize.FindingPolicy{Status: "active"},
+	}}
+	if err := ValidateDocument(doc); err != nil {
+		t.Fatalf("el hallazgo enriquecido no valida: %v", err)
+	}
+}

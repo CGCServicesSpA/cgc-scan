@@ -57,7 +57,9 @@ el de ejecución aunque el proceso devuelva un solo código.
 - **JSON**: un único documento por stdout, validado contra
   [`schemas/report.schema.json`](../schemas/report.schema.json). Los campos
   volátiles están en `run`.
-- **texto**: resumen legible con cobertura, motores, hallazgos y política. Sin
+- **texto**: resumen legible con cobertura, motores y política; por hallazgo
+  incluye paquete y versión corregida, identificadores, ubicación, motores,
+  severidad original, prioridad, descripción, remediación y referencias. Sin
   color si no hay TTY o si `NO_COLOR` está definida.
 - **prompt**: plantilla versionada para un agente de remediación. No ejecuta
   tests, build ni parches, y no llama a ningún modelo.

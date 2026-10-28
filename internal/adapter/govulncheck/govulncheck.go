@@ -147,6 +147,10 @@ type OSV struct {
 	DatabaseSpecific struct {
 		Severity string `json:"severity"`
 	} `json:"database_specific"`
+	References []struct {
+		Type string `json:"type"`
+		URL  string `json:"url"`
+	} `json:"references"`
 }
 
 // Finding es un hallazgo con su traza.
@@ -227,8 +231,21 @@ func (a *Adapter) toFinding(f Finding, osv *OSV) normalize.Finding {
 		Evidence: normalize.Evidence{Redacted: true},
 		Policy:   normalize.FindingPolicy{Status: "active"},
 	}
-	if osv != nil && osv.Details != "" {
-		finding.Descriptions = []normalize.Description{{Text: a.Masker.Redact(osv.Details, nil), Source: ID}}
+	if osv != nil {
+		if osv.Details != "" {
+			finding.Descriptions = append(finding.Descriptions, normalize.Description{Text: a.Masker.Redact(osv.Details, nil), Source: ID})
+		}
+		for _, ref := range osv.References {
+			if ref.URL != "" {
+				finding.References = append(finding.References, masking.Sanitize(ref.URL))
+			}
+		}
+	}
+	if len(f.Trace) > 0 && f.Trace[0].Function != "" {
+		finding.Descriptions = append(finding.Descriptions, normalize.Description{
+			Text:   "Símbolo alcanzable: " + masking.Sanitize(f.Trace[0].Package+"."+f.Trace[0].Function),
+			Source: "govulncheck",
+		})
 	}
 	finding.AddID("GO", f.OSV)
 	if osv != nil {

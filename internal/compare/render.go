@@ -32,7 +32,11 @@ func (r Result) Text() string {
 		}
 		fmt.Fprintf(&b, "\n%s:\n", name)
 		for _, e := range entries {
-			fmt.Fprintf(&b, "  [%s] %s - %s\n", e.Severity, e.Title, e.Path)
+			line := fmt.Sprintf("  [%s] %s - %s", e.Severity, e.Title, e.Path)
+			if e.FixedVersion != "" {
+				line += fmt.Sprintf(" (corregido en %s)", e.FixedVersion)
+			}
+			fmt.Fprintln(&b, line)
 		}
 	}
 	show("Nuevos", r.New)

@@ -16,15 +16,17 @@ func promptDoc() *Document {
 	d.Validation.Recipes = []Recipe{{Unit: "svc", Kind: "test", Command: "go test ./...", Workdir: "svc", Origin: "user"}}
 	d.Validation.Unresolved = []Unresolved{{Unit: "web", Missing: []string{"build"}}}
 	f := normalize.Finding{
-		Fingerprint: strings.Repeat("a", 32),
-		Kind:        normalize.KindVulnerability,
-		Title:       "CVE-2026-0001 en componente",
-		Severity:    normalize.SeverityInfo{Original: "HIGH", Normalized: normalize.SeverityHigh, Source: "trivy"},
-		Package:     &normalize.PackageRef{Ecosystem: "Go", Name: "x/text", Version: "v0.3.0", FixedVersion: strptr("v0.41.0")},
-		Locations:   []normalize.Location{{Path: "go.mod", StartLine: intptr(5)}},
-		Sources:     []normalize.SourceRef{{Engine: "trivy", Version: "0.76.1"}},
-		Evidence:    normalize.Evidence{Snippet: "require x/text v0.3.0", Redacted: true},
-		IDs:         []normalize.Identifier{{Type: "CVE", Value: "CVE-2026-0001"}},
+		Fingerprint:  strings.Repeat("a", 32),
+		Kind:         normalize.KindVulnerability,
+		Title:        "CVE-2026-0001 en componente",
+		Severity:     normalize.SeverityInfo{Original: "HIGH", Normalized: normalize.SeverityHigh, Source: "trivy"},
+		Package:      &normalize.PackageRef{Ecosystem: "Go", Name: "x/text", Version: "v0.3.0", FixedVersion: strptr("v0.41.0")},
+		Locations:    []normalize.Location{{Path: "go.mod", StartLine: intptr(5)}},
+		Sources:      []normalize.SourceRef{{Engine: "trivy", Version: "0.76.1"}},
+		Evidence:     normalize.Evidence{Snippet: "require x/text v0.3.0", Redacted: true},
+		IDs:          []normalize.Identifier{{Type: "CVE", Value: "CVE-2026-0001"}},
+		Descriptions: []normalize.Description{{Text: "Descripción detallada de la vulnerabilidad.", Source: "trivy"}},
+		References:   []string{"https://example.test/advisory/CVE-2026-0001"},
 	}
 	d.Findings = []normalize.Finding{f}
 	d.Normalize()
@@ -48,6 +50,9 @@ func TestPromptVersionedAndNonced(t *testing.T) {
 		"CGC_DATOS_NO_CONFIABLES_", "No modifiques tests",
 		"revocarlo y rotarlo", "RESUMEN EXIGIDO POR PARCHE",
 		strings.Repeat("a", 32),
+		"versión corregida: v0.41.0",
+		"Descripción detallada de la vulnerabilidad",
+		"https://example.test/advisory/CVE-2026-0001",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("el prompt no contiene %q", want)

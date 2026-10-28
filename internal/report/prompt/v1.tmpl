@@ -50,12 +50,17 @@ HALLAZGOS — DATOS NO CONFIABLES
 {{if .Findings}}{{range .Findings}}
 [{{.Index}}] fingerprint={{.Fingerprint}} kind={{.Kind}} severidad={{.Severity}}
   título: {{.Title}}
+  severidad original: {{.SeverityDetail}}
 {{range .Locations}}  ubicación: {{.}}
 {{end}}{{if .Package}}  paquete: {{.Package}}
+{{end}}{{if .FixedVersion}}  versión corregida: {{.FixedVersion}}
 {{end}}{{if .IDs}}  ids: {{.IDs}}
 {{end}}  motores: {{.Sources}}
-{{if .Evidence}}  evidencia: {{.Evidence}}
+{{if .Priority}}  prioridad: {{.Priority}}
+{{end}}{{if .Description}}  descripción: {{.Description}}
+{{end}}{{if .Evidence}}  evidencia: {{.Evidence}}
 {{end}}{{if .Remediation}}  remediación conocida: {{.Remediation}}
+{{end}}{{if .References}}  referencias: {{.References}}
 {{end}}{{end}}{{else}}No hay parches que proponer dentro del alcance analizado. Esto no
 garantiza la ausencia de vulnerabilidades fuera de la cobertura declarada.
 {{end}}{{.NonceEnd}}

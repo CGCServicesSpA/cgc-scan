@@ -33,17 +33,22 @@ type PromptOptions struct {
 }
 
 type promptFinding struct {
-	Index       int
-	Fingerprint string
-	Kind        string
-	Severity    string
-	Title       string
-	Locations   []string
-	Package     string
-	IDs         string
-	Sources     string
-	Evidence    string
-	Remediation string
+	Index          int
+	Fingerprint    string
+	Kind           string
+	Severity       string
+	SeverityDetail string
+	Title          string
+	Locations      []string
+	Package        string
+	FixedVersion   string
+	IDs            string
+	Sources        string
+	Priority       string
+	Description    string
+	Evidence       string
+	Remediation    string
+	References     string
 }
 
 type promptRecipe struct {
@@ -193,13 +198,17 @@ func batchReference(opts PromptOptions) string {
 
 func promptFindingOf(index int, f normalize.Finding) promptFinding {
 	pf := promptFinding{
-		Index:       index,
-		Fingerprint: f.Fingerprint,
-		Kind:        string(f.Kind),
-		Severity:    string(f.Severity.Normalized),
-		Title:       masking.Sanitize(f.Title),
-		Sources:     hygienicSources(f),
-		IDs:         hygienicIDs(f),
+		Index:          index,
+		Fingerprint:    f.Fingerprint,
+		Kind:           string(f.Kind),
+		Severity:       string(f.Severity.Normalized),
+		SeverityDetail: masking.Sanitize(severityDetail(f)),
+		Title:          masking.Sanitize(f.Title),
+		Sources:        hygienicSources(f),
+		IDs:            hygienicIDs(f),
+		Priority:       masking.Sanitize(priorityString(f.Priority)),
+		Description:    masking.Sanitize(clipText(descriptionsString(f.Descriptions), 2000)),
+		References:     masking.Sanitize(clipText(referencesString(f.References), 600)),
 	}
 	for _, l := range f.Locations {
 		line := masking.Sanitize(l.Path)
@@ -209,20 +218,15 @@ func promptFindingOf(index int, f normalize.Finding) promptFinding {
 		pf.Locations = append(pf.Locations, line)
 	}
 	if f.Package != nil {
-		pf.Package = masking.Sanitize(f.Package.Name + " " + f.Package.Version)
+		pf.Package = masking.Sanitize(f.Package.Name + " " + f.Package.Version + " (" + f.Package.Ecosystem + ")")
 		if f.Package.FixedVersion != nil {
-			pf.Package += " -> " + masking.Sanitize(*f.Package.FixedVersion)
+			pf.FixedVersion = masking.Sanitize(*f.Package.FixedVersion)
 		}
 	}
 	if f.Evidence.Snippet != "" {
 		pf.Evidence = masking.Sanitize(f.Evidence.Snippet)
 	}
-	for _, r := range f.Remediation {
-		if pf.Remediation != "" {
-			pf.Remediation += "; "
-		}
-		pf.Remediation += masking.Sanitize(r.Description)
-	}
+	pf.Remediation = masking.Sanitize(remediationString(f.Remediation))
 	return pf
 }
 

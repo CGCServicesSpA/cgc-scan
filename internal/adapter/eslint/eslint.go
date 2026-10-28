@@ -154,7 +154,8 @@ func (a *Adapter) Parse(raw []byte) (adapter.Parsed, error) {
 }
 
 func (a *Adapter) toFinding(path string, m Message) normalize.Finding {
-	sev, rule := ruleSeverity(m.RuleID)
+	sev, category := ruleSeverity(m.RuleID)
+	rule := m.RuleID
 	original := "warning"
 	if m.Severity == 2 {
 		original = "error"
@@ -170,6 +171,9 @@ func (a *Adapter) toFinding(path string, m Message) normalize.Finding {
 		Policy:   normalize.FindingPolicy{Status: "active"},
 	}
 	f.AddID("RULE", rule)
+	f.Descriptions = append(f.Descriptions, normalize.Description{
+		Text: "Categoría de riesgo: " + category, Source: "cgc-scan",
+	})
 	loc := normalize.Location{Path: path}
 	if m.Line > 0 {
 		line := m.Line

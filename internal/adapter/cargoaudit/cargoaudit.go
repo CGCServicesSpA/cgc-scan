@@ -141,6 +141,9 @@ func (a *Adapter) toFinding(v Vuln) normalize.Finding {
 	if v.Advisory.Description != "" {
 		f.Descriptions = []normalize.Description{{Text: a.Masker.Redact(v.Advisory.Description, nil), Source: ID}}
 	}
+	if v.Advisory.URL != "" {
+		f.References = append(f.References, masking.Sanitize(v.Advisory.URL))
+	}
 	f.AddID("RUSTSEC", v.Advisory.ID)
 	for _, alias := range v.Advisory.Aliases {
 		f.AddID(idType(alias), alias)

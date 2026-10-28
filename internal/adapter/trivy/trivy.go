@@ -292,6 +292,14 @@ func (a *Adapter) vulnerability(r Result, path string, v Vulnerability) normaliz
 		FixedVersion: stringPtr(v.FixedVersion),
 	}
 	f.AddLocation(normalize.Location{Path: path})
+	if v.PrimaryURL != "" {
+		f.References = append(f.References, masking.Sanitize(v.PrimaryURL))
+	}
+	for _, ref := range v.References {
+		if ref != "" {
+			f.References = append(f.References, masking.Sanitize(ref))
+		}
+	}
 	if v.FixedVersion != "" {
 		f.Remediation = []normalize.Remediation{{
 			Description: fmt.Sprintf("Actualizar %s de %s a %s o superior", v.PkgName, v.InstalledVersion, v.FixedVersion),

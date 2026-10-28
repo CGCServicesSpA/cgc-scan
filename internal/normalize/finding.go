@@ -227,6 +227,7 @@ type Finding struct {
 	Evidence       Evidence       `json:"evidence"`
 	Sources        []SourceRef    `json:"sources"`
 	Remediation    []Remediation  `json:"remediation,omitempty"`
+	References     []string       `json:"references,omitempty"`
 	Priority       *Priority      `json:"priority,omitempty"`
 	Policy         FindingPolicy  `json:"policy"`
 	Correlation    *Correlation   `json:"correlation,omitempty"`

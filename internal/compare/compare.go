@@ -11,12 +11,14 @@ import (
 
 // Entry es un hallazgo comparado.
 type Entry struct {
-	Fingerprint string             `json:"fingerprint"`
-	Kind        normalize.Kind     `json:"kind"`
-	Title       string             `json:"title"`
-	Severity    normalize.Severity `json:"severity"`
-	Path        string             `json:"path,omitempty"`
-	Engine      string             `json:"engine,omitempty"`
+	Fingerprint  string             `json:"fingerprint"`
+	Kind         normalize.Kind     `json:"kind"`
+	Title        string             `json:"title"`
+	Severity     normalize.Severity `json:"severity"`
+	Path         string             `json:"path,omitempty"`
+	Engine       string             `json:"engine,omitempty"`
+	Package      string             `json:"package,omitempty"`
+	FixedVersion string             `json:"fixed_version,omitempty"`
 }
 
 // Result es el contrato de `compare`.
@@ -101,6 +103,12 @@ func entryOf(f normalize.Finding) Entry {
 	}
 	if len(f.Sources) > 0 {
 		e.Engine = f.Sources[0].Engine
+	}
+	if f.Package != nil {
+		e.Package = f.Package.Name + " " + f.Package.Version
+		if f.Package.FixedVersion != nil {
+			e.FixedVersion = *f.Package.FixedVersion
+		}
 	}
 	return e
 }

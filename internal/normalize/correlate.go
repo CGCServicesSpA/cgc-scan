@@ -125,6 +125,9 @@ func mergeGroup(all []Finding, idxs []int) Finding {
 		}
 		merged.Descriptions = appendUniqueDescription(merged.Descriptions, other.Descriptions...)
 		merged.Remediation = appendUniqueRemediation(merged.Remediation, other.Remediation...)
+		for _, ref := range other.References {
+			merged.References = appendUniqueString(merged.References, ref)
+		}
 		merged.Priority = mergePriority(merged.Priority, other.Priority)
 		if other.Severity.Normalized != merged.Severity.Normalized {
 			merged.SeverityOthers = appendUniqueSeverity(merged.SeverityOthers, other.Severity)
@@ -144,6 +147,7 @@ func mergeGroup(all []Finding, idxs []int) Finding {
 			return merged.SeverityOthers[i].Source < merged.SeverityOthers[j].Source
 		})
 	}
+	sort.Strings(merged.References)
 	if merged.Correlation != nil {
 		for _, id := range merged.IDs {
 			merged.Correlation.Aliases = appendUniqueString(merged.Correlation.Aliases, id.Value)

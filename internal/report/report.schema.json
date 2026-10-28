@@ -1047,6 +1047,13 @@
             "$ref": "#/$defs/severity"
           },
           "description": "Severidades de las demás fuentes fusionadas; conserva las diferencias (CA-58)."
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Enlaces o referencias publicadas por la fuente (advisory, regla, documentación)."
         }
       }
     },

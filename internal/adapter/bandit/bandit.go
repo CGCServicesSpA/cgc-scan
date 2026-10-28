@@ -155,6 +155,7 @@ func (a *Adapter) toFinding(r Result, secrets []string) normalize.Finding {
 	f.AddLocation(loc)
 	if r.MoreInfo != "" {
 		f.Remediation = []normalize.Remediation{{Description: "Revisar la recomendación del motor", Source: r.MoreInfo}}
+		f.References = append(f.References, masking.Sanitize(r.MoreInfo))
 	}
 	// El texto del hallazgo puede contener el valor del secreto (B105).
 	if strings.HasPrefix(r.TestID, "B10") {

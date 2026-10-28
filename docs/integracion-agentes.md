@@ -28,7 +28,10 @@ cgc-scan scan "$PROYECTO" --format json --report-out "$REPORTE" --fail-on high
       "kind": "vulnerability",
       "severity": { "original": "HIGH", "normalized": "high", "source": "trivy" },
       "package": { "ecosystem": "Go", "name": "golang.org/x/text", "version": "v0.3.0", "fixed_version": "v0.41.0" },
+      "descriptions": [ { "text": "The Nickname profile can panic...", "source": "trivy" } ],
       "locations": [ { "path": "go.mod" } ],
+      "references": [ "https://pkg.go.dev/vuln/GO-2026-6629" ],
+      "remediation": [ { "description": "Actualizar a v0.41.0 o superior", "source": "advisory" } ],
       "sources": [ { "engine": "trivy", "version": "0.76.1" } ]
     }
   ],

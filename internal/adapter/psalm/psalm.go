@@ -160,6 +160,12 @@ type Issue struct {
 	ColumnFrom int    `json:"column_from"`
 	ColumnTo   int    `json:"column_to"`
 	Snippet    string `json:"snippet"`
+	Link       string `json:"link"`
+	TaintTrace []struct {
+		Label    string `json:"label"`
+		FileName string `json:"file_name"`
+		LineFrom int    `json:"line_from"`
+	} `json:"taint_trace"`
 }
 
 // Parse interpreta el arreglo JSON de Psalm.
@@ -193,6 +199,22 @@ func (a *Adapter) toFinding(is Issue) normalize.Finding {
 		Policy:   normalize.FindingPolicy{Status: "active"},
 	}
 	f.AddID("RULE", is.Type)
+	if is.Link != "" {
+		f.References = append(f.References, masking.Sanitize(is.Link))
+	}
+	if len(is.TaintTrace) > 0 {
+		labels := make([]string, 0, len(is.TaintTrace))
+		for _, t := range is.TaintTrace {
+			if t.Label != "" {
+				labels = append(labels, masking.Sanitize(t.Label))
+			}
+		}
+		if len(labels) > 0 {
+			f.Descriptions = append(f.Descriptions, normalize.Description{
+				Text: "Flujo de datos: " + strings.Join(labels, " -> "), Source: ID,
+			})
+		}
+	}
 	loc := normalize.Location{Path: path}
 	if is.LineFrom > 0 {
 		line := is.LineFrom
