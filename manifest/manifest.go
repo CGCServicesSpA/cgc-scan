@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 //go:embed trust.json
@@ -36,6 +37,7 @@ type Adapter struct {
 	Mode               string             `json:"mode"` // library | npm | phar | binary | venv
 	DB                 string             `json:"db,omitempty"`
 	URL                string             `json:"url,omitempty"`
+	Image              string             `json:"image,omitempty"`
 	SHA256             string             `json:"sha256,omitempty"`
 	LockfileSHA256     string             `json:"lockfile_sha256,omitempty"`
 	RequirementsSHA256 string             `json:"requirements_sha256,omitempty"`
@@ -106,7 +108,7 @@ func (m *Manifest) Validate() error {
 			return fmt.Errorf("manifiesto: adaptador %s tiene versión inválida %q", id, a.Version)
 		}
 		switch a.Mode {
-		case "library", "npm", "phar", "binary", "venv":
+		case "library", "npm", "phar", "binary", "venv", "system":
 		default:
 			return fmt.Errorf("manifiesto: adaptador %s tiene modo inválido %q", id, a.Mode)
 		}
@@ -120,6 +122,9 @@ func (m *Manifest) Validate() error {
 		}
 		if a.URL != "" && (len(a.URL) < 8 || a.URL[:8] != "https://") {
 			return fmt.Errorf("manifiesto: adaptador %s no usa https", id)
+		}
+		if a.Image != "" && !strings.Contains(a.Image, "@sha256:") {
+			return fmt.Errorf("manifiesto: adaptador %s no fija la imagen por digest", id)
 		}
 		if a.Mode == "binary" && len(a.Archives) == 0 {
 			return fmt.Errorf("manifiesto: adaptador binario %s sin archivos", id)

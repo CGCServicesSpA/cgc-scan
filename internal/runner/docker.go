@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,13 @@ import (
 	"time"
 )
 
+// Mount es un montaje adicional de solo lectura.
+type Mount struct {
+	Source   string
+	Target   string
+	ReadOnly bool
+}
+
 // Docker ejecuta motores dentro de un contenedor sin red, con el sistema de
 // archivos de solo lectura, sin capacidades y con el proyecto montado en
 // solo lectura (design §6.1, ADR-09).
@@ -21,6 +29,8 @@ type Docker struct {
 	Image string
 	// Volume es el volumen nombrado de caché, propio del usuario.
 	Volume string
+	// Mounts son montajes adicionales (p. ej. reglas locales de Semgrep).
+	Mounts []Mount
 	// DockerBin es el binario del CLI de Docker (por defecto "docker").
 	DockerBin string
 	MaxOutput int64
@@ -56,6 +66,7 @@ func (d *Docker) Run(ctx context.Context, inv Invocation) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	slog.Debug("invocación docker", "engine", inv.Engine, "args", args)
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -115,6 +126,7 @@ func (d *Docker) buildArgs(inv Invocation) ([]string, error) {
 	}
 	args = append(args,
 		"--read-only", "--tmpfs", "/tmp",
+		"--env", "HOME=/tmp",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--pids-limit", "512", "--memory", "2g",
 	)
@@ -142,6 +154,13 @@ func (d *Docker) buildArgs(inv Invocation) ([]string, error) {
 			}
 		}
 		args = append(args, "-w", work)
+	}
+	for _, m := range d.Mounts {
+		if m.ReadOnly {
+			args = append(args, "-v", m.Source+":"+m.Target+":ro")
+		} else {
+			args = append(args, "-v", m.Source+":"+m.Target)
+		}
 	}
 	args = append(args, "-v", d.Volume+":/cache", d.Image)
 	return append(args, inv.Args...), nil

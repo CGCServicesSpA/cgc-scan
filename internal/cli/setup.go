@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -70,6 +71,28 @@ func (a *App) runSetup(cmd *cobra.Command, opts setupOptions) error {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return IncompleteErrorf("resolver HOME: %v", err)
+	}
+
+	if decision.Semgrep {
+		spec, err := ms.Adapter("semgrep")
+		if err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		if decision.Mode == "docker" {
+			if _, err := provision.EnsureDockerImage(cmd.Context(), "docker", spec.Image, true); err != nil {
+				return IncompleteErrorf("preparar Semgrep: %v", err)
+			}
+		} else {
+			bin, err := exec.LookPath("semgrep")
+			if err != nil {
+				return IncompleteErrorf("Semgrep está habilitado y no se encontró en PATH; instálalo en su versión %s o usa Docker", spec.Version)
+			}
+			if err := provision.VerifySemgrepVersion(cmd.Context(), bin, spec.Version); err != nil {
+				return IncompleteErrorf("Semgrep habilitado: %v", err)
+			}
+		}
+		preparationsSemgrep := "Semgrep " + spec.Version + " verificado"
+		defer func() { slog.Info("preparado", "detalle", preparationsSemgrep) }()
 	}
 
 	var preparations []string
@@ -186,10 +209,7 @@ func decideSetup(opts setupOptions, cfg config.Config, interactive bool, reader 
 
 	switch opts.Semgrep {
 	case "enable":
-		// El aprovisionamiento verificado de Semgrep se implementa en H6.
-		// Se rechaza explícitamente en vez de guardar una preferencia que
-		// ningún escaneo cumpliría.
-		return decision, IncompleteErrorf("--semgrep enable se habilita en H6; vuelve a ejecutar setup entonces")
+		decision.Semgrep = true
 	case "disable":
 		decision.Semgrep = false
 	case "":

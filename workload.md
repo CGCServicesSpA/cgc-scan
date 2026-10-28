@@ -242,17 +242,17 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| H6-01 | Aprovisionamiento de Semgrep según la decisión P-05 (verificado, sin elevación) | Dev | P-05, H1-02 | 2.5 | PRD §5.2 | [ ] |
-| H6-02 | Adaptador Semgrep: reglas locales, métricas y comprobación de versión desactivadas, estado `disabled` | Dev | H6-01, H4-03 | 2.5 | RF-30 | [ ] |
-| H6-03 | Conjunto mínimo de reglas propias de CGC con licencia permisiva y versionado | Dev | P-05, P-06 | 4 | PRD R3; PRD §15 | [ ] |
-| H6-04 | Declarar el nivel de aislamiento en el reporte y soportar `--require-isolation` | Dev | H1-04, H2-02 | 1.5 | RF-31 | [ ] |
-| H6-05 | Prueba de aislamiento por versión de motor en CI (`strace` y Docker sin red) | Test | H6-04, P-09 | 2.5 | design §15.2 | [ ] |
+| H6-01 | Aprovisionamiento de Semgrep según la decisión P-05 (verificado, sin elevación) | Dev | P-05, H1-02 | 2.5 | PRD §5.2 | [x] |
+| H6-02 | Adaptador Semgrep: reglas locales, métricas y comprobación de versión desactivadas, estado `disabled` | Dev | H6-01, H4-03 | 2.5 | RF-30 | [x] |
+| H6-03 | Conjunto mínimo de reglas propias de CGC con licencia permisiva y versionado | Dev | P-05, P-06 | 4 | PRD R3; PRD §15 | [x] |
+| H6-04 | Declarar el nivel de aislamiento en el reporte y soportar `--require-isolation` | Dev | H1-04, H2-02 | 1.5 | RF-31 | [x] |
+| H6-05 | Prueba de aislamiento por versión de motor en CI (`strace` y Docker sin red) | Test | H6-04, P-09 | 2.5 | design §15.2 | [x] |
 | H6-06 | (P2) `enforced` en el runner global de Linux con espacio de red y sondeo en tiempo de ejecución | Dev | H6-05 | 3 | design §6.3 | [ ] |
-| H6-07 | GoReleaser: matriz de plataformas, `-trimpath`, checksums | Release | H0-03 | 1.5 | design §15.5 | [ ] |
-| H6-08 | Firma con cosign, SBOM CycloneDX y atestación de procedencia SLSA | Release | H6-07, P-02 | 2.5 | RF-34; PRD §6.7 | [ ] |
-| H6-09 | Documentar y probar la verificación de artefactos con un release real | Release | H6-08 | 1 | RF-34 · CA-54 | [ ] |
-| H6-10 | Pruebas de Semgrep opcional y de aislamiento | Test | H6-02, H6-05, H6-09 | 2 | Gate H6 · CA-03, CA-47, CA-48, CA-49, CA-50 | [ ] |
-| | **Subtotal H6** | | | **20 (+3 P2)** | | |
+| H6-07 | GoReleaser: matriz de plataformas, `-trimpath`, checksums | Release | H0-03 | 1.5 | design §15.5 | [x] |
+| H6-08 | Firma con cosign, SBOM CycloneDX y atestación de procedencia SLSA | Release | H6-07, P-02 | 2.5 | RF-34; PRD §6.7 | [~] |
+| H6-09 | Documentar y probar la verificación de artefactos con un release real | Release | H6-08 | 1 | RF-34 · CA-54 | [~] |
+| H6-10 | Pruebas de Semgrep opcional y de aislamiento | Test | H6-02, H6-05, H6-09 | 2 | Gate H6 · CA-03, CA-47, CA-48, CA-49, CA-50 | [x] |
+| | **Subtotal H6** | | | **20 (+3 P2)** | | Parcial: Semgrep opcional, reglas propias y aislamiento verificados; firma/SBOM configurables, pendiente un release real para cerrar H6-08/H6-09 |
 
 ### Hito H7 — Endurecimiento, documentación y lanzamiento
 

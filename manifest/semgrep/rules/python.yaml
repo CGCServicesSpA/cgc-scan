@@ -1,0 +1,11 @@
+rules:
+  - id: cgc-py-shell-true
+    languages: [python]
+    severity: ERROR
+    message: "subprocess con shell=True permite inyección de comandos."
+    metadata:
+      cwe: ["CWE-78: OS Command Injection"]
+      license: Apache-2.0
+      category: ejecucion-de-codigo
+    patterns:
+      - pattern: subprocess.$F(..., shell=True, ...)

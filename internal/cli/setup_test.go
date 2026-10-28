@@ -104,12 +104,15 @@ func TestDecideSetupWithoutDockerAsksConfirmation(t *testing.T) {
 	}
 }
 
-func TestDecideSetupSemgrepEnableRejectedUntilH6(t *testing.T) {
+func TestDecideSetupSemgrepEnable(t *testing.T) {
 	var out bytes.Buffer
-	_, err := decideSetup(setupOptions{Semgrep: "enable"}, config.Config{TrivyMode: "global"}, false,
+	dec, err := decideSetup(setupOptions{Semgrep: "enable"}, config.Config{TrivyMode: "global"}, false,
 		bufio.NewReader(strings.NewReader("")), &out, nil)
-	if err == nil || !strings.Contains(err.Error(), "H6") {
-		t.Fatalf("err = %v", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dec.Semgrep {
+		t.Fatal("--semgrep enable no habilitó Semgrep")
 	}
 }
 

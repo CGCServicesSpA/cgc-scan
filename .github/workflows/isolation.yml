@@ -1,0 +1,80 @@
+name: isolation
+
+on:
+  push:
+    paths:
+      - "manifest/trust.json"
+      - "internal/runner/**"
+      - ".github/workflows/isolation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trivy-configured:
+    name: Trivy configured sin conexiones externas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Descargar Trivy fijado y verificar checksum
+        run: |
+          set -euo pipefail
+          VERSION=0.76.1
+          BASE=https://github.com/aquasecurity/trivy/releases/download/v${VERSION}
+          ASSET=trivy_${VERSION}_Linux-64bit.tar.gz
+          curl -sSL -o "${ASSET}" "${BASE}/${ASSET}"
+          curl -sSL -o checksums.txt "${BASE}/trivy_${VERSION}_checksums.txt"
+          EXPECTED=$(grep " ${ASSET}$" checksums.txt | awk '{print $1}')
+          ACTUAL=$(sha256sum "${ASSET}" | awk '{print $1}')
+          test "$EXPECTED" = "$ACTUAL"
+          tar -xzf "${ASSET}" trivy
+      - name: Escaneo con strace y red disponible
+        run: |
+          set -euo pipefail
+          mkdir -p fixture
+          printf 'GITHUB_TOKEN=ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8\n' > fixture/.env
+          docker run --rm --cap-add SYS_PTRACE --network bridge \
+            -v "$PWD/trivy:/work/trivy:ro" -v "$PWD/fixture:/src:ro" \
+            debian:bookworm-slim sh -c '
+              apt-get update -qq >/dev/null 2>&1
+              apt-get install -y -qq strace >/dev/null 2>&1
+              export HOME=/tmp/h; mkdir -p $HOME
+              strace -f -e trace=connect -o /tmp/trace.txt \
+                /work/trivy fs --scanners secret \
+                --skip-db-update --skip-java-db-update --offline-scan \
+                --skip-check-update --skip-version-check --disable-telemetry \
+                --no-progress /src >/dev/null 2>/tmp/scan.err
+              if grep -E "connect\(" /tmp/trace.txt | grep -vqE "AF_UNIX|127\\.0\\.0\\.1|::1"; then
+                echo "conexión externa detectada"; cat /tmp/trace.txt; exit 1
+              fi
+              echo "cero conexiones externas"
+            '
+      - name: Comprobar que el detector ve la comprobación de versión
+        run: |
+          set -euo pipefail
+          docker run --rm --cap-add SYS_PTRACE --network bridge \
+            -v "$PWD/trivy:/work/trivy:ro" -v "$PWD/fixture:/src:ro" \
+            debian:bookworm-slim sh -c '
+              apt-get update -qq >/dev/null 2>&1
+              apt-get install -y -qq strace >/dev/null 2>&1
+              export HOME=/tmp/h; mkdir -p $HOME
+              strace -f -e trace=connect -o /tmp/trace.txt \
+                /work/trivy fs --scanners secret \
+                --skip-db-update --skip-java-db-update --offline-scan \
+                --skip-check-update --disable-telemetry --no-progress /src >/dev/null 2>&1 || true
+              grep -qE "connect\(" /tmp/trace.txt || {
+                echo "el detector no observó la comprobación de versión"; exit 1;
+              }
+              echo "detector validado: sin --skip-version-check hay conexiones"
+            '
+
+  docker-network-none:
+    name: Runner Docker sin red
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verificar que el escáner se ejecuta con --network none
+        run: |
+          grep -q -- '--network", "none"' internal/runner/docker.go
+          go test ./internal/runner -run TestDockerScanArgsAreHardened -v

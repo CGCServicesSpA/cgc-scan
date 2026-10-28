@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/CGCServicesSpA/cgc-scan/internal/adapter/semgrep"
 	"github.com/CGCServicesSpA/cgc-scan/internal/adapter/trivy"
 	"github.com/CGCServicesSpA/cgc-scan/internal/config"
 	"github.com/CGCServicesSpA/cgc-scan/internal/discovery"
@@ -163,6 +164,13 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 		Image:      setup.Image,
 		BinaryPath: setup.Binary,
 	}}, adapterSetup.Engines...)
+	semgrepRuleCount := 0
+	if sem := a.semgrepEngine(cmd.Context(), ms, cfg, setup, disc, masker, runDir, opts); sem != nil {
+		engines = append(engines, *sem)
+		if sa, ok := sem.Adapter.(*semgrep.Adapter); ok {
+			semgrepRuleCount = sa.RuleCount
+		}
+	}
 
 	overall := level
 	for _, e := range engines {
@@ -181,6 +189,9 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	}
 	out := orchestrator.Execute(cmd.Context(), p, engines, concurrency)
 	for i := range out.Engines {
+		if out.Engines[i].ID == "semgrep" {
+			out.Engines[i].Rules = &orchestrator.RulesRef{Source: "cgc-rules", Version: "1.0.0", Count: semgrepRuleCount}
+		}
 		if out.Engines[i].ID == trivy.ID {
 			out.Engines[i].DB = &orchestrator.DBRef{
 				Source: setup.DB.Source, Status: setup.DB.Status,
@@ -203,6 +214,13 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	// Paso 9: reporte.
 	doc := buildDocument(cmd, opts, cfg, pol, failOn, setup, disc, out, runID, started, time.Since(started), overall, eval, adapterSetup.Preparations)
 
+	if !cfg.SemgrepEnabled {
+		if disabled := semgrepDisabledReport(ms); disabled != nil {
+			doc.Tools.Engines = append(doc.Tools.Engines, *disabled)
+			doc.Normalize()
+		}
+	}
+
 	if opts.ReportOut != "" {
 		if err := a.validateReportOut(target, doc, opts.ReportOut); err != nil {
 			return IncompleteErrorf("%v", err)
@@ -214,6 +232,13 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	var emitErr error
 	if opts.Format == "prompt" {
 		reportPath := ""
+		if !cfg.SemgrepEnabled {
+			if disabled := semgrepDisabledReport(ms); disabled != nil {
+				doc.Tools.Engines = append(doc.Tools.Engines, *disabled)
+				doc.Normalize()
+			}
+		}
+
 		if opts.ReportOut != "" {
 			reportPath, _ = filepath.Abs(opts.ReportOut)
 		}

@@ -1,0 +1,60 @@
+version: 2
+
+project_name: cgc-scan
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: cgc-scan
+    main: ./cmd/cgc-scan
+    binary: cgc-scan
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/CGCServicesSpA/cgc-scan/internal/version.Version={{ .Version }}
+      - -X github.com/CGCServicesSpA/cgc-scan/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/CGCServicesSpA/cgc-scan/internal/version.BuildDate={{ .Date }}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - SECURITY.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - artifacts: archive
+
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: checksum
+    output: true
+
+release:
+  draft: false
+  prerelease: auto
+
+changelog:
+  use: github

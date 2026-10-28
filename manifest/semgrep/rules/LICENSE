@@ -1,0 +1,3 @@
+El conjunto de reglas propias de CGC Scan se distribuye bajo Apache-2.0.
+Cada regla declara su licencia en metadata.license. No se redistribuyen reglas
+del registro público de Semgrep.

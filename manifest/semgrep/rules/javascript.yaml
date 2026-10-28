@@ -1,0 +1,24 @@
+rules:
+  - id: cgc-js-eval
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "Ejecución de código arbitrario con eval sobre una expresión."
+    metadata:
+      cwe: ["CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"]
+      license: Apache-2.0
+      category: ejecucion-de-codigo
+    patterns:
+      - pattern: eval(...)
+  - id: cgc-js-shell
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "Ejecución de un proceso hijo con un comando construido dinámicamente."
+    metadata:
+      cwe: ["CWE-78: OS Command Injection"]
+      license: Apache-2.0
+      category: ejecucion-de-codigo
+    patterns:
+      - pattern-either:
+          - pattern: $CP.exec($CMD, ...)
+          - pattern: $CP.execSync($CMD, ...)
+          - pattern: $CP.spawn($CMD, ...)

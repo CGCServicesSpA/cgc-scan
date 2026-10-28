@@ -1,0 +1,11 @@
+rules:
+  - id: cgc-php-system
+    languages: [php]
+    severity: ERROR
+    message: "system/exec recibe datos no confiables."
+    metadata:
+      cwe: ["CWE-78: OS Command Injection"]
+      license: Apache-2.0
+      category: ejecucion-de-codigo
+    patterns:
+      - pattern: system($CMD, ...)

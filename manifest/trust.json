@@ -67,6 +67,11 @@
       "version": "1.9.4",
       "mode": "venv",
       "requirements_sha256": "0577edf7b7d657fe94bc3cb46974b74836e6b39c7a64b0653d63c02f05d60f47"
+    },
+    "semgrep": {
+      "version": "1.157.0",
+      "mode": "system",
+      "image": "semgrep/semgrep@sha256:17d89ddd91a7729bbd5de09402f7f79a70204289e2a94635086e9db532a495f2"
     }
   }
 }
