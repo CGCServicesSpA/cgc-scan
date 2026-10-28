@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -357,6 +358,44 @@ func cvss(f Finding) float64 {
 		return *f.Priority.CVSSScore
 	}
 	return 0
+}
+
+// NormalizePaths hace que todas las ubicaciones sean relativas a la raíz del
+// proyecto y conserva el prefijo de la unidad cuando el motor entrega rutas
+// relativas a ella. Recalcula la huella de los hallazgos que no son secretos.
+func NormalizePaths(f *Finding, root, unitPath string) {
+	changed := false
+	for i := range f.Locations {
+		loc := &f.Locations[i]
+		if loc.Path == "" {
+			continue
+		}
+		np := normalizePath(root, unitPath, loc.Path)
+		if np != loc.Path {
+			loc.Path = np
+			changed = true
+		}
+	}
+	if changed && f.Kind != KindSecret {
+		f.Fingerprint = Fingerprint(f)
+	}
+}
+
+func normalizePath(root, unitPath, p string) string {
+	if filepath.IsAbs(p) {
+		if rel, err := filepath.Rel(root, p); err == nil && !strings.HasPrefix(rel, "..") {
+			return filepath.ToSlash(rel)
+		}
+		return filepath.ToSlash(p)
+	}
+	p = strings.TrimPrefix(p, "./")
+	if unitPath == "" || unitPath == "." {
+		return p
+	}
+	if p == unitPath || strings.HasPrefix(p, unitPath+"/") {
+		return p
+	}
+	return filepath.ToSlash(filepath.Join(unitPath, p))
 }
 
 // AddLocation agrega una ubicación evitando duplicados exactos.

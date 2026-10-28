@@ -221,18 +221,18 @@ La cadena pasa ahora por la infraestructura de aprovisionamiento de los adaptado
 
 | ID | Tarea | Tipo | Depende de | Días | Refs | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| H5-01 | Evaluación de política: umbral, severidad `unknown`, excepciones vencidas, hallazgos suprimidos visibles | Dev | H3-08, H4-11 | 2 | RF-09; design §9.3 | [ ] |
-| H5-02 | Integrar los códigos de salida con el orquestador, incluida la cancelación (130) | Dev | H5-01, H0-06 | 1 | PRD §8.1 | [ ] |
-| H5-03 | `compare`: nuevo, persistente, resuelto y no evaluado con cobertura comparable; un hallazgo fuera del ámbito de un escaneo parcial es no evaluado, nunca resuelto | Dev | H1-07, H5-01, H4-15 | 3 | RF-10; CA-09; design §9.4 | [ ] |
-| H5-04 | Formato texto con resumen de cobertura y aviso de ejecución incompleta | Dev | H1-11 | 1.5 | RF-13; design §10.4 | [ ] |
-| H5-05 | Formato prompt: plantilla versionada, bloques con nonce, saneado y secciones | Dev | H0-11, H1-11 | 3 | RF-15; design §10.3 | [ ] |
-| H5-13 | Comando `recipes`: candidatos detectados, confirmación explícita y persistencia en la configuración de usuario por proyecto (`--set`, `--clear`) | Dev | H4-03, H3-01 | 2 | RF-37; PRD §8, §10.1; design §9.5 | [ ] |
-| H5-06 | Prompt: flujo por parche, protección de tests, adaptación de secretos y recetas de validación tomadas de `validation`, con las unidades sin receta declaradas como bloqueadas | Dev | H5-05, H5-13 | 2.5 | RF-16, RF-17, RF-18, RF-37; PRD §10 | [ ] |
-| H5-07 | Prompt por lotes con índice y referencia al reporte completo | Dev | H5-06, P-04 | 1.5 | PRD §15 | [ ] |
-| H5-08 | `--report-out` atómico, excluido del escaneo y con permisos restringidos | Dev | H1-11, H0-08 | 1 | PRD §8 | [ ] |
-| H5-09 | Priorización y campos CVSS, EPSS, KEV cuando existan; orden estable de hallazgos | Dev | H4-12 | 1.5 | RF-36 | [ ] |
-| H5-10 | Pruebas de formatos, política, comparación, prompt, entrada local y reproducibilidad | Test | H5-02, H5-03, H5-04, H5-07, H5-08, H5-09 | 3.5 | Gate H5 · CA-04, CA-08, CA-09, CA-12, CA-15, CA-16, CA-17, CA-18, CA-19, CA-20, CA-21, CA-22, CA-23, CA-42, CA-43, CA-44, CA-45, CA-46, CA-51, CA-56 | [ ] |
-| | **Subtotal H5** | | | **22.5** | | |
+| H5-01 | Evaluación de política: umbral, severidad `unknown`, excepciones vencidas, hallazgos suprimidos visibles | Dev | H3-08, H4-11 | 2 | RF-09; design §9.3 | [x] |
+| H5-02 | Integrar los códigos de salida con el orquestador, incluida la cancelación (130) | Dev | H5-01, H0-06 | 1 | PRD §8.1 | [x] |
+| H5-03 | `compare`: nuevo, persistente, resuelto y no evaluado con cobertura comparable; un hallazgo fuera del ámbito de un escaneo parcial es no evaluado, nunca resuelto | Dev | H1-07, H5-01, H4-15 | 3 | RF-10; CA-09; design §9.4 | [x] |
+| H5-04 | Formato texto con resumen de cobertura y aviso de ejecución incompleta | Dev | H1-11 | 1.5 | RF-13; design §10.4 | [x] |
+| H5-05 | Formato prompt: plantilla versionada, bloques con nonce, saneado y secciones | Dev | H0-11, H1-11 | 3 | RF-15; design §10.3 | [x] |
+| H5-13 | Comando `recipes`: candidatos detectados, confirmación explícita y persistencia en la configuración de usuario por proyecto (`--set`, `--clear`) | Dev | H4-03, H3-01 | 2 | RF-37; PRD §8, §10.1; design §9.5 | [x] |
+| H5-06 | Prompt: flujo por parche, protección de tests, adaptación de secretos y recetas de validación tomadas de `validation`, con las unidades sin receta declaradas como bloqueadas | Dev | H5-05, H5-13 | 2.5 | RF-16, RF-17, RF-18, RF-37; PRD §10 | [x] |
+| H5-07 | Prompt por lotes con índice y referencia al reporte completo | Dev | H5-06, P-04 | 1.5 | PRD §15 | [x] |
+| H5-08 | `--report-out` atómico, excluido del escaneo y con permisos restringidos | Dev | H1-11, H0-08 | 1 | PRD §8 | [x] |
+| H5-09 | Priorización y campos CVSS, EPSS, KEV cuando existan; orden estable de hallazgos | Dev | H4-12 | 1.5 | RF-36 | [x] |
+| H5-10 | Pruebas de formatos, política, comparación, prompt, entrada local y reproducibilidad | Test | H5-02, H5-03, H5-04, H5-07, H5-08, H5-09 | 3.5 | Gate H5 · CA-04, CA-08, CA-09, CA-12, CA-15, CA-16, CA-17, CA-18, CA-19, CA-20, CA-21, CA-22, CA-23, CA-42, CA-43, CA-44, CA-45, CA-46, CA-51, CA-56 | [x] |
+| | **Subtotal H5** | | | **22.5** | | Cierre 2026-10-27: policy/excepciones, compare con no evaluado, texto, prompt con nonce y lotes, report-out atómico y recetas confirmadas |
 
 ### Hito H6 — Semgrep opcional, aislamiento y release
 

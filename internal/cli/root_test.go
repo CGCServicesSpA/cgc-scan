@@ -90,21 +90,6 @@ func TestQuietAndVerboseConflict(t *testing.T) {
 	}
 }
 
-func TestSkeletonCommandsReturnIncomplete(t *testing.T) {
-	app, _, stderr := newTestApp(t)
-	for _, args := range [][]string{
-		{"compare", "a.json", "b.json"},
-		{"recipes"},
-	} {
-		if code := app.Execute(context.Background(), args); code != 3 {
-			t.Errorf("%v: código = %d, want 3", args, code)
-		}
-	}
-	if !strings.Contains(stderr.String(), "no está implementado") {
-		t.Errorf("stderr no explica el bloqueo: %q", stderr.String())
-	}
-}
-
 func TestScanOfflineWithoutTrivyFailsFast(t *testing.T) {
 	app, _, stderr := newTestApp(t)
 	dir := t.TempDir()
@@ -153,6 +138,16 @@ func TestDoctorIsReadOnlyAndStructured(t *testing.T) {
 	}
 }
 
+func TestCanceledContextReturns130(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	code := app.Execute(ctx, []string{"doctor", "--format", "json"})
+	if code != 130 {
+		t.Fatalf("código = %d, want 130", code)
+	}
+}
+
 func TestVersionReportsCLIAndSchema(t *testing.T) {
 	app, stdout, _ := newTestApp(t)
 	if code := app.Execute(context.Background(), []string{"--version"}); code != 0 {
@@ -191,5 +186,25 @@ func TestColorDisabledWithoutTTYOrWithNoColor(t *testing.T) {
 	}
 	if !app.ColorEnabled() {
 		t.Error("color deshabilitado con TTY y sin NO_COLOR")
+	}
+}
+
+func TestValidateReportOutRefusesToOverwriteSource(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	root := t.TempDir()
+	src := filepath.Join(root, "main.go")
+	if err := os.WriteFile(src, []byte("package main\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.validateReportOut(root, nil, src); err == nil {
+		t.Fatal("se permitió sobrescribir código del proyecto")
+	}
+	reportPath := filepath.Join(root, "report.json")
+	if err := app.validateReportOut(root, nil, reportPath); err != nil {
+		t.Fatalf("se rechazó un reporte JSON: %v", err)
+	}
+	outside := filepath.Join(t.TempDir(), "otro.txt")
+	if err := app.validateReportOut(root, nil, outside); err != nil {
+		t.Fatalf("se rechazó un destino fuera del proyecto: %v", err)
 	}
 }

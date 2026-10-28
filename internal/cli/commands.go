@@ -139,11 +139,11 @@ func (a *App) newCompareCommand() *cobra.Command {
 		Use:   "compare <anterior.json> <actual.json>",
 		Short: "Compara dos reportes: nuevo, persistente, resuelto y no evaluado",
 		Args:  cobra.ExactArgs(2),
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := oneOf("format", format, "json", "text"); err != nil {
 				return err
 			}
-			return notImplemented("compare", "H5")
+			return a.runCompare(cmd.Context(), args[0], args[1], format)
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "json", "formato: json|text")
@@ -166,26 +166,25 @@ func (a *App) newRecipesCommand() *cobra.Command {
 	var (
 		setFile string
 		clear   bool
+		format  string
 	)
 	cmd := &cobra.Command{
 		Use:   "recipes",
 		Short: "Lista candidatos y recetas de validación confirmadas",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if clear && setFile != "" {
 				return UsageErrorf("--set y --clear son mutuamente excluyentes")
 			}
-			if clear {
-				return notImplemented("recipes --clear", "H5")
+			if err := oneOf("format", format, "text", "json"); err != nil {
+				return err
 			}
-			if setFile != "" {
-				return notImplemented("recipes --set", "H5")
-			}
-			return notImplemented("recipes", "H5")
+			return a.runRecipes(cmd, setFile, clear, format)
 		},
 	}
 	cmd.Flags().StringVar(&setFile, "set", "", "confirma las recetas declaradas en este archivo")
 	cmd.Flags().BoolVar(&clear, "clear", false, "elimina las recetas confirmadas del proyecto")
+	cmd.Flags().StringVar(&format, "format", "text", "formato: text|json")
 	return cmd
 }
 

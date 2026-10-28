@@ -260,6 +260,9 @@ func runOne(ctx context.Context, p plan.Plan, u plan.UnitPlan, e Engine) (string
 			})
 			continue
 		}
+		for i := range parsed.Findings {
+			normalize.NormalizePaths(&parsed.Findings[i], p.Root, u.Unit.Path)
+		}
 		findings = append(findings, parsed.Findings...)
 	}
 	status := plan.StatusCompleted

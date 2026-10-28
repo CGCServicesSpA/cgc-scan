@@ -45,16 +45,16 @@ type DB struct {
 
 // Recipe es una receta de validación confirmada por el usuario.
 type Recipe struct {
-	Project string   `toml:"project"`
-	Unit    string   `toml:"unit"`
-	Test    *Command `toml:"test,omitempty"`
-	Build   *Command `toml:"build,omitempty"`
+	Project string   `toml:"project" json:"project"`
+	Unit    string   `toml:"unit" json:"unit"`
+	Test    *Command `toml:"test,omitempty" json:"test,omitempty"`
+	Build   *Command `toml:"build,omitempty" json:"build,omitempty"`
 }
 
 // Command es el comando y directorio de una receta.
 type Command struct {
-	Command string `toml:"command"`
-	Workdir string `toml:"workdir,omitempty"`
+	Command string `toml:"command" json:"command"`
+	Workdir string `toml:"workdir,omitempty" json:"workdir,omitempty"`
 }
 
 // Default devuelve la configuración por defecto.

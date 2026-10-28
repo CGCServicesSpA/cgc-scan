@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
+	"github.com/CGCServicesSpA/cgc-scan/internal/policy"
 	"github.com/CGCServicesSpA/cgc-scan/internal/version"
 	"github.com/CGCServicesSpA/cgc-scan/manifest"
 )
@@ -84,7 +85,11 @@ func (a *App) Execute(ctx context.Context, args []string) int {
 	root.SetArgs(args)
 	root.SetOut(a.Stdout)
 	root.SetErr(a.Stderr)
-	if err := root.ExecuteContext(ctx); err != nil {
+	err := root.ExecuteContext(ctx)
+	if ctx.Err() != nil {
+		return policy.ExitCanceled
+	}
+	if err != nil {
 		// Un código de política no es un error de la CLI: no se imprime.
 		var ee *ExitError
 		if !errors.As(err, &ee) || ee.Err != nil {
@@ -212,10 +217,4 @@ func parseLevel(level string, quiet, verbose bool) (slog.Level, error) {
 		return slog.LevelDebug, nil
 	}
 	return l, nil
-}
-
-// notImplemented construye el error de un comando cuyo hito aún no está
-// implementado. Es explícito y devuelve 3: nunca simula éxito.
-func notImplemented(command, milestone string) error {
-	return IncompleteErrorf("el comando %q se habilita en el hito %s y todavía no está implementado", command, milestone)
 }

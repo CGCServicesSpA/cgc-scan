@@ -21,6 +21,7 @@ import (
 	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policy"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policyfile"
+	"github.com/CGCServicesSpA/cgc-scan/internal/recipes"
 	"github.com/CGCServicesSpA/cgc-scan/internal/report"
 	"github.com/CGCServicesSpA/cgc-scan/internal/runner"
 	"github.com/CGCServicesSpA/cgc-scan/internal/version"
@@ -210,9 +211,19 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 			return IncompleteErrorf("%v", err)
 		}
 	}
-	if err := report.Emit(a.Stdout, doc, opts.Format); err != nil {
+	var emitErr error
+	if opts.Format == "prompt" {
+		reportPath := ""
+		if opts.ReportOut != "" {
+			reportPath, _ = filepath.Abs(opts.ReportOut)
+		}
+		emitErr = report.EmitPrompt(a.Stdout, doc, report.PromptOptions{ReportPath: reportPath})
+	} else {
+		emitErr = report.Emit(a.Stdout, doc, opts.Format)
+	}
+	if emitErr != nil {
 		emitted = true
-		return IncompleteErrorf("%v", err)
+		return IncompleteErrorf("%v", emitErr)
 	}
 	emitted = true
 
@@ -471,7 +482,7 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		},
 		Tools:      report.Tools{Engines: engines},
 		Isolation:  report.Isolation{Level: string(level), VerifiedBy: ""},
-		Validation: report.Validation{Recipes: []report.Recipe{}, Unresolved: []report.Unresolved{}},
+		Validation: buildValidation(cfg, disc.Root, out.Plan),
 		Findings:   out.Findings,
 		Policy: report.Policy{
 			FailOn: string(failOn), Violated: eval.Violated, UnknownCounts: eval.UnknownCounts,
@@ -556,6 +567,51 @@ func (a *App) writeRawOutputs(runID string, raw []orchestrator.RawOutput) {
 			slog.Warn("no se pudo guardar la salida original", "engine", r.Engine, "unit", r.Unit, "error", err)
 		}
 	}
+}
+
+// buildValidation registra las recetas confirmadas y las unidades que quedaron
+// sin receta. La validación de una unidad sin receta se declara bloqueada en el
+// prompt, nunca se inventa un comando.
+func buildValidation(cfg config.Config, root string, p plan.Plan) report.Validation {
+	confirmed := recipes.Confirmed(cfg, root)
+	byUnit := make(map[string]config.Recipe, len(confirmed))
+	for _, r := range confirmed {
+		byUnit[r.Unit] = r
+	}
+	out := report.Validation{Recipes: []report.Recipe{}, Unresolved: []report.Unresolved{}}
+	for _, u := range p.Units {
+		if u.Unit.Kind == "repository" {
+			continue
+		}
+		r, ok := byUnit[u.Unit.ID]
+		var missing []string
+		for _, kind := range []string{"test", "build"} {
+			var cmd *config.Command
+			if ok {
+				if kind == "test" {
+					cmd = r.Test
+				} else {
+					cmd = r.Build
+				}
+			}
+			if cmd == nil {
+				missing = append(missing, kind)
+				continue
+			}
+			workdir := cmd.Workdir
+			if workdir == "" {
+				workdir = u.Unit.Path
+			}
+			out.Recipes = append(out.Recipes, report.Recipe{
+				Unit: u.Unit.ID, Kind: kind, Command: cmd.Command,
+				Workdir: workdir, Origin: "user",
+			})
+		}
+		if len(missing) > 0 {
+			out.Unresolved = append(out.Unresolved, report.Unresolved{Unit: u.Unit.ID, Missing: missing})
+		}
+	}
+	return out
 }
 
 func cacheOrigin(cfg config.Config) string {

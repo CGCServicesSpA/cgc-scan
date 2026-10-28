@@ -23,7 +23,7 @@ func Emit(w io.Writer, doc *Document, format string) error {
 		_, err := io.WriteString(w, RenderText(doc))
 		return err
 	case "prompt":
-		return fmt.Errorf("el formato prompt se habilita en H5")
+		return fmt.Errorf("el formato prompt se emite con EmitPrompt")
 	default:
 		return fmt.Errorf("formato desconocido: %q", format)
 	}
