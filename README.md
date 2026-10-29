@@ -61,7 +61,8 @@ El repositorio incluye una skill global en [`skills/cgc-scan/SKILL.md`](skills/c
 
 ```bash
 ./scripts/install-skill.sh                 # detecta DevPass/OpenCode y Claude
-./scripts/install-skill.sh --target all
+./scripts/install-skill.sh --target all    # agents + OpenCode + Claude
+./scripts/install-skill.sh --target agents # solo la copia canónica
 ./scripts/install-skill.sh --status
 ./scripts/install-skill.sh --check
 ./scripts/install-skill.sh --uninstall
@@ -69,8 +70,9 @@ El repositorio incluye una skill global en [`skills/cgc-scan/SKILL.md`](skills/c
 
 La skill enseña al agente el contrato JSON, la cobertura, las recetas de
 validación, el flujo parche → tests → build → reescaneo y las reglas de
-seguridad. Se instala en `~/.config/opencode/skills/cgc-scan` y
-`~/.claude/skills/cgc-scan` cuando esos harness están presentes.
+seguridad. La copia canónica vive en `~/.agents/skills/cgc-scan`; OpenCode y
+Claude se enlazan a ella, de modo que actualizar una vez actualiza todos los
+harness.
 
 El contrato del reporte vive en [`schemas/report.schema.json`](schemas/report.schema.json).
 
