@@ -55,6 +55,23 @@ Documentación:
 - [Verificación de releases](docs/verificacion-release.md) · [Soporte](docs/soporte.md) · [Legal](docs/legal.md)
 - [Matriz de aceptación](docs/aceptacion.md) · [Revisión de seguridad](docs/revision-seguridad.md) · [Benchmarks](docs/benchmarks.md)
 
+## Skill para agentes
+
+El repositorio incluye una skill global en [`skills/cgc-scan/SKILL.md`](skills/cgc-scan/SKILL.md) y un instalador:
+
+```bash
+./scripts/install-skill.sh                 # detecta DevPass/OpenCode y Claude
+./scripts/install-skill.sh --target all
+./scripts/install-skill.sh --status
+./scripts/install-skill.sh --check
+./scripts/install-skill.sh --uninstall
+```
+
+La skill enseña al agente el contrato JSON, la cobertura, las recetas de
+validación, el flujo parche → tests → build → reescaneo y las reglas de
+seguridad. Se instala en `~/.config/opencode/skills/cgc-scan` y
+`~/.claude/skills/cgc-scan` cuando esos harness están presentes.
+
 El contrato del reporte vive en [`schemas/report.schema.json`](schemas/report.schema.json).
 
 ## Desarrollo

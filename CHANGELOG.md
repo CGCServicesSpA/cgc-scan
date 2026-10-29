@@ -10,6 +10,9 @@
   (`backoffice`): la receta del módulo se aplica al hallazgo.
 - `--set` actualiza solo las unidades declaradas y conserva las demás recetas
   del proyecto.
+- Skill global `cgc-scan` para agentes y `scripts/install-skill.sh` con
+  detección de DevPass/OpenCode y Claude, actualización atómica, respaldo,
+  estado, comprobación y desinstalación.
 
 ## 0.1.0-rc.3 — 2026-10-28
 

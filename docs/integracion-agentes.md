@@ -4,6 +4,27 @@ Este documento es para quien consume CGC Scan desde un agente, un editor o un
 pipeline. El contrato es el JSON; el prompt es una representación para
 remediación.
 
+## Skill global para agentes
+
+Instala o actualiza la skill una vez; queda disponible en todos los proyectos:
+
+```bash
+./scripts/install-skill.sh                 # auto: DevPass/OpenCode + Claude
+./scripts/install-skill.sh --target all
+./scripts/install-skill.sh --status
+./scripts/install-skill.sh --check
+./scripts/install-skill.sh --uninstall
+```
+
+Destinos:
+
+- `~/.config/opencode/skills/cgc-scan`
+- `~/.claude/skills/cgc-scan`
+
+`--target DIR` instala en `DIR/cgc-scan`. `SKILLS_DIR` fuerza un único destino.
+La actualización es atómica y conserva `cgc-scan.bak`; `--check` sale con 1 si
+la versión instalada no coincide con la fuente.
+
 ## Invocación
 
 ```bash
