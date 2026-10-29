@@ -24,7 +24,12 @@ SOURCE_DIR=${SOURCE_DIR:-"$SCRIPT_DIR/../skills/cgc-scan"}
 TARGET_MODE=${TARGET_MODE:-auto}
 AGENTS_ROOT=${AGENTS_SKILLS_DIR:-"$HOME/.agents/skills"}
 OPENCODE_ROOT=${OPENCODE_SKILLS_DIR:-"$HOME/.config/opencode/skills"}
+DEVPASS_ROOT=${DEVPASS_SKILLS_DIR:-"$HOME/.config/devpass-code/skills"}
 CLAUDE_ROOT=${CLAUDE_SKILLS_DIR:-"$HOME/.claude/skills"}
+CODEX_ROOT=${CODEX_SKILLS_DIR:-"$HOME/.codex/skills"}
+KIRO_ROOT=${KIRO_SKILLS_DIR:-"$HOME/.kiro/skills"}
+MCODE_ROOT=${MCODE_SKILLS_DIR:-"$HOME/.minimax/skills"}
+PI_ROOT=${PI_SKILLS_DIR:-"$HOME/.pi/agent/skills"}
 CUSTOM_ROOT=""
 ACTION=install
 BACKUP=${NO_BACKUP:-0}
@@ -48,9 +53,10 @@ CGC Scan — instalador de la skill global
   ./scripts/install-skill.sh [opciones]
 
 Opciones:
-  --target auto|all|agents|opencode|claude|DIR
+  --target auto|all|agents|opencode|devpass|claude|codex|kiro|mcode|pi|DIR
                      auto: ~/.agents/skills + harness detectados.
-                     all: agents + OpenCode + Claude.
+                     all: agents + OpenCode + DevPass + Claude + Codex + Kiro
+                          + mcode (MiniMax) + Pi.
                      agents: solo ~/.agents/skills.
                      DIR: modo directo, instala DIR/cgc-scan sin enlaces.
   --source DIR       Directorio de la skill (por defecto skills/cgc-scan).
@@ -65,8 +71,13 @@ Opciones:
 Variables:
   SKILLS_DIR          Destino directo, sin enlaces.
   AGENTS_SKILLS_DIR   Raíz canónica (por defecto ~/.agents/skills).
-  OPENCODE_SKILLS_DIR Raíz de skills de OpenCode (para pruebas/instalaciones).
-  CLAUDE_SKILLS_DIR   Raíz de skills de Claude (para pruebas/instalaciones).
+  OPENCODE_SKILLS_DIR Raíz de skills de OpenCode.
+  DEVPASS_SKILLS_DIR  Raíz nativa de DevPass (compatibilidad OpenCode aparte).
+  CLAUDE_SKILLS_DIR   Raíz de skills de Claude.
+  CODEX_SKILLS_DIR    Raíz de skills de Codex.
+  KIRO_SKILLS_DIR     Raíz de skills de Kiro.
+  MCODE_SKILLS_DIR    Raíz de skills de mcode/MiniMax.
+  PI_SKILLS_DIR       Raíz de skills de Pi.
   NO_BACKUP=1         Equivale a --no-backup.
 EOF
 }
@@ -155,20 +166,51 @@ else
         auto)
             USE_CANONICAL=1
             [ -d "$HOME/.config/opencode" ] && add_link_root "$OPENCODE_ROOT"
+            [ -d "$HOME/.config/devpass-code" ] && { add_link_root "$DEVPASS_ROOT"; add_link_root "$OPENCODE_ROOT"; }
             [ -d "$HOME/.claude" ] && add_link_root "$CLAUDE_ROOT"
+            [ -d "$HOME/.codex" ] && add_link_root "$CODEX_ROOT"
+            [ -d "$HOME/.kiro" ] && add_link_root "$KIRO_ROOT"
+            [ -d "$HOME/.minimax" ] && add_link_root "$MCODE_ROOT"
+            [ -d "$HOME/.pi" ] && add_link_root "$PI_ROOT"
             ;;
         all)
             USE_CANONICAL=1
             add_link_root "$OPENCODE_ROOT"
+            add_link_root "$DEVPASS_ROOT"
             add_link_root "$CLAUDE_ROOT"
+            add_link_root "$CODEX_ROOT"
+            add_link_root "$KIRO_ROOT"
+            add_link_root "$MCODE_ROOT"
+            add_link_root "$PI_ROOT"
             ;;
         opencode)
             USE_CANONICAL=1
             add_link_root "$OPENCODE_ROOT"
             ;;
+        devpass)
+            USE_CANONICAL=1
+            add_link_root "$DEVPASS_ROOT"
+            add_link_root "$OPENCODE_ROOT"
+            ;;
         claude)
             USE_CANONICAL=1
             add_link_root "$CLAUDE_ROOT"
+            ;;
+        codex)
+            USE_CANONICAL=1
+            add_link_root "$CODEX_ROOT"
+            ;;
+        kiro)
+            USE_CANONICAL=1
+            add_link_root "$KIRO_ROOT"
+            ;;
+        mcode|minimax)
+            USE_CANONICAL=1
+            add_link_root "$MCODE_ROOT"
+            ;;
+        pi)
+            USE_CANONICAL=1
+            add_link_root "$PI_ROOT"
             ;;
         *)
             CUSTOM_ROOT=$TARGET_MODE
@@ -304,7 +346,7 @@ if [ "$ACTION" = uninstall ]; then
     if [ "$USE_CANONICAL" -eq 1 ]; then
         # Elimina los enlaces que apunten a la copia canónica, aunque no se
         # hayan seleccionado explícitamente.
-        for root in $OPENCODE_ROOT $CLAUDE_ROOT $LINK_ROOTS; do
+        for root in $OPENCODE_ROOT $DEVPASS_ROOT $CLAUDE_ROOT $CODEX_ROOT $KIRO_ROOT $MCODE_ROOT $PI_ROOT $LINK_ROOTS; do
             dest=$root/cgc-scan
             if [ -L "$dest" ]; then
                 case "$(readlink "$dest")" in

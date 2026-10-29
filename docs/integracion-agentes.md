@@ -19,14 +19,20 @@ Instala o actualiza la skill una vez; queda disponible en todos los proyectos:
 Destinos:
 
 - fuente canónica: `~/.agents/skills/cgc-scan`
-- enlace OpenCode: `~/.config/opencode/skills/cgc-scan`
-- enlace Claude: `~/.claude/skills/cgc-scan`
+- DevPass: `~/.config/devpass-code/skills/cgc-scan` (y compatibilidad OpenCode)
+- OpenCode: `~/.config/opencode/skills/cgc-scan`
+- Claude: `~/.claude/skills/cgc-scan`
+- Codex: `~/.codex/skills/cgc-scan`
+- Kiro: `~/.kiro/skills/cgc-scan`
+- mcode/MiniMax: `~/.minimax/skills/cgc-scan`
+- Pi: `~/.pi/agent/skills/cgc-scan`
 
-`--target agents` instala solo la copia canónica; `--target opencode` o
-`--target claude` instalan la canónica y el enlace correspondiente. `--target
-DIR` instala en `DIR/cgc-scan` sin enlaces. `SKILLS_DIR` fuerza un único destino
-directo. La actualización es atómica y conserva `cgc-scan.bak`; `--check` sale
-con 1 si la versión instalada no coincide con la fuente.
+`--target agents` instala solo la copia canónica; `--target opencode|devpass|
+claude|codex|kiro|mcode|pi` instalan la canónica y el enlace correspondiente.
+`--target all` enlaza todos. `--target DIR` instala en `DIR/cgc-scan` sin
+enlaces. `SKILLS_DIR` fuerza un único destino directo. La actualización es
+atómica y conserva `cgc-scan.bak`; `--check` sale con 1 si la versión instalada
+no coincide con la fuente.
 
 ## Invocación
 
