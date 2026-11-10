@@ -172,9 +172,15 @@ Aceptación y pruebas:
 
 ## P1-1 — Políticas explícitas por perfil
 
-**Estado:** pendiente. **Dependencias:** etapa P0 completa. **Estimación:** 4 días.
+**Estado:** completada. **Dependencias:** etapa P0 completa. **Estimación:** 4 días.
 
-**Archivos:** `internal/audit/build.go`, `internal/audit/broker.go`, catálogo.
+**Decisión tomada:** la política de perfil vive en el catálogo versionado
+(`audit-catalog-1.1.0`: metadatos por perfil, `lifecycle` por clase con
+vocabulario cerrado development/distribution/runtime, y `source_version` que
+fija `cloudflare/security-audit-skill@c1c8a8c1`). `profile.go` separa la
+política de la construcción y selección; las fases obligatorias pendientes
+(`final-critique` hasta P1-2, `prior-rework` hasta P1-6) impiden sellar la
+corrida como completa.
 
 Trabajo:
 

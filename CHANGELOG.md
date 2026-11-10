@@ -2,6 +2,14 @@
 
 ## Sin publicar
 
+- `--profile` de `audit` tiene semántica real: `quick` agrupa unidades por
+  subsistema × dominio (una pasada de verificación, sin crítica), `standard`
+  por subsistema × frontera × clase (dos pasadas, crítica por ola y final) y
+  `deep` por subsistema × ciclo de vida (dos pasadas, crítica y revalidación
+  de corridas anteriores). La política vive en el catálogo versionado
+  (`audit-catalog-1.1.0`, con metadatos por perfil, ciclo de vida por clase y
+  la referencia externa fijada) y una corrida no se declara completa mientras
+  le falte una fase obligatoria de su perfil (`phase_not_implemented`).
 - `audit` acota sus entradas públicas: la entrega 8 MiB, el ledger y el estado
   de verificación 16 MiB, los hallazgos 32 MiB y 64 niveles de anidamiento
   JSON, con límites aplicados por los decodificadores y lectura de archivos

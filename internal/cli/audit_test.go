@@ -164,7 +164,7 @@ func TestAuditFullCoveredFlow(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	root := auditProject(t)
 	runDir := filepath.Join(t.TempDir(), "run")
-	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json"); code != 0 {
+	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json", "--profile", "quick"); code != 0 {
 		t.Fatalf("init = %d: %s %s", code, out, errOut)
 	}
 
@@ -220,7 +220,7 @@ func TestAuditCandidateVerificationFlow(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	root := auditProject(t)
 	runDir := filepath.Join(t.TempDir(), "run")
-	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json"); code != 0 {
+	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json", "--profile", "quick"); code != 0 {
 		t.Fatalf("init = %d: %s %s", code, out, errOut)
 	}
 
@@ -318,7 +318,7 @@ func TestAuditReportWithoutWorkIsIncomplete(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	root := auditProject(t)
 	runDir := filepath.Join(t.TempDir(), "run")
-	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json"); code != 0 {
+	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json", "--profile", "quick"); code != 0 {
 		t.Fatalf("init = %d: %s %s", code, out, errOut)
 	}
 	code, out, errOut := auditRun(t, app, "audit", "report", "--out", runDir, "--format", "json")
@@ -414,7 +414,7 @@ func TestAuditSubmitRejectsMalformedSubmission(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	root := auditProject(t)
 	runDir := filepath.Join(t.TempDir(), "run")
-	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json"); code != 0 {
+	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json", "--profile", "quick"); code != 0 {
 		t.Fatalf("init = %d: %s %s", code, out, errOut)
 	}
 	path := filepath.Join(t.TempDir(), "bad.json")

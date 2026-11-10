@@ -149,6 +149,36 @@ anterior o el nuevo, nunca un punto intermedio.
   proceso** en cualquier punto; contra la **pérdida de energía** protegen el
   `fsync` del archivo y del directorio antes de responder.
 
+## Perfiles
+
+`--profile` cambia la granularidad del reparto, nunca el listón de evidencia.
+La política vive en el catálogo versionado (`internal/audit/catalog.json`,
+`audit-catalog-1.1.0`) y se separa de la construcción y selección de unidades
+(`internal/audit/profile.go`):
+
+| Perfil | Granularidad | Verificación | Crítica de cobertura |
+| --- | --- | --- | --- |
+| `quick` | subsistema × dominio | una pasada | no requerida |
+| `standard` | subsistema × frontera × clase | dos pasadas | por ola + final |
+| `deep` | subsistema × ciclo de vida | dos pasadas | por ola + final, y revalidación de corridas anteriores |
+
+- Las unidades colapsadas (`quick`, `deep`) usan la clase representativa de
+  mayor prioridad aplicable para el invariante y los checks de la asignación.
+- Los ids de `quick` son `subsistema/dominio` con frontera `domain-wide`; los
+  de `deep` son `subsistema/lifecycle/etapa` con dominio `lifecycle`. El orden
+  y los ids son deterministas.
+- Cada clase declara su **ciclo de vida** (`development`, `distribution`,
+  `runtime`) en el catálogo; el vocabulario es cerrado y versionado.
+- Las **fases obligatorias** por perfil (`hunt`, `verification`,
+  `final-critique`, `prior-rework`) deben completarse antes de que la corrida
+  se declare completa: `audit report` rechaza el sellado con la razón
+  `phase_not_implemented` y una limitación que nombra la fase pendiente.
+- La referencia externa que define el protocolo está fijada en el catálogo
+  (`source_version`): los conceptos de cobertura, veredictos y verificación
+  independiente se adaptaron de
+  [`cloudflare/security-audit-skill`](https://github.com/cloudflare/security-audit-skill)
+  en la versión indicada; los textos del catálogo son propios.
+
 ## Fuentes y citas
 
 Toda cita (`trace[].file`, `evidence[].file`) se valida contra la fuente que

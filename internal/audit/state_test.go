@@ -14,6 +14,8 @@ import (
 func sealedState(t *testing.T) *RunState {
 	t.Helper()
 	l := plannerLedger("sql-injection", "command-injection")
+	// quick: una pasada de verificación y sin fases de crítica pendientes.
+	l.Profile = ProfileQuick
 	c := &Candidates{SchemaVersion: CandidatesSchemaVersion, RunID: l.Run.ID, Items: []Candidate{}}
 	task, err := Next(l, c, NextOptions{AgentID: "hunter-a", MaxUnits: 1})
 	if err != nil {

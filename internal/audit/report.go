@@ -16,11 +16,15 @@ const (
 	IncompleteUnverifiedCandidates = "unverified_candidates"
 	IncompleteMissingCandidate     = "missing_candidate_state"
 	IncompleteSourceDiverged       = "source_diverged"
+	IncompletePhaseNotImplemented  = "phase_not_implemented"
+	IncompleteCritiquePending      = "critique_pending"
 )
 
 // BuildFindings sella el estado de la corrida y deriva el documento de
 // hallazgos. Solo los candidatos con veredicto final entran al documento; los
-// pendientes quedan fuera y fuerzan una corrida incompleta.
+// pendientes quedan fuera y fuerzan una corrida incompleta. Un perfil exige
+// sus fases obligatorias: una corrida no se declara completa mientras le falte
+// una fase obligatoria de su política.
 func BuildFindings(l *Ledger, c *Candidates) (*Findings, error) {
 	if l == nil || c == nil {
 		return nil, errors.New("auditoría: ledger y candidatos son obligatorios")
@@ -28,6 +32,11 @@ func BuildFindings(l *Ledger, c *Candidates) (*Findings, error) {
 	if err := reconcileCandidates(l, c); err != nil {
 		return nil, err
 	}
+	pol, err := profilePolicyFor(l.Profile)
+	if err != nil {
+		return nil, err
+	}
+	missingPhase := pol.FirstUnimplementedPhase()
 
 	reason := ""
 	switch {
@@ -35,10 +44,17 @@ func BuildFindings(l *Ledger, c *Candidates) (*Findings, error) {
 		// La corrida ya fue sellada como incompleta (por ejemplo, presupuesto
 		// agotado). Un informe posterior no puede degradar ese hecho a complete.
 		reason = l.IncompleteReason
+	case missingPhase != "":
+		reason = IncompletePhaseNotImplemented
+		l.Limitations = append(l.Limitations, fmt.Sprintf(
+			"fase obligatoria %q del perfil %s sin implementación en esta versión del motor: la corrida no puede declararse completa",
+			missingPhase, l.Profile))
 	case l.Summary.Planned > 0 || l.Summary.InProgress > 0:
 		reason = IncompleteUnassigned
 	case countUndecided(c) > 0:
 		reason = IncompleteUnverifiedCandidates
+	case pendingCritique(l, c):
+		reason = IncompleteCritiquePending
 	default:
 		if err := checkCandidateStateComplete(l, c); err != nil {
 			return nil, err
@@ -73,6 +89,23 @@ func BuildFindings(l *Ledger, c *Candidates) (*Findings, error) {
 	}
 	return f, nil
 }
+
+// profilePolicyFor resuelve la política del perfil declarado por el ledger.
+func profilePolicyFor(profile string) (*ProfilePolicy, error) {
+	cat, err := LoadCatalog()
+	if err != nil {
+		return nil, fmt.Errorf("auditoría: resolver la política de perfil: %w", err)
+	}
+	pol, err := ProfilePolicyFor(profile, cat)
+	if err != nil {
+		return nil, fmt.Errorf("auditoría: %w", err)
+	}
+	return pol, nil
+}
+
+// pendingCritique declara si falta la crítica final de cobertura. Se
+// implementa con P1-2; mientras tanto no hay crítica pendiente.
+func pendingCritique(l *Ledger, c *Candidates) bool { return false }
 
 func countUndecided(c *Candidates) int {
 	n := 0
@@ -126,7 +159,11 @@ func checkCandidateStateComplete(l *Ledger, c *Candidates) error {
 func RenderReport(l *Ledger, f *Findings) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Informe de auditoría — %s\n\n", clean(targetName(l)))
-	fmt.Fprintf(&b, "- Perfil: `%s`\n", l.Profile)
+	if pol, err := profilePolicyFor(l.Profile); err == nil {
+		fmt.Fprintf(&b, "- Perfil: `%s` (granularidad: %s)\n", l.Profile, pol.GranularityLabel())
+	} else {
+		fmt.Fprintf(&b, "- Perfil: `%s`\n", l.Profile)
+	}
 	fmt.Fprintf(&b, "- Fuente revisada: `%s`", clean(l.Run.SourceRef))
 	if l.Run.Dirty {
 		b.WriteString(" (árbol con cambios sin commit)")

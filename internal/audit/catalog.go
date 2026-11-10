@@ -10,7 +10,25 @@ import (
 )
 
 // CatalogSchemaVersion es la versión del catálogo de clases.
-const CatalogSchemaVersion = "audit-catalog-1.0.0"
+const CatalogSchemaVersion = "audit-catalog-1.1.0"
+
+// Etapas del ciclo de vida: vocabulario cerrado que agrupa las clases para la
+// granularidad por subsistema × ciclo de vida del perfil deep.
+var knownLifecycles = map[string]bool{
+	"development":  true,
+	"distribution": true,
+	"runtime":      true,
+}
+
+// Granularidades y modalidades de crítica declaradas por perfil.
+const (
+	GranularitySubsystemDomain    = "subsystem-domain"
+	GranularitySubsystemClass     = "subsystem-class"
+	GranularitySubsystemLifecycle = "subsystem-lifecycle"
+
+	CritiqueNone         = "none"
+	CritiqueWaveAndFinal = "wave-and-final"
+)
 
 // Señales que una unidad puede presentar. Se declaran en los datos del
 // catálogo, nunca en el código que reparte el trabajo.
@@ -81,6 +99,7 @@ type Class struct {
 	ID        string   `json:"id"`
 	Domain    string   `json:"domain"`
 	Boundary  string   `json:"boundary"`
+	Lifecycle string   `json:"lifecycle"`
 	Title     string   `json:"title"`
 	Priority  int      `json:"priority"`
 	Languages []string `json:"languages"`
@@ -90,15 +109,33 @@ type Class struct {
 	Source    string   `json:"source"`
 }
 
-// Catalog es el conjunto versionado de clases y señales.
+// ProfileMetadata declara, como datos del catálogo, la granularidad y las
+// fases de un perfil de ejecución. El motor lee esto; la política no vive en
+// el código que reparte el trabajo.
+type ProfileMetadata struct {
+	// Granularity fija la granularidad de las unidades del perfil.
+	Granularity string `json:"granularity"`
+	// VerificationPasses es el número de pasadas de verificación.
+	VerificationPasses int `json:"verification_passes"`
+	// Critique declara las fases de crítica de cobertura: none o
+	// wave-and-final.
+	Critique string `json:"critique"`
+	// PriorRework exige revalidar lo que una corrida anterior rechazó o dejó
+	// pendiente cuando su fuente cambió.
+	PriorRework bool `json:"prior_rework"`
+}
+
+// Catalog es el conjunto versionado de clases, señales y perfiles.
 type Catalog struct {
-	SchemaVersion string                  `json:"schema_version"`
-	Description   string                  `json:"description"`
-	Limits        Limits                  `json:"limits"`
-	IgnoreDirs    []string                `json:"ignore_dirs"`
-	Languages     map[string]LanguageSpec `json:"languages"`
-	Signals       Signals                 `json:"signals"`
-	Classes       []Class                 `json:"classes"`
+	SchemaVersion string                     `json:"schema_version"`
+	Description   string                     `json:"description"`
+	SourceVersion string                     `json:"source_version"`
+	Limits        Limits                     `json:"limits"`
+	IgnoreDirs    []string                   `json:"ignore_dirs"`
+	Languages     map[string]LanguageSpec    `json:"languages"`
+	Signals       Signals                    `json:"signals"`
+	Classes       []Class                    `json:"classes"`
+	Profiles      map[string]ProfileMetadata `json:"profiles"`
 }
 
 // LoadCatalog decodifica y valida el catálogo embebido.
@@ -126,6 +163,12 @@ func (c *Catalog) Validate() error {
 	}
 	if c.SchemaVersion != CatalogSchemaVersion {
 		add("schema_version %q, se esperaba %q", c.SchemaVersion, CatalogSchemaVersion)
+	}
+	if strings.TrimSpace(c.SourceVersion) == "" {
+		add("source_version es obligatorio: la referencia externa que define el protocolo debe estar fijada")
+	}
+	if err := validateProfiles(c.Profiles); err != nil {
+		add("%v", err)
 	}
 	if c.Limits.MaxFilesScanned < 1 {
 		add("limits.max_files_scanned debe ser positivo")
@@ -180,6 +223,9 @@ func (c *Catalog) Validate() error {
 			add("clase duplicada: %s", class.ID)
 		}
 		seen[class.ID] = true
+		if !knownLifecycles[class.Lifecycle] {
+			add("%s (%s): ciclo de vida desconocido %q", at, class.ID, class.Lifecycle)
+		}
 		if strings.TrimSpace(class.Domain) == "" || strings.TrimSpace(class.Boundary) == "" ||
 			strings.TrimSpace(class.Title) == "" || strings.TrimSpace(class.Invariant) == "" {
 			add("%s (%s): domain, boundary, title e invariant son obligatorios", at, class.ID)
@@ -215,6 +261,51 @@ func (c *Catalog) Validate() error {
 	}
 	if len(problems) > 0 {
 		return fmt.Errorf("catálogo de auditoría inválido: %s", strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// validateProfiles comprueba que el catálogo declare metadatos coherentes para
+// los tres perfiles.
+func validateProfiles(profiles map[string]ProfileMetadata) error {
+	var problems []string
+	add := func(format string, args ...any) {
+		problems = append(problems, fmt.Sprintf(format, args...))
+	}
+	granularities := map[string]bool{
+		GranularitySubsystemDomain:    true,
+		GranularitySubsystemClass:     true,
+		GranularitySubsystemLifecycle: true,
+	}
+	critiques := map[string]bool{CritiqueNone: true, CritiqueWaveAndFinal: true}
+	for _, profile := range []string{ProfileQuick, ProfileStandard, ProfileDeep} {
+		p, ok := profiles[profile]
+		if !ok {
+			add("profiles.%s sin metadatos", profile)
+			continue
+		}
+		if !granularities[p.Granularity] {
+			add("profiles.%s: granularidad desconocida %q", profile, p.Granularity)
+		}
+		if p.VerificationPasses < 1 || p.VerificationPasses > 2 {
+			add("profiles.%s: verification_passes debe ser 1 o 2, es %d", profile, p.VerificationPasses)
+		}
+		if !critiques[p.Critique] {
+			add("profiles.%s: modalidad de crítica desconocida %q", profile, p.Critique)
+		}
+		if profile == ProfileDeep && !p.PriorRework {
+			add("profiles.deep: prior_rework es obligatorio para deep")
+		}
+	}
+	for name := range profiles {
+		switch name {
+		case ProfileQuick, ProfileStandard, ProfileDeep:
+		default:
+			add("perfil desconocido en el catálogo: %q", name)
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("metadatos de perfil inválidos: %s", strings.Join(problems, "; "))
 	}
 	return nil
 }

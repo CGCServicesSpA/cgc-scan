@@ -1,6 +1,7 @@
 {
-  "schema_version": "audit-catalog-1.0.0",
-  "description": "Catálogo de dominios, fronteras y clases de ataque que el motor usa para construir el ledger de cobertura. Los textos son datos versionados; el motor no interpreta el código, solo reparte el trabajo y valida el contrato.",
+  "schema_version": "audit-catalog-1.1.0",
+  "description": "Catálogo de dominios, fronteras y clases de ataque que el motor usa para construir el ledger de cobertura. Los textos son datos versionados; el motor no interpreta el código, solo reparte el trabajo y valida el contrato. Las referencias source apuntan a archivos del skill adaptado en la versión fijada por source_version.",
+  "source_version": "cloudflare/security-audit-skill@c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
   "limits": {
     "max_files_scanned": 2000,
     "max_starting_paths": 8,
@@ -113,6 +114,26 @@
       ]
     }
   },
+  "profiles": {
+    "quick": {
+      "granularity": "subsystem-domain",
+      "verification_passes": 1,
+      "critique": "none",
+      "prior_rework": false
+    },
+    "standard": {
+      "granularity": "subsystem-class",
+      "verification_passes": 2,
+      "critique": "wave-and-final",
+      "prior_rework": false
+    },
+    "deep": {
+      "granularity": "subsystem-lifecycle",
+      "verification_passes": 2,
+      "critique": "wave-and-final",
+      "prior_rework": true
+    }
+  },
   "classes": [
     {
       "id": "dependency-known-vulnerable",
@@ -132,7 +153,8 @@
         "Verifica si la versión vulnerable es alcanzable desde el código de la aplicación.",
         "Confirma la versión corregida más pequeña dentro del major actual."
       ],
-      "source": "SUPPLY-CHAIN-AND-RELEASE.md#dependency"
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#dependency",
+      "lifecycle": "development"
     },
     {
       "id": "dependency-unpinned",
@@ -152,7 +174,8 @@
         "Verifica que el lockfile exista y cubra la dependencia.",
         "Comprueba que la instalación no ejecute scripts del paquete."
       ],
-      "source": "SUPPLY-CHAIN-AND-RELEASE.md#release"
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#release",
+      "lifecycle": "development"
     },
     {
       "id": "secret-in-tree",
@@ -173,7 +196,8 @@
         "Distingue un valor real de un marcador o fixture.",
         "Comprueba si el archivo está versionado y si el valor sigue vigente."
       ],
-      "source": "SUPPLY-CHAIN-AND-RELEASE.md#secret"
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#secret",
+      "lifecycle": "development"
     },
     {
       "id": "secret-default-in-config",
@@ -193,7 +217,8 @@
         "Verifica si el despliegue sobrescribe el valor.",
         "Determina si el valor permite rotación sin tocar el código."
       ],
-      "source": "SUPPLY-CHAIN-AND-RELEASE.md#secret"
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#secret",
+      "lifecycle": "distribution"
     },
     {
       "id": "sql-injection",
@@ -218,7 +243,8 @@
         "Verifica el escape y la vinculación de parámetros en el sink real.",
         "Comprueba rutas hermanas, reintentos y consultas dinámicas."
       ],
-      "source": "ATTACK-CLASSES.md#injection"
+      "source": "ATTACK-CLASSES.md#injection",
+      "lifecycle": "runtime"
     },
     {
       "id": "command-injection",
@@ -243,7 +269,8 @@
         "Verifica si el proceso se invoca con shell o con argumentos separados.",
         "Comprueba validación, normalización y allowlist en el punto de decisión."
       ],
-      "source": "ATTACK-CLASSES.md#injection"
+      "source": "ATTACK-CLASSES.md#injection",
+      "lifecycle": "runtime"
     },
     {
       "id": "path-traversal",
@@ -268,7 +295,8 @@
         "Verifica canonicalización y comprobación de prefijo en el último punto de decisión.",
         "Prueba rutas absolutas, `..` y enlaces simbólicos con datos ficticios."
       ],
-      "source": "ATTACK-CLASSES.md#path"
+      "source": "ATTACK-CLASSES.md#path",
+      "lifecycle": "runtime"
     },
     {
       "id": "template-injection",
@@ -292,7 +320,8 @@
         "Verifica el motor de plantillas y sus escapes automáticos.",
         "Comprueba rutas de renderizado alternativas."
       ],
-      "source": "CLIENT-SIDE.md#dom-injection"
+      "source": "CLIENT-SIDE.md#dom-injection",
+      "lifecycle": "runtime"
     },
     {
       "id": "unsafe-deserialization",
@@ -317,7 +346,8 @@
         "Verifica si el formato admite tipos dinámicos o constructores.",
         "Comprueba límites de tamaño y profundidad."
       ],
-      "source": "PROTOCOLS-RPC-AND-MESSAGING.md#serialization"
+      "source": "PROTOCOLS-RPC-AND-MESSAGING.md#serialization",
+      "lifecycle": "runtime"
     },
     {
       "id": "unsafe-file-write",
@@ -342,7 +372,8 @@
         "Verifica permisos y confinamiento del destino.",
         "Comprueba si el destino se ejecuta o se carga después."
       ],
-      "source": "ATTACK-CLASSES.md#file"
+      "source": "ATTACK-CLASSES.md#file",
+      "lifecycle": "runtime"
     },
     {
       "id": "weak-crypto",
@@ -367,7 +398,8 @@
         "Verifica modos, tamaños de clave y fuentes de entropía.",
         "Comprueba comparaciones de secretos en tiempo no constante."
       ],
-      "source": "ATTACK-CLASSES.md#crypto"
+      "source": "ATTACK-CLASSES.md#crypto",
+      "lifecycle": "runtime"
     },
     {
       "id": "php-object-injection",
@@ -387,7 +419,8 @@
         "Verifica si las clases cargadas tienen métodos mágicos peligrosos.",
         "Comprueba el confinamiento de la sesión y de la caché."
       ],
-      "source": "CLIENT-SIDE.md#prototype-pollution"
+      "source": "CLIENT-SIDE.md#prototype-pollution",
+      "lifecycle": "runtime"
     },
     {
       "id": "file-permissions",
@@ -408,7 +441,8 @@
         "Verifica la umask y los permisos efectivos en despliegue.",
         "Comprueba si el reporte se escribe con permisos restrictivos."
       ],
-      "source": "CLOUD-AND-DEPLOYMENT.md#iam"
+      "source": "CLOUD-AND-DEPLOYMENT.md#iam",
+      "lifecycle": "distribution"
     },
     {
       "id": "network-exposure",
@@ -429,7 +463,8 @@
         "Verifica autenticación en la superficie expuesta.",
         "Comprueba valores por defecto de desarrollo en producción."
       ],
-      "source": "CLOUD-AND-DEPLOYMENT.md#ingress"
+      "source": "CLOUD-AND-DEPLOYMENT.md#ingress",
+      "lifecycle": "distribution"
     },
     {
       "id": "ci-untrusted-input",
@@ -449,7 +484,8 @@
         "Verifica la exposición de secretos y tokens en los pasos afectados.",
         "Comprueba la publicación y la firma de artefactos."
       ],
-      "source": "SUPPLY-CHAIN-AND-RELEASE.md#ci"
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#ci",
+      "lifecycle": "development"
     },
     {
       "id": "container-privileged",
@@ -469,7 +505,8 @@
         "Verifica límites de recursos y política de reinicio.",
         "Comprueba el socket de Docker y la red del host."
       ],
-      "source": "CLOUD-AND-DEPLOYMENT.md#container"
+      "source": "CLOUD-AND-DEPLOYMENT.md#container",
+      "lifecycle": "distribution"
     }
   ]
 }

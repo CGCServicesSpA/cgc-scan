@@ -8,6 +8,9 @@ import (
 func sealedFixture(t *testing.T) (*Ledger, *Candidates) {
 	t.Helper()
 	l := plannerLedger("sql-injection", "command-injection")
+	// El fixture reproduce el perfil quick: una pasada de verificación, sin
+	// fases de crítica pendientes.
+	l.Profile = ProfileQuick
 	l.Units[0].State = StateCandidate
 	l.Units[0].Owner = "hunter-a"
 	l.Units[0].ReviewedPaths = []string{"main.go"}

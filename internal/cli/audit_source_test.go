@@ -69,7 +69,7 @@ func TestAuditRejectsFabricatedTraceAgainstRevision(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	root, revA := auditGitRepo(t)
 	runDir := filepath.Join(t.TempDir(), "run")
-	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json"); code != 0 {
+	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json", "--profile", "quick"); code != 0 {
 		t.Fatalf("init = %d: %s %s", code, out, errOut)
 	}
 	if code, out, errOut := auditRun(t, app, "audit", "next", "--out", runDir,
@@ -116,7 +116,7 @@ func TestAuditHistoricalCitationSurvivesTreeChanges(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	root, _ := auditGitRepo(t)
 	runDir := filepath.Join(t.TempDir(), "run")
-	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json"); code != 0 {
+	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json", "--profile", "quick"); code != 0 {
 		t.Fatalf("init = %d: %s %s", code, out, errOut)
 	}
 	unitID := ""
@@ -216,7 +216,7 @@ func TestAuditWorktreeDivergenceBlocksCompleteReport(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	root := auditProject(t)
 	runDir := filepath.Join(t.TempDir(), "run")
-	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json"); code != 0 {
+	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json", "--profile", "quick"); code != 0 {
 		t.Fatalf("init = %d: %s %s", code, out, errOut)
 	}
 	if code, out, errOut := auditRun(t, app, "audit", "next", "--out", runDir,

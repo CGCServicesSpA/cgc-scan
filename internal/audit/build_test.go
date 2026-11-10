@@ -28,6 +28,11 @@ func writeProject(t *testing.T, files map[string]string) string {
 
 func buildForTest(t *testing.T, root string, oos []OutOfScope) *Ledger {
 	t.Helper()
+	return buildForTestProfile(t, root, oos, ProfileStandard)
+}
+
+func buildForTestProfile(t *testing.T, root string, oos []OutOfScope, profile string) *Ledger {
+	t.Helper()
 	cat, err := LoadCatalog()
 	if err != nil {
 		t.Fatalf("catálogo: %v", err)
@@ -37,7 +42,7 @@ func buildForTest(t *testing.T, root string, oos []OutOfScope) *Ledger {
 		t.Fatalf("descubrimiento: %v", err)
 	}
 	ledger, err := BuildLedger(BuildOptions{
-		Catalog: cat, Discovery: res, OutOfScope: oos,
+		Catalog: cat, Discovery: res, OutOfScope: oos, Profile: profile,
 		RunID: "run-1", Now: time.Date(2026, 11, 9, 0, 0, 0, 0, time.UTC),
 		CLIVersion: "test", SourceRef: "rev-1",
 	})

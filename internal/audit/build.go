@@ -85,6 +85,11 @@ func BuildLedger(opts BuildOptions) (*Ledger, error) {
 	seen := map[string]bool{}
 	limitations := append([]string{}, opts.Limitations...)
 
+	pol, err := ProfilePolicyFor(profile, opts.Catalog)
+	if err != nil {
+		return nil, err
+	}
+
 	ordered := append([]discovery.Unit(nil), opts.Discovery.Units...)
 	sort.SliceStable(ordered, func(i, j int) bool {
 		if ordered[i].Path == ordered[j].Path {
@@ -107,31 +112,19 @@ func BuildLedger(opts BuildOptions) (*Ledger, error) {
 		for _, l := range du.Languages {
 			langs = append(langs, string(l))
 		}
-		for _, class := range opts.Catalog.applicableClasses(langs, signals) {
-			starts := startingPaths(class, signals, opts.Catalog.Limits.MaxStartingPaths)
-			if len(starts) == 0 {
-				continue
+		classes := opts.Catalog.applicableClasses(langs, signals)
+		var built []Unit
+		if pol.Granularity == GranularitySubsystemClass {
+			built = unitsPerClass(du, classes, signals, opts.Catalog)
+		} else {
+			built = collapsedUnits(du, pol, classes, signals, opts.Catalog)
+		}
+		for _, u := range built {
+			if seen[u.CoverageID] {
+				return nil, fmt.Errorf("auditoría: coverage_id colisiona: %s (unidad %q, clase %q)", u.CoverageID, du.ID, u.AttackClass)
 			}
-			id := coverageID(du.ID, class)
-			if seen[id] {
-				return nil, fmt.Errorf("auditoría: coverage_id colisiona: %s (unidad %q, clase %q)", id, du.ID, class.ID)
-			}
-			seen[id] = true
-			units = append(units, Unit{
-				CoverageID:    id,
-				Subsystem:     du.ID,
-				Domain:        class.Domain,
-				Boundary:      class.Boundary,
-				AttackClass:   class.ID,
-				StartingPaths: starts,
-				State:         StatePlanned,
-				Wave:          0,
-				ReviewedPaths: []string{},
-				Checks:        []Check{},
-				Candidates:    []string{},
-				Unresolved:    []string{},
-				Attempts:      []Attempt{},
-			})
+			seen[u.CoverageID] = true
+			units = append(units, u)
 		}
 	}
 
@@ -315,6 +308,91 @@ func startingPaths(class Class, signals map[string][]string, limit int) []string
 		}
 	}
 	return out
+}
+
+// unitsPerClass construye una unidad por clase aplicable: la granularidad
+// subsistema × frontera × clase del perfil standard.
+func unitsPerClass(du discovery.Unit, classes []Class, signals map[string][]string, cat *Catalog) []Unit {
+	out := make([]Unit, 0, len(classes))
+	for _, class := range classes {
+		starts := startingPaths(class, signals, cat.Limits.MaxStartingPaths)
+		if len(starts) == 0 {
+			continue
+		}
+		out = append(out, newUnit(coverageID(du.ID, class), du.ID, class.Domain, class.Boundary, class.ID, starts))
+	}
+	return out
+}
+
+// collapsedUnits colapsa las clases aplicables de la unidad en una por clave
+// de granularidad: el perfil quick agrupa por dominio y deep por ciclo de
+// vida. La clase representativa —la de mayor prioridad aplicable— aporta el
+// invariante y los checks de la asignación.
+func collapsedUnits(du discovery.Unit, pol *ProfilePolicy, classes []Class, signals map[string][]string, cat *Catalog) []Unit {
+	groups := map[string][]Class{}
+	var order []string
+	for _, class := range classes {
+		key := class.Domain
+		if pol.Granularity == GranularitySubsystemLifecycle {
+			key = class.Lifecycle
+		}
+		if _, seen := groups[key]; !seen {
+			order = append(order, key)
+		}
+		groups[key] = append(groups[key], class)
+	}
+	sort.Strings(order)
+
+	out := make([]Unit, 0, len(order))
+	for _, key := range order {
+		group := groups[key]
+		starts := []string{}
+		seenPath := map[string]bool{}
+		for _, class := range group {
+			for _, p := range startingPaths(class, signals, cat.Limits.MaxStartingPaths) {
+				if !seenPath[p] {
+					seenPath[p] = true
+					starts = append(starts, p)
+				}
+			}
+		}
+		if len(starts) == 0 {
+			continue
+		}
+		representative := group[0]
+		var id, domain, boundary string
+		switch pol.Granularity {
+		case GranularitySubsystemDomain:
+			id = slugID(du.ID) + "/" + slugID(key)
+			domain, boundary = key, "domain-wide"
+		case GranularitySubsystemLifecycle:
+			id = slugID(du.ID) + "/lifecycle/" + slugID(key)
+			domain, boundary = "lifecycle", key
+		default:
+			continue
+		}
+		out = append(out, newUnit(id, du.ID, domain, boundary, representative.ID, starts))
+	}
+	return out
+}
+
+// newUnit crea una unidad planificada con su evidencia vacía.
+func newUnit(id, subsystem, domain, boundary, attackClass string, starts []string) Unit {
+	return Unit{
+		CoverageID:    id,
+		Subsystem:     subsystem,
+		Domain:        domain,
+		Boundary:      boundary,
+		AttackClass:   attackClass,
+		StartingPaths: starts,
+		State:         StatePlanned,
+		Wave:          0,
+		ReviewedPaths: []string{},
+		Checks:        []Check{},
+		Candidates:    []string{},
+		Unresolved:    []string{},
+		Attempts:      []Attempt{},
+	}
 }
 
 // PriorFrom resume una corrida anterior como contexto. onlySameRevision indica
