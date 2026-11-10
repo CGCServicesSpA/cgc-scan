@@ -276,13 +276,33 @@ esac
 if ! printf '%s\n' "$ACTUAL" | grep -Eq 'esquema [0-9]+\.[0-9]+\.[0-9]+'; then
     die "el binario no declara el esquema del reporte: $ACTUAL"
 fi
-SCHEMA_FILE="$SCRIPT_DIR/schemas/report.schema.json"
-if [ -f "$SCHEMA_FILE" ]; then
-    SCHEMA=$(sed -n 's/.*report-\([0-9][0-9.]*\)\.json.*/\1/p' "$SCHEMA_FILE" | head -n 1)
-    if [ -n "$SCHEMA" ] && ! printf '%s\n' "$ACTUAL" | grep -Fq "esquema $SCHEMA"; then
-        die "el binario no declara el esquema $SCHEMA: $ACTUAL"
-    fi
+# Los esquemas públicos viajan con el paquete y se verifican todos: la
+# validación no se omite silenciosamente por ausencia de esquema.
+SCHEMAS_DIR="$SCRIPT_DIR/schemas"
+if [ ! -d "$SCHEMAS_DIR" ]; then
+    die "el paquete no trae el directorio schemas/ con los esquemas públicos"
 fi
+for SCHEMA in report.schema.json agent.schema.json audit-ledger.schema.json findings.schema.json; do
+    SCHEMA_FILE="$SCHEMAS_DIR/$SCHEMA"
+    if [ ! -f "$SCHEMA_FILE" ]; then
+        die "el paquete no trae el esquema público $SCHEMA"
+    fi
+    NAME=$(basename "$SCHEMA" .schema.json)
+    VER=$(grep -o "${NAME}-[0-9][0-9.]*" "$SCHEMA_FILE" | head -n 1 | sed 's/\.\{1,\}$//' || true)
+    case "$NAME" in
+        report)
+            REPORT_VER=${VER#report-}
+            if [ -n "$REPORT_VER" ] && ! printf '%s\n' "$ACTUAL" | grep -Fq "esquema $REPORT_VER"; then
+                die "el binario no declara el esquema del reporte $REPORT_VER: $ACTUAL"
+            fi
+            ;;
+        *)
+            if [ -n "$VER" ] && ! printf '%s\n' "$ACTUAL" | grep -Fq "$VER"; then
+                die "el binario no declara el contrato $VER que exige el esquema $SCHEMA: $ACTUAL"
+            fi
+            ;;
+    esac
+done
 
 if [ "$PACKAGE" -eq 1 ]; then
     OS=$(detect_os)
@@ -299,6 +319,18 @@ if [ "$PACKAGE" -eq 1 ]; then
     for f in install.sh VERSION LICENSE README.md SECURITY.md THIRD_PARTY_NOTICES.md; do
         [ -f "$SCRIPT_DIR/$f" ] && cp "$SCRIPT_DIR/$f" "$STAGE/$NAME/$f"
     done
+    # Los cuatro esquemas públicos viajan con el paquete: el instalador
+    # verifica la concordancia entre esquemas, binario y versión sin
+    # depender del checkout original.
+    if [ -d "$SCRIPT_DIR/schemas" ]; then
+        mkdir -p "$STAGE/$NAME/schemas"
+        for s in report.schema.json agent.schema.json audit-ledger.schema.json findings.schema.json; do
+            [ -f "$SCRIPT_DIR/schemas/$s" ] || die "falta el esquema público $s"
+            cp "$SCRIPT_DIR/schemas/$s" "$STAGE/$NAME/schemas/$s"
+        done
+    else
+        die "el checkout no trae schemas/; el paquete debe ser autosuficiente"
+    fi
     # La skill y su instalador viajan con el paquete para que install.sh pueda
     # actualizarla sin depender del repositorio.
     if [ -f "$SCRIPT_DIR/scripts/install-skill.sh" ]; then

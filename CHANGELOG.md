@@ -2,6 +2,13 @@
 
 ## Sin publicar
 
+- `install.sh` y su paquete son **autosuficientes con esquemas**: los cuatro
+  esquemas públicos (`report`, `agent`, `audit-ledger`, `findings`) viajan con
+  el paquete y el instalador verifica la concordancia entre esquemas, binario
+  y versión sin depender del checkout original; un esquema ausente o
+  incompatible produce un error explícito y la validación no se omite
+  silenciosamente. La línea de `--version` declara los contratos embebidos
+  (`esquemas[audit-ledger-1.0.0,findings-1.0.0,agent-1.0.0]`).
 - `--out` de `audit` verifica el destino antes de crear artefactos y
   **rechaza** los internos al repositorio que Git no ignora: la evidencia de
   una corrida no contamina el árbol del proyecto. En proyectos sin Git el

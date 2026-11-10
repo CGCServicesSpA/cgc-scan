@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/CGCServicesSpA/cgc-scan/internal/audit"
 	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policy"
 	"github.com/CGCServicesSpA/cgc-scan/internal/version"
@@ -198,7 +199,10 @@ func versionLine() string {
 	for _, id := range ids {
 		parts = append(parts, id+"="+m.Engines[id].Version)
 	}
-	return line + " motores[" + strings.Join(parts, ",") + "]"
+	// Los esquemas embebidos viajan en la línea de versión: el instalador
+	// verifica la concordancia entre esquemas, binario y versión.
+	esquemas := []string{audit.LedgerSchemaVersion, audit.FindingsSchemaVersion, version.AgentSchemaVersion}
+	return line + " motores[" + strings.Join(parts, ",") + "] esquemas[" + strings.Join(esquemas, ",") + "]"
 }
 
 func parseLevel(level string, quiet, verbose bool) (slog.Level, error) {

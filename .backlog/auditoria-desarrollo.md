@@ -518,9 +518,13 @@ Aceptación:
 
 ## P2-7 — Paquete autosuficiente con esquemas
 
-**Estado:** pendiente. **Dependencias:** ninguna para el defecto actual. **Estimación:** 1 día.
+**Estado:** completada. **Dependencias:** ninguna para el defecto actual. **Estimación:** 1 día.
 
 **Archivo principal:** `install.sh`.
+
+**Decisión tomada:** el instalador exige el directorio `schemas/` con los
+cuatro esquemas públicos (paquete o checkout) y verifica su concordancia con
+el binario; sin esquemas la instalación falla explícitamente.
 
 Trabajo:
 
