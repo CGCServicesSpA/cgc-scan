@@ -126,9 +126,11 @@ Aceptación y pruebas:
 
 ## P0-4 — Recuperación de unidades abandonadas
 
-**Estado:** pendiente. **Dependencias:** P0-1 y P0-2. **Estimación:** 2 días.
+**Estado:** completada. **Dependencias:** P0-1 y P0-2. **Estimación:** 2 días.
 
-**Archivos:** `internal/audit/broker.go`, `internal/cli/audit.go`, esquema del ledger.
+**Decisión tomada:** la ola aumenta en la siguiente asignación, no en el
+reinicio; el intento archivado registra la ola que le correspondió. Solo
+`in_progress` es elegible para reinicio.
 
 Trabajo:
 

@@ -25,6 +25,11 @@
   `status` lee con bloqueo compartido. Dos procesos concurrentes ya no pueden
   asignar la misma unidad a dueños distintos ni perder entregas; cancelar una
   espera no modifica la corrida y el bloqueo muere con el proceso.
+- Nuevo `audit reset-unit --coverage-id ID --reason "..."`: recupera una
+  unidad abandonada devolviéndola a `planned`, cierra el intento vigente como
+  `blocked` con su razón y archiva dueño, ola y checks disponibles. La ola
+  aumenta en la siguiente asignación; las entregas tardías del intento
+  abandonado se rechazan y un reinicio repetido no agrega historial falso.
 - `audit` valida semánticamente `candidates.json` al cargarlo y antes de
   persistirlo (`ValidateCandidates`): independencia entre cazador y
   verificadores, ramas `escalated`/`final` permitidas por estado, coherencia de

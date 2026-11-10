@@ -87,6 +87,14 @@ el contrato. El reporte lo repite.
 - `--budget N` cuenta invocaciones de agente. Si se agota con unidades
   pendientes, la corrida queda `incomplete` con razón `budget_exhausted` y esas
   unidades pasan a `deferred`. Nunca se excede el presupuesto en silencio.
+- `audit reset-unit --coverage-id ID --reason "..."` recupera una unidad
+  abandonada: cierra el intento vigente como `blocked` con la razón dada,
+  archiva dueño, ola y checks realmente disponibles, y devuelve la unidad a
+  `planned` con evidencia limpia. La ola aumenta en la **siguiente
+  asignación**, no en el reinicio; el intento archivado registra la ola que le
+  correspondió. Una entrega tardía del intento abandonado se rechaza por el
+  estado y el dueño nuevos, y un reinicio repetido o de una unidad no
+  elegible no agrega historial falso.
 
 ## Validación del estado de verificación
 

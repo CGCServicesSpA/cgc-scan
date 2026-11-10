@@ -757,6 +757,51 @@ func deferRemaining(l *Ledger, units []*Unit, reason string) {
 	l.Recompute()
 }
 
+// ResetUnit devuelve una unidad abandonada a planned: cierra el intento
+// vigente como blocked con la razón dada, archiva dueño, ola y checks
+// realmente disponibles, y limpia la evidencia vigente. La ola aumenta en la
+// siguiente asignación, no en el reinicio; el intento archivado registra la
+// ola que le correspondió. Una entrega tardía del intento abandonado se
+// rechaza por el estado y el dueño nuevos.
+func ResetUnit(l *Ledger, coverageID, reason string) error {
+	if l == nil {
+		return errors.New("auditoría: ledger obligatorio")
+	}
+	if l.RunStatus != StatusInProgress {
+		return fmt.Errorf("auditoría: la corrida está %s y no acepta reinicios de unidad", l.RunStatus)
+	}
+	if strings.TrimSpace(reason) == "" {
+		return errors.New("auditoría: el reinicio exige una razón no vacía")
+	}
+	unit := l.UnitByID(coverageID)
+	if unit == nil {
+		return fmt.Errorf("auditoría: coverage_id desconocido: %s", coverageID)
+	}
+	if unit.State != StateInProgress {
+		return fmt.Errorf("auditoría: la unidad %s está %s; solo in_progress puede reiniciarse", coverageID, unit.State)
+	}
+	unit.Attempts = append(unit.Attempts, Attempt{
+		Wave:          unit.Wave,
+		AgentID:       unit.Owner,
+		State:         StateBlocked,
+		ReviewedPaths: []string{},
+		Checks:        []Check{},
+		Candidates:    []string{},
+		Unresolved:    []string{},
+		Reason:        reason,
+	})
+	unit.State = StatePlanned
+	unit.Owner = ""
+	unit.ReviewedPaths = []string{}
+	unit.Checks = []Check{}
+	unit.Candidates = []string{}
+	unit.Unresolved = []string{}
+	unit.Hardening = nil
+	unit.Reason = ""
+	l.Recompute()
+	return nil
+}
+
 // SubmitOutcome resume lo que aplicó una entrega.
 type SubmitOutcome struct {
 	SchemaVersion string   `json:"schema_version"`

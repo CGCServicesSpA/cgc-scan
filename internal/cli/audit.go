@@ -110,8 +110,78 @@ presupuesto y deriva los reportes. La evidencia la aporta el agente.`,
 		a.newAuditSubmitCommand(&out),
 		a.newAuditReportCommand(&out),
 		a.newAuditStatusCommand(&out),
+		a.newAuditResetUnitCommand(&out),
 	)
 	return cmd
+}
+
+func (a *App) newAuditResetUnitCommand(out *string) *cobra.Command {
+	var (
+		format     string
+		coverageID string
+		reason     string
+	)
+	cmd := &cobra.Command{
+		Use:   "reset-unit [ruta]",
+		Short: "Devuelve una unidad abandonada a planned y archiva el intento",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := oneOf("format", format, "json", "text"); err != nil {
+				return err
+			}
+			if strings.TrimSpace(coverageID) == "" {
+				return UsageErrorf("--coverage-id es obligatorio")
+			}
+			if strings.TrimSpace(reason) == "" {
+				return UsageErrorf("--reason es obligatorio y no puede quedar vacío")
+			}
+			target := ""
+			if len(args) == 1 {
+				target = args[0]
+			}
+			return a.runAuditResetUnit(cmd.Context(), auditTarget(target), *out, format, coverageID, reason)
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text")
+	cmd.Flags().StringVar(&coverageID, "coverage-id", "", "identificador de la unidad a reiniciar")
+	cmd.Flags().StringVar(&reason, "reason", "", "razón del abandono, archivada con el intento")
+	return cmd
+}
+
+func (a *App) runAuditResetUnit(ctx context.Context, target, out, format, coverageID, reason string) error {
+	store, err := a.auditStore(target, out)
+	if err != nil {
+		return err
+	}
+	var unit *audit.Unit
+	if err := store.WithRunLock(ctx, auditLockWait, func() error {
+		st, err := store.LoadState()
+		if err != nil {
+			return err
+		}
+		if err := audit.ResetUnit(st.Ledger, coverageID, reason); err != nil {
+			return err
+		}
+		unit = st.Ledger.UnitByID(coverageID)
+		return store.CommitState(st)
+	}); err != nil {
+		return IncompleteErrorf("%v", err)
+	}
+	if format == "json" {
+		payload, err := json.MarshalIndent(map[string]any{
+			"schema_version": "audit-reset-unit-1.0.0",
+			"coverage_id":    unit.CoverageID,
+			"state":          unit.State,
+			"attempts":       len(unit.Attempts),
+		}, "", "  ")
+		if err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		return report.EmitRaw(a.Stdout, append(payload, '\n'))
+	}
+	_, err = fmt.Fprintf(a.Stdout, "Unidad %s devuelta a planned; intento archivado como blocked (%d en total)\n",
+		unit.CoverageID, len(unit.Attempts))
+	return err
 }
 
 func (a *App) newAuditInitCommand(out *string) *cobra.Command {
