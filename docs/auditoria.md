@@ -317,6 +317,24 @@ cambió.
 
 `audit report` devuelve 0 solo si `run_status: complete`.
 
+## Tareas como prompt
+
+`audit next --format prompt` renderiza la asignación con una plantilla
+versionada (`internal/audit/prompt/v1.tmpl`, `TaskPromptTemplateVersion`),
+conservando JSON y texto. El prompt incluye contexto de la corrida, reglas por
+tipo de tarea, el invariante y los checks de la clase, las rutas de partida y
+el contrato de respuesta exigido.
+
+- El contenido del proyecto y del agente es un **dato no confiable**: se
+  sanea (`masking.Sanitize`) y se delimita con `<<<CGC_DATOS_NO_CONFIABLES_` +
+  nonce. Un título con ANSI, caracteres de control o un delimitador aparente
+  no rompe el aislamiento.
+- El render ocurre después de la asignación persistida: no cambia la
+  asignación ni consume presupuesto adicional; el formato JSON mantiene
+  compatibilidad.
+- Los golden del render (`testdata/prompt/*.golden`) se crean con
+  `go test ./internal/audit -update-prompt`.
+
 ## Presupuesto
 
 `--budget N` es el máximo de invocaciones de agente en **todas las fases**, con

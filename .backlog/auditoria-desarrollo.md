@@ -280,9 +280,12 @@ Aceptación y pruebas:
 
 ## P1-5 — Render de tareas como prompt
 
-**Estado:** pendiente. **Dependencias:** contratos de tareas de P1-2 y P1-3. **Estimación:** 3 días.
+**Estado:** completada. **Dependencias:** contratos de tareas de P1-2 y P1-3. **Estimación:** 3 días.
 
-**Archivos:** nuevo `internal/audit/prompt.go`, plantillas versionadas y CLI.
+**Decisión tomada:** la plantilla vive embebida en `internal/audit/prompt/v1.tmpl`
+(siguiendo el patrón de `internal/report/prompt`); el bloque de datos de la
+tarea se renderiza en Go con saneado de todo el contenido interpolado. El
+nonce es aleatorio salvo en pruebas, que fijan uno propio no conflictivo.
 
 Trabajo:
 

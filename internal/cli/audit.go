@@ -235,7 +235,7 @@ func (a *App) newAuditNextCommand(out *string) *cobra.Command {
 		Short: "Entrega la siguiente asignación al agente",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := oneOf("format", format, "json", "text"); err != nil {
+			if err := oneOf("format", format, "json", "text", "prompt"); err != nil {
 				return err
 			}
 			if agent == "" {
@@ -254,7 +254,7 @@ func (a *App) newAuditNextCommand(out *string) *cobra.Command {
 			return a.runAuditNext(cmd, target, *out, format, agent, maxUnits)
 		},
 	}
-	cmd.Flags().StringVar(&format, "format", "json", "formato: json|text")
+	cmd.Flags().StringVar(&format, "format", "json", "formato: json|text|prompt")
 	cmd.Flags().StringVar(&agent, "agent", "", "identificador canónico del agente que recibe la asignación")
 	cmd.Flags().IntVar(&maxUnits, "max-units", 0, "máximo de unidades por asignación (0 = tope del catálogo)")
 	return cmd
@@ -551,6 +551,15 @@ func (a *App) runAuditNext(cmd *cobra.Command, target, out, format, agent string
 			return IncompleteErrorf("%v", err)
 		}
 		return report.EmitRaw(a.Stdout, data)
+	}
+	if format == "prompt" {
+		// El render ocurre después de la asignación persistida: no cambia la
+		// asignación ni consume presupuesto adicional.
+		abs, err := filepath.Abs(auditTarget(target))
+		if err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		return audit.EmitTaskPrompt(a.Stdout, task, abs, "")
 	}
 	_, err = fmt.Fprint(a.Stdout, renderAuditTask(task))
 	return err

@@ -2,6 +2,13 @@
 
 ## Sin publicar
 
+- `audit next --format prompt` renderiza la asignación como prompt con una
+  plantilla versionada: contexto de la corrida, reglas por tipo de tarea
+  (caza, verificación, revisión de escalación, revisión final, crítica), el
+  invariante y los checks de la clase, las rutas de partida y el contrato de
+  respuesta exigido. El contenido del proyecto y del agente se sanea y se
+  delimita con un nonce; ANSI, caracteres de control y delimitadores
+  aparentes no rompen el aislamiento. JSON y texto siguen disponibles.
 - `--budget` de `audit` reserva presupuesto para las fases obligatorias antes
   de repartir caza: el motor se niega a lanzar cazadores si el presupuesto no
   cubre el reparto más la cadena de verificación de un candidato y la crítica
