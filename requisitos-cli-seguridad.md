@@ -357,6 +357,34 @@ La columna "Verificado por" enlaza cada requisito con su criterio de aceptación
 | RF-37 | Recetas de validación de tests y build: detectar candidatos por lenguaje, permitir confirmarlos en la configuración de usuario (`recipes --set` o `scan --confirm-recipes`) y publicarlos en el prompt como recetas de confianza; sin receta confirmada, declarar la validación bloqueada. | Propuesto | CA-57 |
 | RF-38 | Ejecutar los adaptadores con la versión de lenguaje que declara el proyecto dentro de un contenedor derivado de la imagen oficial, con el proyecto montado en solo lectura, la herramienta fijada en el manifiesto y la base resuelta por digest y declarada en el reporte; sin Docker o si la imagen falla, usar el toolchain del host y declarar la cobertura. | Propuesto | CA-70, CA-71, CA-72 |
 
+### 7.6 Requisitos de auditoría asistida (agregados en 0.2, backlog de auditoría)
+
+La auditoría asistida (`cgc-scan audit`) implementa el protocolo determinista
+de una auditoría con un agente externo. La columna "Verificado por" enlaza con
+los criterios de aceptación nuevos (sección 13) y "Tarea" con el backlog
+(`.backlog/auditoria-desarrollo.md`).
+
+| ID | Requisito verificable | Tarea | Verificado por |
+| --- | --- | --- | --- |
+| RF-39 | Validar semánticamente el estado de verificación al cargarlo y antes de persistirlo, siempre contra el ledger: independencia entre cazador y verificadores, ramas `escalated`/`final` por estado, fingerprints coincidentes y referencias en ambas direcciones. Decodificación estricta con EOF después del objeto JSON. | P0-5 | CA-73 |
+| RF-40 | Serializar las mutaciones de la corrida con bloqueo exclusivo por directorio; `status` lee con bloqueo compartido. Cancelar una espera no modifica la corrida y el bloqueo muere con el proceso. | P0-2 | CA-74 |
+| RF-41 | Persistir la corrida de forma transaccional en un único archivo autoritativo (`state.json`) con una frontera de commit atómica; los documentos derivados se regeneran desde el estado autoritativo. Nunca reinterpretar silenciosamente un estado antiguo. | P0-1 | CA-75 |
+| RF-42 | Validar las citas (`trace`, `evidence`) contra la fuente declarada por la corrida, representada explícitamente (`revision` o `worktree`). Una traza fabricada se rechaza en `submit`; una revisión no resoluble es un bloqueo explícito; un archivo citado que cambió impide presentar el hallazgo como vigente. | P0-3 | CA-76, CA-77 |
+| RF-43 | Recuperar unidades abandonadas con `audit reset-unit`, archivando el intento como `blocked` con su razón y devolviendo la unidad a `planned`; las entregas tardías se rechazan y un reinicio repetido no agrega historial falso. | P0-4 | CA-78 |
+| RF-44 | Acotar las entradas públicas: entrega 8 MiB, ledger/candidatos 16 MiB, hallazgos 32 MiB, 64 niveles de anidamiento; lectura de archivos acotada y fuzz targets de los decodificadores en CI. | P0-6 | CA-79 |
+| RF-45 | Perfiles con semántica real (`quick`/`standard`/`deep`) que fijan granularidad, fases obligatorias y condiciones de cierre desde el catálogo versionado; una corrida no se declara completa mientras le falte una fase obligatoria. | P1-1 | CA-80 |
+| RF-46 | Verificar en dos pasadas (`standard`/`deep`): validar el candidato y revisar el registro final son fases distintas con independencia de agentes; un reemplazo material no llega al informe sin revisión independiente. | P1-3 | CA-81 |
+| RF-47 | Exigir crítica independiente de cobertura (`standard`/`deep`): emitida al completar la ola, a un agente sin unidades en curso; el cierre requiere crítica final limpia. | P1-2 | CA-82 |
+| RF-48 | Reservar presupuesto para las fases obligatorias antes de repartir caza y unificar el agotamiento en caza, verificación y crítica antes de responder; el mensaje de la CLI coincide con el estado persistido. | P1-4 | CA-83 |
+| RF-49 | Renderizar las asignaciones como prompt (`--format prompt`) con plantilla versionada, saneado y delimitadores con nonce; el contenido del proyecto y del agente es un dato no confiable. | P1-5 | CA-84 |
+| RF-50 | Exponer continuidad verificable entre corridas: identidad archivada por unidad, y veredictos previos con la fuente cambiada exigen revalidación (`stale_confirmed`) o se reabren (`stale_rejected`). | P1-6 | CA-85 |
+| RF-51 | Consolidar variantes del mismo defecto por identidad explícita de causa raíz (`root_cause_ref`), con selección determinista del representativo y motivo archivado. | P1-7 | CA-86 |
+| RF-52 | Comparar dos auditorías (`audit compare`) con clasificación `persistent`/`new`/`resolved`/`not_evaluated`; la resolución exige evidencia de evaluación actual. | P1-8 | CA-87 |
+| RF-53 | Verificar la integridad del informe sellado con HMAC y clave local dedicada; `--verify` es solo lectura y cada fallo produce un diagnóstico explícito. | P1-9 | CA-88 |
+| RF-54 | Importar leads de un escaneo (`audit import`) sin presentarlos como confirmados; la severidad del motor nunca se convierte en severidad auditada. | P2-1 | CA-89 |
+| RF-55 | Explicar el estado persistido (`audit explain`) por unidad o fingerprint con diagnóstico útil para identificadores inexistentes o ambiguos. | P2-2 | CA-90 |
+| RF-56 | Verificar el destino `--out` antes de crear artefactos y rechazar los internos no ignorados por Git. | P2-4 | CA-91 |
+
 Los filtros de visualización no deben ocultar el estado real de cobertura. Un hallazgo solo pasa a *resuelto* si su ámbito se analizó satisfactoriamente con cobertura comparable; la ausencia en un escaneo parcial significa *no evaluado*.
 
 ## 8. Contrato CLI
@@ -617,6 +645,25 @@ En v1, la CLI termina su responsabilidad al entregar resultados normalizados, ev
 | **CA-70** *(nuevo, RF-38)* | Con Docker disponible y un proyecto Go con `go.mod`, govulncheck se ejecuta dentro de una imagen derivada de la versión Go declarada, con el proyecto montado en solo lectura. El reporte muestra `mode: docker`, la etiqueta en `tools.engines[].image` y una preparación `toolchain:govulncheck` con la base y su digest resuelto. |
 | **CA-71** *(nuevo, RF-38)* | La versión se lee de cada ecosistema (`go.mod`, `.nvmrc`/`engines.node`, `composer.json`, `Cargo.toml`, `pyproject.toml`) y dos unidades con versiones distintas usan imágenes distintas. Sin Docker, el adaptador usa el toolchain del host y, si falta, queda `requirement_missing` con código 3. |
 | **CA-72** *(nuevo, RF-38)* | `--offline` y `--no-auto-install` no descargan ni construyen imágenes; si falta la imagen, el adaptador cae al host o se omite. Un adaptador en contenedor declara `isolation: configured` y el reporte incluye la limitación de red y de base no fijada en el manifiesto; nunca declara `enforced` ni un resultado limpio con la imagen ausente. |
+| **CA-73** *(nuevo, RF-39)* | Un `candidates.json` editado a mano con verificador igual al cazador, rama final equivocada o basura posterior al objeto JSON se rechaza al abrir con el candidato y la invariante incumplida; una carga fallida no modifica archivos. |
+| **CA-74** *(nuevo, RF-40)* | Procesos concurrentes de `next`/`submit` se serializan sin dueños duplicados ni pérdida de entregas; cancelar una espera no modifica la corrida. |
+| **CA-75** *(nuevo, RF-41)* | Un fallo en cualquier punto de persistencia deja, al reabrir, el estado anterior o el nuevo íntegros; nunca existe «unidad candidate sin candidato». |
+| **CA-76** *(nuevo, RF-42)* | Una traza que cita un archivo inexistente, una línea fuera de rango o una ruta que escapa de la raíz se rechaza en `submit` sin mutar la corrida. |
+| **CA-77** *(nuevo, RF-42)* | Una cita histórica válida permanece válida aunque cambie el árbol; un hallazgo no se presenta como vigente tras un cambio sin revalidación (corrida incompleta con razón `source_diverged`). |
+| **CA-78** *(nuevo, RF-43)* | El reinicio archiva el intento como `blocked` con su razón, otro agente recibe la unidad con la ola siguiente y una entrega tardía se rechaza por estado y dueño nuevos. |
+| **CA-79** *(nuevo, RF-44)* | Ningún decodificador entra en pánico con entrada arbitraria; el límite exacto se acepta y un byte por encima se rechaza; CI corre 20 s por target. |
+| **CA-80** *(nuevo, RF-45)* | Un mismo fixture produce ledgers con granularidad distinta y determinista por perfil; ningún perfil se declara completo mientras le falten fases obligatorias. |
+| **CA-81** *(nuevo, RF-46)* | Un reemplazo material no llega al informe final sin revisión independiente; el revisor no es cazador, validador ni autor del reemplazo. |
+| **CA-82** *(nuevo, RF-47)* | Una superficie omitida genera trabajo, se procesa y vuelve a crítica; `standard` y `deep` no cierran sin crítica final limpia y el informe distingue limpia, pendiente y no requerida. |
+| **CA-83** *(nuevo, RF-48)* | Un presupuesto que no cubre las fases obligatorias no asigna caza y termina `incomplete` con la razón exacta; CLI y estado persistido coinciden. |
+| **CA-84** *(nuevo, RF-49)* | El render como prompt es determinista con nonce fijo; ANSI, controles y delimitadores aparentes no rompen el aislamiento; el render no consume presupuesto. |
+| **CA-85** *(nuevo, RF-50)* | Un confirmado previo nunca se copia como confirmado actual; un cambio de fuente afecta a las unidades dependientes y preserva las independientes. |
+| **CA-86** *(nuevo, RF-51)* | Dos variantes comprobadas del mismo defecto generan un registro consolidado; defectos distintos con títulos similares permanecen separados y cada asignación permite reconstruir por qué fue elegida. |
+| **CA-87** *(nuevo, RF-52)* | Corridas parciales, bloqueadas o sin cobertura no producen falsos `resolved`; la comparación no modifica las corridas. |
+| **CA-88** *(nuevo, RF-53)* | Modificar el ledger o los registros invalida la verificación; la clave nunca aparece en informes, logs ni paquetes y su ausencia o reemplazo produce diagnóstico explícito. |
+| **CA-89** *(nuevo, RF-54)* | Ningún hallazgo importado aparece automáticamente como confirmado; importar dos veces produce el mismo trabajo pendiente. |
+| **CA-90** *(nuevo, RF-55)* | `status` y `explain` no reescriben artefactos y sus salidas coinciden con el estado persistido; identificadores inexistentes o ambiguos producen errores útiles. |
+| **CA-91** *(nuevo, RF-56)* | Un destino `--out` interno visible se rechaza antes de crear artefactos; un destino interno ignorado por Git se permite y la comprobación no modifica `.gitignore`. |
 
 Los criterios relativos al agente validan el contenido del prompt y un flujo de integración controlado; no constituyen garantía de obediencia de cualquier agente externo.
 
