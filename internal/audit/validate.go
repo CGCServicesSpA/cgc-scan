@@ -390,6 +390,9 @@ func ValidateFindingsSemantics(f *Findings) error {
 				is.addf("%s: evidence.file no es relativa al repositorio: %q", where, e.File)
 			}
 		}
+		if r.RootCauseRef != "" && !fingerprintPattern.MatchString(r.RootCauseRef) {
+			is.addf("%s: root_cause_ref no cumple el patrón canónico: %q", where, r.RootCauseRef)
+		}
 		switch r.Verdict {
 		case VerdictConfirmed:
 			validateConfirmed(where, r, &is)

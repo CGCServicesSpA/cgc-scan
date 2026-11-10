@@ -329,9 +329,12 @@ Aceptación y pruebas:
 
 ## P1-7 — Consolidación por causa raíz y orden explicable
 
-**Estado:** pendiente. **Dependencias:** P1-3 y P1-6. **Estimación:** 2 días.
+**Estado:** completada. **Dependencias:** P1-3 y P1-6. **Estimación:** 2 días.
 
-**Archivos:** broker y ledger.
+**Decisión tomada:** la identidad de causa raíz es explícita
+(`root_cause_ref` en el contrato público de hallazgos, opcional); la
+selección del representativo es (veredicto desc, fingerprint asc) y el motivo
+se archiva con las variantes en `merged_into`.
 
 Trabajo:
 

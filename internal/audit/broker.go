@@ -92,6 +92,14 @@ type Candidate struct {
 	// momento en que se creó el registro presentable. Las claves tienen la
 	// forma "<role>:<file>" con role escalated o final.
 	SourceHashes map[string]string `json:"source_hashes,omitempty"`
+	// ConsolidationKey es la identidad explícita de causa raíz declarada por
+	// quien introdujo el registro: dos variantes comprobadas del mismo
+	// defecto la comparten. Un registro sin clave no se consolida; la
+	// similitud textual nunca es prueba suficiente.
+	ConsolidationKey string `json:"consolidation_key,omitempty"`
+	// MergedInto es el fingerprint del registro consolidado que absorbió a
+	// este; vacío en un candidato independiente.
+	MergedInto string `json:"merged_into,omitempty"`
 }
 
 // VerificationAttempt archiva una decisión de verificación.
@@ -136,6 +144,92 @@ func (c *Candidates) CandidateByFingerprint(fp string) *Candidate {
 		}
 	}
 	return nil
+}
+
+// Consolidation archiva una agrupación de variantes del mismo defecto: el
+// registro que representa al grupo, las variantes que absorbió y el motivo
+// archivado de la selección.
+type Consolidation struct {
+	Key            string   `json:"key"`
+	Representative string   `json:"record"`
+	Alternates     []string `json:"alternatives"`
+	Reason         string   `json:"reason"`
+}
+
+// Reconcile consolida los registros decididos que su productor agrupó con la
+// misma clave de causa raíz: dos variantes comprobadas del mismo defecto
+// generan un registro consolidado. Defectos distintos con títulos similares
+// permanecen separados: la similitud textual nunca es prueba suficiente, y
+// solo confluye lo que el productor agrupó explícitamente con la misma clave.
+//
+// La selección del registro representativo es determinista —mayor veredicto
+// auditado y, a igualdad, menor fingerprint— y queda archivada con su motivo;
+// el orden de entrada no cambia el resultado. Los fingerprints de origen se
+// conservan en el campo MergedInto de cada variante absorbida.
+func Reconcile(c *Candidates) []Consolidation {
+	if c == nil {
+		return nil
+	}
+	groups := map[string][]*Candidate{}
+	order := make([]string, 0)
+	for i := range c.Items {
+		item := &c.Items[i]
+		if item.State != CandidateDecided || item.Final == nil || item.ConsolidationKey == "" {
+			continue
+		}
+		if _, seen := groups[item.ConsolidationKey]; !seen {
+			order = append(order, item.ConsolidationKey)
+		}
+		groups[item.ConsolidationKey] = append(groups[item.ConsolidationKey], item)
+	}
+	sort.Strings(order)
+
+	out := make([]Consolidation, 0)
+	for _, key := range order {
+		members := groups[key]
+		if len(members) < 2 {
+			continue
+		}
+		winner := finalCandidate(members)
+		antecedentes := make([]string, 0, len(members)-1)
+		for _, cand := range members {
+			if cand.Fingerprint == winner.Fingerprint {
+				continue
+			}
+			cand.MergedInto = winner.Fingerprint
+			antecedentes = append(antecedentes, cand.Fingerprint)
+		}
+		reason := "se eligió el mayor veredicto auditado y, a igualdad, el menor fingerprint"
+		sortedMembers := make([]*Candidate, len(members))
+		copy(sortedMembers, members)
+		sort.Slice(sortedMembers, func(i, j int) bool {
+			return sortedMembers[i].Fingerprint < sortedMembers[j].Fingerprint
+		})
+		for _, cand := range sortedMembers {
+			reason += "; candidato " + cand.Fingerprint + " (" + cand.Final.Verdict + ")"
+		}
+		out = append(out, Consolidation{
+			Key:            key,
+			Representative: winner.Fingerprint,
+			Alternates:     antecedentes,
+			Reason:         reason,
+		})
+	}
+	return out
+}
+
+// finalCandidate elige el registro representativo de un grupo: mayor rango de
+// veredicto y, a igualdad, menor fingerprint. Nada depende del orden de
+// entrada.
+func finalCandidate(members []*Candidate) *Candidate {
+	best := members[0]
+	for _, cand := range members[1:] {
+		rank, bestRank := VerdictRank(cand.Final.Verdict), VerdictRank(best.Final.Verdict)
+		if rank > bestRank || (rank == bestRank && cand.Fingerprint < best.Fingerprint) {
+			best = cand
+		}
+	}
+	return best
 }
 
 // MaterialChange compara dos registros y informa si el paso altera la
@@ -1264,12 +1358,13 @@ func submitHunt(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, erro
 		for _, fp := range res.CandidateFingerprints {
 			record := records[fp]
 			c.Items = append(c.Items, Candidate{
-				Fingerprint: fp,
-				Unit:        res.CoverageID,
-				HunterAgent: sub.AgentID,
-				Proposed:    record,
-				State:       CandidatePending,
-				Attempts:    []VerificationAttempt{},
+				Fingerprint:      fp,
+				Unit:             res.CoverageID,
+				HunterAgent:      sub.AgentID,
+				Proposed:         record,
+				State:            CandidatePending,
+				Attempts:         []VerificationAttempt{},
+				ConsolidationKey: record.RootCauseRef,
 			})
 			out.Pending++
 		}

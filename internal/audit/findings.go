@@ -117,6 +117,11 @@ type Record struct {
 	// comunes
 	Trace    []TraceStep `json:"trace"`
 	Evidence []Evidence  `json:"evidence"`
+	// RootCauseRef es la identidad explícita de causa raíz: dos variantes
+	// comprobadas del mismo defecto la comparten y se consolidan en un
+	// registro. Opcional; sin ella no hay consolidación y la similitud
+	// textual nunca es prueba suficiente.
+	RootCauseRef string `json:"root_cause_ref,omitempty"`
 }
 
 // MarshalJSON emite solo los campos del veredicto. El contrato público no
@@ -139,13 +144,14 @@ func (r Record) MarshalJSON() ([]byte, error) {
 			Remediation      *Remediation `json:"remediation"`
 			Severity         *Severity    `json:"severity"`
 			Confidence       *Confidence  `json:"confidence"`
+			RootCauseRef     string       `json:"root_cause_ref,omitempty"`
 		}{
 			Verdict: r.Verdict, Fingerprint: r.Fingerprint, Title: r.Title,
 			Description: r.Description, RootCause: r.RootCause,
 			IntendedBehavior: r.IntendedBehavior, Trace: nonNilTrace(r.Trace),
 			Evidence: nonNilEvidence(r.Evidence), Conditions: nonNilConditions(r.Conditions),
 			Execution: r.Execution, Remediation: r.Remediation, Severity: r.Severity,
-			Confidence: r.Confidence,
+			Confidence: r.Confidence, RootCauseRef: r.RootCauseRef,
 		})
 	case VerdictNeedsValidation:
 		return json.Marshal(struct {
@@ -158,11 +164,13 @@ func (r Record) MarshalJSON() ([]byte, error) {
 			Evidence         []Evidence      `json:"evidence"`
 			Blockers         []string        `json:"blockers"`
 			ValidationPlan   *ValidationPlan `json:"validation_plan"`
+			RootCauseRef     string          `json:"root_cause_ref,omitempty"`
 		}{
 			Verdict: r.Verdict, Fingerprint: r.Fingerprint, Title: r.Title,
 			Description: r.Description, ClaimedRootCause: r.ClaimedRootCause,
 			Trace: nonNilTrace(r.Trace), Evidence: nonNilEvidence(r.Evidence),
 			Blockers: nonNil(r.Blockers), ValidationPlan: r.ValidationPlan,
+			RootCauseRef: r.RootCauseRef,
 		})
 	case VerdictRejected:
 		return json.Marshal(struct {
@@ -174,10 +182,12 @@ func (r Record) MarshalJSON() ([]byte, error) {
 			Trace            []TraceStep `json:"trace"`
 			Evidence         []Evidence  `json:"evidence"`
 			Reason           string      `json:"reason"`
+			RootCauseRef     string      `json:"root_cause_ref,omitempty"`
 		}{
 			Verdict: r.Verdict, Fingerprint: r.Fingerprint, Title: r.Title,
 			Description: r.Description, ClaimedRootCause: r.ClaimedRootCause,
 			Trace: nonNilTrace(r.Trace), Evidence: nonNilEvidence(r.Evidence), Reason: r.Reason,
+			RootCauseRef: r.RootCauseRef,
 		})
 	default:
 		return nil, fmt.Errorf("veredicto desconocido: %q", r.Verdict)

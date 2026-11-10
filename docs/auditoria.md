@@ -359,6 +359,24 @@ el contrato de respuesta exigido.
 - La cobertura nunca se suprime: una unidad auditada anteriormente sigue en el
   mapa de la corrida nueva. Las listas orientan, no suprimen.
 
+## Consolidación por causa raíz
+
+Dos variantes comprobadas del mismo defecto se consolidan en un registro. La
+identidad de causa raíz es **explícita**: el registro que introduce la
+candidatura declara `root_cause_ref` (contrato público de hallazgos, campo
+opcional); solo confluyen los registros que el productor agrupó con la misma
+clave. La similitud textual nunca es prueba suficiente: defectos distintos con
+títulos similares permanecen separados.
+
+- El registro representativo se elige de forma determinista —mayor veredicto
+  auditado y, a igualdad, menor fingerprint— y el orden de entrada no cambia
+  el resultado.
+- Los fingerprints de origen y las relaciones de consolidación se conservan:
+  cada variante absorbida queda archivada con `merged_into`, y la limitación
+  del informe permite reconstruir por qué se eligió el representante.
+- La evidencia complementaria y la independencia de revisión no cambian: las
+  variantes se verificaron de forma independiente antes de consolidarse.
+
 ## Presupuesto
 
 `--budget N` es el máximo de invocaciones de agente en **todas las fases**, con

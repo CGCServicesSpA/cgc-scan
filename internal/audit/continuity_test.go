@@ -221,7 +221,9 @@ func candDecided(fp, unit, hunter string, verdict string) Candidate {
 		Proposed:    rec,
 		State:       CandidateDecided,
 		Final:       &rec,
-		Attempts:    []VerificationAttempt{},
+		Attempts: []VerificationAttempt{{
+			AgentID: "verifier-x", Mode: ModeVerify, Decision: verdict, Record: &rec,
+		}},
 	}
 }
 

@@ -80,7 +80,14 @@ func BuildFindings(l *Ledger, c *Candidates) (*Findings, error) {
 		Provenance:    CallerProvenance(),
 		Findings:      []Record{},
 	}
+	// La consolidación por causa raíz agrupa las variantes absorbidas antes
+	// de derivar el documento: solo el registro representativo de cada grupo
+	// entra a findings.json.
+	consolidations := Reconcile(c)
 	for _, cand := range c.Items {
+		if cand.MergedInto != "" {
+			continue
+		}
 		if cand.State != CandidateDecided || cand.Final == nil {
 			continue
 		}
@@ -89,6 +96,11 @@ func BuildFindings(l *Ledger, c *Candidates) (*Findings, error) {
 	f.Recompute()
 	if err := ValidateFindingsSemantics(f); err != nil {
 		return nil, fmt.Errorf("auditoría: hallazgos derivados inválidos: %w", err)
+	}
+	for _, con := range consolidations {
+		l.Limitations = append(l.Limitations, fmt.Sprintf(
+			"registro consolidado por causa raíz: %s absorbe a %s (%s)",
+			con.Representative, strings.Join(con.Alternates, ", "), con.Key))
 	}
 	return f, nil
 }

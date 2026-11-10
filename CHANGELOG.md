@@ -2,6 +2,13 @@
 
 ## Sin publicar
 
+- **Consolidación por causa raíz**: un hallazgo puede declarar
+  `root_cause_ref` (identidad explícita de causa raíz, contrato público
+  opcional) y dos variantes comprobadas del mismo defecto se consolidan en un
+  registro: el representativo se elige de forma determinista (mayor veredicto
+  auditado y, a igualdad, menor fingerprint), las variantes absorbidas
+  conservan sus fingerprints con `merged_into`, y el motivo de la selección se
+  archiva. Defectos distintos con títulos similares permanecen separados.
 - **Continuidad verificable entre corridas**: `audit init --prior` compara
   cada unidad de la corrida anterior con su identidad archivada (hash de la
   fuente de sus rutas de partida, versión de catálogo y perfil) y declara
