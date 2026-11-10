@@ -432,7 +432,7 @@ func TestAuditBudgetExhaustionIsIncomplete(t *testing.T) {
 	root := auditProject(t)
 	runDir := filepath.Join(t.TempDir(), "run")
 	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir,
-		"--format", "json", "--budget", "1"); code != 0 {
+		"--format", "json", "--profile", "quick", "--budget", "2"); code != 0 {
 		t.Fatalf("init = %d: %s %s", code, out, errOut)
 	}
 	code, out, errOut := auditRun(t, app, "audit", "next", "--out", runDir,

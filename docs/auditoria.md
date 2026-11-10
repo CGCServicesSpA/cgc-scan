@@ -317,6 +317,32 @@ cambió.
 
 `audit report` devuelve 0 solo si `run_status: complete`.
 
+## Presupuesto
+
+`--budget N` es el máximo de invocaciones de agente en **todas las fases**, con
+coste por fase determinista:
+
+| Fase | Coste |
+| --- | --- |
+| caza | 1 invocación por asignación nueva |
+| verificación | 1 invocación por candidato nuevo y por cada firma extra (escalación, revisión final) |
+| crítica de cobertura | 1 invocación por tarea de crítica |
+| recuperación (`reset-unit`, reasignación por crítica) | 0: no se cobra de nuevo; la siguiente asignación vigente cobra 1 como asignación nueva |
+
+- **Reserva:** antes de repartir caza, el motor se niega si el presupuesto no
+  cubre el propio reparto más la cadena de verificación de un candidato (una
+  invocación por pasada del perfil) más la crítica final cuando el perfil la
+  exige y aún no corrió limpia. La reserva se computa en enteros.
+- **Agotamiento unificado:** en caza, verificación y crítica, agotar el
+  presupuesto difiere las unidades planificadas restantes y sella la corrida
+  `incomplete` con razón `budget_exhausted` antes de responder. El mensaje de
+  la CLI informa las unidades diferidas reales y coincide con el estado
+  persistido.
+- Una promoción de veredicto consume una invocación extra no reservada: la
+  reserva garantiza el mínimo documentado, no el peor caso.
+- Reiniciar una unidad no reinicia el presupuesto ni duplica consumos; repetir
+  `audit next` con una asignación vigente no cobra de nuevo.
+
 ## Límites declarados
 
 Tamaños y anidamiento de las entradas públicas (`internal/audit/limits.go`),

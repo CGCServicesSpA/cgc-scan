@@ -755,7 +755,8 @@ func Next(l *Ledger, c *Candidates, opts NextOptions) (*Task, error) {
 
 	planned := plannedUnits(l)
 	if len(planned) == 0 {
-		if task, err := issueCritique(l, opts.AgentID, pol); task != nil {
+		task, err := issueCritique(l, opts.AgentID, pol)
+		if task != nil || err != nil {
 			return task, err
 		}
 		return nil, ErrNoTask
@@ -763,6 +764,9 @@ func Next(l *Ledger, c *Candidates, opts NextOptions) (*Task, error) {
 	if l.Budget != nil && l.Budget.Used >= l.Budget.MaxAgentInvocations {
 		deferRemaining(l, planned, "budget_exhausted")
 		return nil, ErrBudgetExhausted
+	}
+	if err := checkHuntReservation(l, pol); err != nil {
+		return nil, err
 	}
 
 	limit := opts.MaxUnits
@@ -887,7 +891,9 @@ func agentEligible(cand *Candidate, agent string) bool {
 func issueVerification(l *Ledger, cand *Candidate, agent string, fresh bool, mode string) (*Task, error) {
 	if fresh && l.Budget != nil {
 		if l.Budget.Used >= l.Budget.MaxAgentInvocations {
-			return nil, ErrBudgetExhausted
+			// Agotamiento en verificación: igual que en caza, difiere el
+			// resto y sella la corrida antes de responder.
+			return nil, budgetExhausted(l)
 		}
 		l.Budget.Used++
 	}
@@ -955,6 +961,7 @@ func sortUnitsByPriority(units []*Unit, catalog *Catalog) {
 	})
 }
 
+// deferRemaining difiere las unidades dadas y sella la corrida incompleta.
 func deferRemaining(l *Ledger, units []*Unit, reason string) {
 	for _, u := range units {
 		u.State = StateDeferred
@@ -964,6 +971,39 @@ func deferRemaining(l *Ledger, units []*Unit, reason string) {
 	l.RunStatus = StatusIncomplete
 	l.IncompleteReason = reason
 	l.Recompute()
+}
+
+// budgetExhausted unifica el agotamiento del presupuesto en caza, verificación
+// y crítica: difiere las unidades planificadas que queden y sella la corrida
+// incompleta con la razón determinista. El estado persiste antes de que la
+// CLI responda, así que el mensaje y el estado coinciden siempre.
+func budgetExhausted(l *Ledger) error {
+	if planned := plannedUnits(l); len(planned) > 0 {
+		deferRemaining(l, planned, "budget_exhausted")
+	} else {
+		l.RunStatus = StatusIncomplete
+		l.IncompleteReason = "budget_exhausted"
+		l.Recompute()
+	}
+	return ErrBudgetExhausted
+}
+
+// checkHuntReservation se niega a repartir caza si el presupuesto no cubre las
+// fases obligatorias pendientes: el propio reparto, la cadena de verificación
+// de un candidato (una invocación por pasada) y la crítica final cuando el
+// perfil la exige y aún no corrió limpia. La reserva se computa en enteros.
+func checkHuntReservation(l *Ledger, pol *ProfilePolicy) error {
+	if l.Budget == nil {
+		return nil
+	}
+	reserve := pol.VerificationPasses
+	if pol.Critique == CritiqueWaveAndFinal && (l.Critique == nil || !l.Critique.FinalClean) {
+		reserve++
+	}
+	if l.Budget.Used+1+reserve > l.Budget.MaxAgentInvocations {
+		return budgetExhausted(l)
+	}
+	return nil
 }
 
 // ResetUnit devuelve una unidad abandonada a planned: cierra el intento
@@ -1037,6 +1077,14 @@ func issueCritique(l *Ledger, agent string, pol *ProfilePolicy) (*Task, error) {
 	}
 	if l.Critique == nil {
 		l.Critique = &CritiqueState{}
+	}
+	// La crítica cuesta una invocación: el agotamiento unifica sus efectos
+	// con la caza y la verificación.
+	if l.Budget != nil {
+		if l.Budget.Used >= l.Budget.MaxAgentInvocations {
+			return nil, budgetExhausted(l)
+		}
+		l.Budget.Used++
 	}
 	l.Critique.Pending = true
 	l.Critique.IssuedTo = agent

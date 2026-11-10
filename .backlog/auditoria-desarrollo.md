@@ -254,9 +254,13 @@ Aceptación y pruebas:
 
 ## P1-4 — Presupuesto reservado y agotamiento coherente
 
-**Estado:** pendiente. **Dependencias:** P1-1, P1-2 y P1-3. **Estimación:** 3 días.
+**Estado:** completada. **Dependencias:** P1-1, P1-2 y P1-3. **Estimación:** 3 días.
 
-**Archivos:** `internal/audit/broker.go`, `internal/cli/audit.go`.
+**Decisión tomada:** reserva determinista en enteros: el reparto de caza se
+niega si `used + 1 + reservas > max`, con reservas = pasadas de verificación
+del perfil (1 por pasada) + 1 de crítica final cuando el perfil la exige y aún
+no corrió limpia. El agotamiento unificado difiere y sella en las tres fases
+antes de responder.
 
 Trabajo:
 

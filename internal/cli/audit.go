@@ -531,7 +531,14 @@ func (a *App) runAuditNext(cmd *cobra.Command, target, out, format, agent string
 			_, werr := fmt.Fprintf(a.Stdout, "No hay trabajo pendiente para este agente.\n")
 			return werr
 		case errors.Is(err, audit.ErrBudgetExhausted):
-			return IncompleteErrorf("%v; las unidades pendientes quedaron diferidas y la corrida es incompleta", err)
+			deferred := 0
+			if ledger != nil {
+				deferred = ledger.Summary.Deferred
+			}
+			if deferred > 0 {
+				return IncompleteErrorf("%v; %d unidad(es) quedaron diferidas y la corrida es incompleta", err, deferred)
+			}
+			return IncompleteErrorf("%v; la corrida quedó incompleta", err)
 		case errors.Is(err, audit.ErrAgentIneligible):
 			return IncompleteErrorf("%v; usa un identificador de agente distinto del cazador y de los verificadores previos", err)
 		default:

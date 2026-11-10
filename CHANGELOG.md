@@ -2,6 +2,15 @@
 
 ## Sin publicar
 
+- `--budget` de `audit` reserva presupuesto para las fases obligatorias antes
+  de repartir caza: el motor se niega a lanzar cazadores si el presupuesto no
+  cubre el reparto más la cadena de verificación de un candidato y la crítica
+  final exigida por el perfil. El agotamiento queda unificado en caza,
+  verificación y crítica: difiere las unidades planificadas y sella la corrida
+  `incomplete` con razón `budget_exhausted` antes de responder, y el mensaje
+  de la CLI informa las unidades diferidas reales (corregido el mensaje que
+  anunciaba un sellado inexistente). La recuperación de unidades no se cobra
+  de nuevo y el sellado de la crítica cuesta una invocación.
 - Nueva fase de **crítica independiente de cobertura** para `standard` y
   `deep`: cuando la ola de caza completa, el motor emite la tarea `critique` a
   un agente sin unidades en curso. El crítico responde con `missing_units`
