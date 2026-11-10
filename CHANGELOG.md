@@ -2,6 +2,16 @@
 
 ## Sin publicar
 
+- `standard` y `deep` verifican en dos pasadas: validar el candidato y revisar
+  el registro final son fases distintas. El registro decidido pasa a
+  `review_pending` y un revisor independiente (que no es cazador, validador
+  previo ni autor de reemplazos) lo aprueba con `final_review` o lo
+  reemplaza. Un reemplazo **material** (cambia veredicto, causa raíz, traza,
+  ejecución, impacto o severidad) no llega al informe sin revisión
+  independiente: queda en `escalation` y el registro confirmado vuelve a
+  revisión final; un cambio editorial se aplica sin otra firma. `quick`
+  conserva una pasada y su escalación por rango de veredicto. `audit status`
+  informa los candidatos en revisión final.
 - `--profile` de `audit` tiene semántica real: `quick` agrupa unidades por
   subsistema × dominio (una pasada de verificación, sin crítica), `standard`
   por subsistema × frontera × clase (dos pasadas, crítica por ola y final) y

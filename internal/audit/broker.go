@@ -35,19 +35,23 @@ const (
 	CandidateEscalation = "escalation"
 	CandidateDecided    = "decided"
 	CandidateDropped    = "dropped"
+	// CandidateReviewPending espera la revisión independiente del registro
+	// final: la segunda pasada de los perfiles con dos verificaciones.
+	CandidateReviewPending = "review_pending"
 )
 
-// Decisiones de una revisión de escalación: verified sostiene el registro
-// escalado; replace lo sustituye por el propio del revisor.
-const (
-	EscalationVerified = "verified"
-	EscalationReplace  = "replace"
-)
-
-// Modalidades de verificación.
+// Tipos de tarea de verificación y revisión.
 const (
 	ModeVerify          = "verify"
 	ModeEscalationCheck = "escalation_check"
+	ModeFinalReview     = "final_review"
+)
+
+// Decisiones de una revisión de escalación o de la revisión final: verified
+// sostiene el registro; replace lo sustituye por el propio del revisor.
+const (
+	EscalationVerified = "verified"
+	EscalationReplace  = "replace"
 )
 
 // Disposiciones que un cazador puede devolver por unidad.
@@ -132,6 +136,78 @@ func (c *Candidates) CandidateByFingerprint(fp string) *Candidate {
 		}
 	}
 	return nil
+}
+
+// MaterialChange compara dos registros y informa si el paso altera la
+// sustancia del hallazgo: veredicto, causa raíz, traza, ejecución, impacto o
+// severidad. Un cambio que solo toca la redacción editorial (título,
+// descripción, confianza, condiciones) no es material.
+func MaterialChange(a, b *Record) bool {
+	if a == nil || b == nil {
+		return a != b
+	}
+	if a.Verdict != b.Verdict {
+		return true
+	}
+	if a.RootCause != b.RootCause || a.ClaimedRootCause != b.ClaimedRootCause {
+		return true
+	}
+	if !sameTrace(a.Trace, b.Trace) {
+		return true
+	}
+	if !sameExecution(a.Execution, b.Execution) {
+		return true
+	}
+	if !sameSeverity(a.Severity, b.Severity) {
+		return true
+	}
+	return false
+}
+
+// sameTrace compara trazas paso a paso: el orden y las líneas importan.
+func sameTrace(a, b []TraceStep) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func sameExecution(a, b *Execution) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if a.AttackerPerspective != b.AttackerPerspective || a.ObservedResult != b.ObservedResult {
+		return false
+	}
+	if !sameStrings(a.Payloads, b.Payloads) || !sameStrings(a.Instructions, b.Instructions) {
+		return false
+	}
+	return true
+}
+
+func sameSeverity(a, b *Severity) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.Likelihood.Score == b.Likelihood.Score && a.Impact.Score == b.Impact.Score &&
+		a.Impact.Reason == b.Impact.Reason && a.Overall == b.Overall
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ValidateCandidates comprueba que el estado de verificación sea coherente
@@ -256,6 +332,15 @@ func validateCandidate(l *Ledger, cand *Candidate, where string, is *Issues) {
 		if cand.AssignedTo != "" {
 			is.addf("%s: dropped no puede tener verificador asignado", where)
 		}
+	case CandidateReviewPending:
+		if cand.Final == nil {
+			is.addf("%s: review_pending exige el registro final", where)
+		} else if err := validateRecord(*cand.Final); err != nil {
+			is.addf("%v", err)
+		}
+		if len(cand.Attempts) == 0 {
+			is.addf("%s: review_pending exige el intento que produjo el final", where)
+		}
 	default:
 		is.addf("%s: estado desconocido: %q", where, cand.State)
 	}
@@ -315,6 +400,26 @@ func validateCandidateAttempt(cand *Candidate, a VerificationAttempt, at string,
 		default:
 			is.addf("%s: decisión desconocida %q en revisión de escalación", at, a.Decision)
 		}
+	case ModeFinalReview:
+		switch a.Decision {
+		case EscalationVerified:
+			if a.Record != nil {
+				is.addf("%s: verified no lleva record", at)
+			}
+		case EscalationReplace:
+			if a.Record == nil {
+				is.addf("%s: replace requiere record", at)
+				return
+			}
+			if a.Record.Fingerprint != cand.Fingerprint {
+				is.addf("%s: el registro verifica %q", at, a.Record.Fingerprint)
+			}
+			if err := validateRecord(*a.Record); err != nil {
+				is.addf("%v", err)
+			}
+		default:
+			is.addf("%s: decisión desconocida %q en revisión final", at, a.Decision)
+		}
 	default:
 		is.addf("%s: modo desconocido: %q", at, a.Mode)
 	}
@@ -335,8 +440,9 @@ func validateEscalatedRecord(cand *Candidate, where string, is *Issues) {
 }
 
 // validateDecidedBranch exige que el registro final sea exactamente el que
-// produjo el último intento: la verificación única sin escalación, el registro
-// escalado confirmado o el reemplazo del revisor de escalación.
+// produjo el último intento de verificación o revisión de escalación; los
+// intentos de revisión final que lo anteceden lo aprueban o lo reemplazan
+// editorialmente.
 func validateDecidedBranch(cand *Candidate, where string, is *Issues) {
 	if cand.Final == nil {
 		return
@@ -345,39 +451,53 @@ func validateDecidedBranch(cand *Candidate, where string, is *Issues) {
 		is.addf("%s: decided sin intentos archivados; el final no tiene origen", where)
 		return
 	}
-	last := cand.Attempts[len(cand.Attempts)-1]
-	if cand.Escalated == nil {
-		if len(cand.Attempts) != 1 || last.Mode != ModeVerify {
-			is.addf("%s: decided sin escalación exige exactamente una verificación", where)
+	producedBy := len(cand.Attempts) - 1
+	if last := cand.Attempts[producedBy]; last.Mode == ModeFinalReview {
+		switch last.Decision {
+		case EscalationReplace:
+			if !SameRecord(last.Record, cand.Final) {
+				is.addf("%s: el final no coincide con el reemplazo editorial aprobado", where)
+			}
+			return
+		case EscalationVerified:
+			producedBy--
+		default:
+			is.addf("%s: revisión final con decisión desconocida: %q", where, last.Decision)
 			return
 		}
-		if !SameRecord(last.Record, cand.Final) {
+	}
+	if producedBy < 0 {
+		is.addf("%s: el final no tiene intento que lo produzca", where)
+		return
+	}
+	producer := cand.Attempts[producedBy]
+	switch producer.Mode {
+	case ModeVerify:
+		if !SameRecord(producer.Record, cand.Final) {
 			is.addf("%s: el final no coincide con la verificación archivada", where)
 			return
 		}
-		if VerdictRank(cand.Final.Verdict) > VerdictRank(cand.Proposed.Verdict) {
+		if cand.Escalated == nil && VerdictRank(cand.Final.Verdict) > VerdictRank(cand.Proposed.Verdict) {
 			is.addf("%s: el final supera al propuesto sin escalación; debió escalar", where)
 		}
-		return
-	}
-	if len(cand.Attempts) != 2 || cand.Attempts[0].Mode != ModeVerify || last.Mode != ModeEscalationCheck {
-		is.addf("%s: decided con escalación exige una verificación y una revisión de escalación", where)
-		return
-	}
-	switch last.Decision {
-	case EscalationVerified:
-		if !SameRecord(cand.Escalated, cand.Final) {
-			is.addf("%s: verified debe confirmar el registro escalado como final", where)
-		}
-	case EscalationReplace:
-		if !SameRecord(last.Record, cand.Final) {
-			is.addf("%s: el final no coincide con el reemplazo archivado", where)
-		}
-		if VerdictRank(cand.Final.Verdict) > VerdictRank(cand.Escalated.Verdict) {
-			is.addf("%s: el reemplazo supera al escalado; debió reescalar en lugar de decidir", where)
+	case ModeEscalationCheck:
+		switch producer.Decision {
+		case EscalationVerified:
+			if !SameRecord(cand.Escalated, cand.Final) {
+				is.addf("%s: verified debe confirmar el registro escalado como final", where)
+			}
+		case EscalationReplace:
+			if !SameRecord(producer.Record, cand.Final) {
+				is.addf("%s: el final no coincide con el reemplazo archivado", where)
+			}
+			if cand.Escalated != nil && VerdictRank(cand.Final.Verdict) > VerdictRank(cand.Escalated.Verdict) {
+				is.addf("%s: el reemplazo supera al escalado; debió reescalar en lugar de decidir", where)
+			}
+		default:
+			is.addf("%s: revisión de escalación con decisión desconocida: %q", where, producer.Decision)
 		}
 	default:
-		is.addf("%s: revisión de escalación con decisión desconocida: %q", where, last.Decision)
+		is.addf("%s: el final lo produce un intento de modo desconocido: %q", where, producer.Mode)
 	}
 }
 
@@ -554,6 +674,8 @@ type AssignmentCandidate struct {
 	Unit        string  `json:"unit"`
 	Proposed    Record  `json:"proposed"`
 	Escalated   *Record `json:"escalated,omitempty"`
+	// Final es el registro que una revisión final debe aprobar o reemplazar.
+	Final *Record `json:"final,omitempty"`
 }
 
 // Task es la asignación que el motor entrega al agente.
@@ -602,6 +724,9 @@ func Next(l *Ledger, c *Candidates, opts NextOptions) (*Task, error) {
 	}
 	if cand, fresh := pickVerification(c, opts.AgentID, CandidatePending); cand != nil {
 		return issueVerification(l, cand, opts.AgentID, fresh, ModeVerify)
+	}
+	if cand, fresh := pickVerification(c, opts.AgentID, CandidateReviewPending); cand != nil {
+		return issueReview(l, cand, opts.AgentID, fresh)
 	}
 	if hasVerificationWork(c) {
 		return nil, ErrAgentIneligible
@@ -747,7 +872,7 @@ func issueVerification(l *Ledger, cand *Candidate, agent string, fresh bool, mod
 		l.Budget.Used++
 	}
 	l.Recompute()
-	return &Task{
+	task := &Task{
 		SchemaVersion: TaskSchemaVersion,
 		Kind:          mode,
 		RunID:         l.Run.ID,
@@ -759,12 +884,23 @@ func issueVerification(l *Ledger, cand *Candidate, agent string, fresh bool, mod
 			Proposed:    cand.Proposed,
 			Escalated:   cand.Escalated,
 		},
-	}, nil
+	}
+	if mode == ModeFinalReview {
+		task.Candidate.Final = cand.Final
+	}
+	return task, nil
+}
+
+// issueReview entrega la revisión final de un registro decidido: la segunda
+// pasada de los perfiles con dos verificaciones. El revisor no puede ser el
+// cazador, un validador previo ni el autor de un reemplazo.
+func issueReview(l *Ledger, cand *Candidate, agent string, fresh bool) (*Task, error) {
+	return issueVerification(l, cand, agent, fresh, ModeFinalReview)
 }
 
 func hasVerificationWork(c *Candidates) bool {
 	for _, cand := range c.Items {
-		if cand.State == CandidatePending || cand.State == CandidateEscalation {
+		if cand.State == CandidatePending || cand.State == CandidateEscalation || cand.State == CandidateReviewPending {
 			return true
 		}
 	}
@@ -873,6 +1009,9 @@ type SubmitOptions struct {
 	// aborta la entrega sin mutar ledger ni candidatos. Los roles posibles
 	// son escalated y final; el cazador no sella su propuesta.
 	Source SourceStamper
+	// Policy, si no es nil, define el número de pasadas de verificación; nil
+	// resuelve la política del perfil desde el catálogo embebido.
+	Policy *ProfilePolicy
 }
 
 // Submit aplica una entrega de forma atómica: si algo no cumple el contrato,
@@ -892,9 +1031,16 @@ func SubmitWithOptions(l *Ledger, c *Candidates, sub *Submission, opts SubmitOpt
 	if !ValidAgentID(sub.AgentID) {
 		return nil, fmt.Errorf("auditoría: agent_id inválido: %q", sub.AgentID)
 	}
-
+	pol := opts.Policy
+	if pol == nil {
+		var err error
+		pol, err = profilePolicyFor(l.Profile)
+		if err != nil {
+			return nil, err
+		}
+	}
 	if sub.Verification != nil {
-		return submitVerification(l, c, sub, opts)
+		return submitVerification(l, c, sub, opts, pol)
 	}
 	return submitHunt(l, c, sub)
 }
@@ -1063,7 +1209,7 @@ func submitHunt(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, erro
 	return out, nil
 }
 
-func submitVerification(l *Ledger, c *Candidates, sub *Submission, opts SubmitOptions) (*SubmitOutcome, error) {
+func submitVerification(l *Ledger, c *Candidates, sub *Submission, opts SubmitOptions, pol *ProfilePolicy) (*SubmitOutcome, error) {
 	if len(sub.Units) > 0 || len(sub.Candidates) > 0 || len(sub.Uncovered) > 0 {
 		return nil, errors.New("auditoría: una verificación no puede traer unidades, candidatos ni superficies nuevas")
 	}
@@ -1072,7 +1218,7 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission, opts SubmitOp
 	if cand == nil {
 		return nil, fmt.Errorf("auditoría: el fingerprint %s no está en verificación", v.Fingerprint)
 	}
-	if cand.State != CandidatePending && cand.State != CandidateEscalation {
+	if cand.State != CandidatePending && cand.State != CandidateEscalation && cand.State != CandidateReviewPending {
 		return nil, fmt.Errorf("auditoría: el candidato %s está %s", v.Fingerprint, cand.State)
 	}
 	if cand.AssignedTo != sub.AgentID {
@@ -1130,6 +1276,15 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission, opts SubmitOp
 			out.Notes = append(out.Notes, "la promoción de veredicto exige un segundo verificador independiente")
 			break
 		}
+		if pol.VerificationPasses > 1 {
+			// Segunda pasada: el registro final espera revisión independiente.
+			cand.State = CandidateReviewPending
+			cand.AssignedTo = ""
+			mergeSourceStamps(cand, role, stamps)
+			out.Pending++
+			out.Notes = append(out.Notes, "el registro final exige revisión independiente (segunda pasada)")
+			break
+		}
 		cand.State = CandidateDecided
 		cand.Final = &record
 		cand.AssignedTo = ""
@@ -1145,12 +1300,18 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission, opts SubmitOp
 			cand.Attempts = append(cand.Attempts, VerificationAttempt{
 				AgentID: sub.AgentID, Mode: ModeEscalationCheck, Decision: v.Decision,
 			})
-			cand.State = CandidateDecided
 			cand.Final = cand.Escalated
 			cand.AssignedTo = ""
 			// El final es exactamente el registro escalado: hereda sus
 			// sellos de fuente; la fuente no se relee.
 			inheritSourceStamps(cand, SourceRoleEscalated, SourceRoleFinal)
+			if pol.VerificationPasses > 1 {
+				cand.State = CandidateReviewPending
+				out.Pending++
+				out.Notes = append(out.Notes, "el registro final exige revisión independiente (segunda pasada)")
+				break
+			}
+			cand.State = CandidateDecided
 			out.Decided++
 		case EscalationReplace:
 			if v.Record == nil {
@@ -1186,13 +1347,85 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission, opts SubmitOp
 				out.Notes = append(out.Notes, "el reemplazo vuelve a escalar el veredicto; se exige otro verificador")
 				break
 			}
-			cand.State = CandidateDecided
 			cand.Final = &record
 			cand.AssignedTo = ""
 			mergeSourceStamps(cand, role, stamps)
+			if pol.VerificationPasses > 1 {
+				cand.State = CandidateReviewPending
+				out.Pending++
+				out.Notes = append(out.Notes, "el registro final exige revisión independiente (segunda pasada)")
+				break
+			}
+			cand.State = CandidateDecided
 			out.Decided++
 		default:
 			return nil, fmt.Errorf("auditoría: decisión desconocida %q en escalación", v.Decision)
+		}
+	case CandidateReviewPending:
+		// La revisión final: el revisor aprueba el registro o lo reemplaza.
+		// Un reemplazo material queda pendiente hasta su revisión
+		// independiente; uno editorial se aplica sin otra firma.
+		switch v.Decision {
+		case EscalationVerified:
+			if cand.Final == nil {
+				return nil, errors.New("auditoría: revisión sin registro final que aprobar")
+			}
+			cand.Attempts = append(cand.Attempts, VerificationAttempt{
+				AgentID: sub.AgentID, Mode: ModeFinalReview, Decision: v.Decision,
+			})
+			cand.State = CandidateDecided
+			cand.AssignedTo = ""
+			out.Decided++
+		case EscalationReplace:
+			if v.Record == nil {
+				return nil, errors.New("auditoría: replace requiere record")
+			}
+			if v.Record.Fingerprint != v.Fingerprint {
+				return nil, fmt.Errorf("auditoría: el reemplazo verifica %q pero la tarea es %q", v.Record.Fingerprint, v.Fingerprint)
+			}
+			if err := validateRecord(*v.Record); err != nil {
+				return nil, err
+			}
+			record := *v.Record
+			var stamps map[string]string
+			if MaterialChange(cand.Final, &record) {
+				// El reemplazo es material: queda pendiente de un verificador
+				// independiente que no cazó, no validó ni lo propuso.
+				if opts.Source != nil {
+					var err error
+					stamps, err = opts.Source(v.Fingerprint, SourceRoleEscalated, &record)
+					if err != nil {
+						return nil, err
+					}
+				}
+				cand.Attempts = append(cand.Attempts, VerificationAttempt{
+					AgentID: sub.AgentID, Mode: ModeFinalReview, Decision: v.Decision, Record: &record,
+				})
+				cand.State = CandidateEscalation
+				cand.Escalated = &record
+				cand.AssignedTo = ""
+				mergeSourceStamps(cand, SourceRoleEscalated, stamps)
+				out.Escalations++
+				out.Notes = append(out.Notes, "el reemplazo es material; exige un verificador independiente")
+				break
+			}
+			if opts.Source != nil {
+				var err error
+				stamps, err = opts.Source(v.Fingerprint, SourceRoleFinal, &record)
+				if err != nil {
+					return nil, err
+				}
+			}
+			cand.Attempts = append(cand.Attempts, VerificationAttempt{
+				AgentID: sub.AgentID, Mode: ModeFinalReview, Decision: v.Decision, Record: &record,
+			})
+			cand.Final = &record
+			cand.State = CandidateDecided
+			cand.AssignedTo = ""
+			mergeSourceStamps(cand, SourceRoleFinal, stamps)
+			out.Decided++
+		default:
+			return nil, fmt.Errorf("auditoría: decisión desconocida %q en revisión final", v.Decision)
 		}
 	}
 

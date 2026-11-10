@@ -179,6 +179,30 @@ La política vive en el catálogo versionado (`internal/audit/catalog.json`,
   [`cloudflare/security-audit-skill`](https://github.com/cloudflare/security-audit-skill)
   en la versión indicada; los textos del catálogo son propios.
 
+## Verificación en dos pasadas
+
+Con los perfiles con dos pasadas (`standard` y `deep`), **validar el candidato**
+y **revisar el registro final** son fases distintas:
+
+- **Primera pasada:** el verificador independiente valida el candidato
+  (`verify`) y decide; una promoción escala como siempre. Con las dos pasadas
+  activas, el registro decidido pasa a `review_pending` en vez de `decided`.
+- **Segunda pasada:** un revisor independiente —que no es el cazador, ningún
+  validador previo ni el autor de un reemplazo— recibe la tarea
+  `final_review` con el registro final y lo aprueba (`verified`) o lo
+  reemplaza (`replace` con registro).
+- **Materialidad:** un reemplazo es **material** si altera veredicto, causa
+  raíz, traza, ejecución, impacto o severidad (`MaterialChange`). Un
+  reemplazo material no llega al informe: queda pendiente en `escalation`
+  hasta que un verificador independiente del autor del reemplazo lo confirme,
+  y el registro confirmado vuelve a revisión final. Un reemplazo editorial
+  (solo redacción: título, descripción, confianza, condiciones) se aplica sin
+  otra firma.
+- `quick` conserva una pasada: decide en la misma verificación y su
+  escalación existente compara solo el rango del veredicto.
+- Reabrir una corrida conserva la fase pendiente: un candidato en
+  `review_pending` sigue esperando su revisión.
+
 ## Fuentes y citas
 
 Toda cita (`trace[].file`, `evidence[].file`) se valida contra la fuente que

@@ -63,6 +63,7 @@ type auditCandidateCounts struct {
 	Pending    int `json:"pending"`
 	Escalation int `json:"escalation"`
 	Decided    int `json:"decided"`
+	Review     int `json:"review_pending"`
 }
 
 type auditStatusDocument struct {
@@ -727,7 +728,7 @@ func (a *App) runAuditStatus(ctx context.Context, target, out, format string) er
 			return err
 		}
 		ledger, candidates := st.Ledger, st.Candidates
-		pending, escalation, decided := 0, 0, 0
+		pending, escalation, decided, review := 0, 0, 0, 0
 		for _, c := range candidates.Items {
 			switch c.State {
 			case audit.CandidatePending:
@@ -736,6 +737,8 @@ func (a *App) runAuditStatus(ctx context.Context, target, out, format string) er
 				escalation++
 			case audit.CandidateDecided:
 				decided++
+			case audit.CandidateReviewPending:
+				review++
 			}
 		}
 		d := auditStatusDocument{
@@ -748,6 +751,7 @@ func (a *App) runAuditStatus(ctx context.Context, target, out, format string) er
 		d.Candidates.Pending = pending
 		d.Candidates.Escalation = escalation
 		d.Candidates.Decided = decided
+		d.Candidates.Review = review
 		doc = &d
 		return nil
 	}); err != nil {
@@ -861,8 +865,8 @@ func renderAuditStatus(doc auditStatusDocument) string {
 	fmt.Fprintf(&b, "Unidades: %d; cubiertas %d, con candidato %d, bloqueadas %d, diferidas %d, fuera de alcance %d\n",
 		doc.Coverage.UnitsTotal, doc.Coverage.Covered, doc.Coverage.Candidate,
 		doc.Coverage.Blocked, doc.Coverage.Deferred, doc.Coverage.OutOfScope)
-	fmt.Fprintf(&b, "Candidatos: %d pendientes, %d en escalación, %d decididos\n",
-		doc.Candidates.Pending, doc.Candidates.Escalation, doc.Candidates.Decided)
+	fmt.Fprintf(&b, "Candidatos: %d pendientes, %d en escalación, %d decididos, %d en revisión final\n",
+		doc.Candidates.Pending, doc.Candidates.Escalation, doc.Candidates.Decided, doc.Candidates.Review)
 	if doc.Budget != nil {
 		fmt.Fprintf(&b, "Presupuesto: %d/%d\n", doc.Budget.Used, doc.Budget.MaxAgentInvocations)
 	}

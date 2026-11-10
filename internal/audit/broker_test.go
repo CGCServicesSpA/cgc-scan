@@ -27,10 +27,12 @@ func plannerLedger(ids ...string) *Ledger {
 		SchemaVersion: LedgerSchemaVersion,
 		Run:           Run{ID: "run-1", StartedAt: "2026-11-09T00:00:00Z", CLIVersion: "test", SourceRef: "rev-1"},
 		Target:        Target{Root: "/tmp/p", LocalID: "p"},
-		Profile:       ProfileStandard,
-		Budget:        &Budget{MaxAgentInvocations: 10},
-		RunStatus:     StatusInProgress,
-		Units:         units,
+		// quick: una pasada de verificación; los tests de dos pasadas fijan
+		// el perfil explícitamente.
+		Profile:   ProfileQuick,
+		Budget:    &Budget{MaxAgentInvocations: 10},
+		RunStatus: StatusInProgress,
+		Units:     units,
 	}
 	l.Recompute()
 	return l

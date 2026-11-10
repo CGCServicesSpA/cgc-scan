@@ -110,7 +110,7 @@ func pendingCritique(l *Ledger, c *Candidates) bool { return false }
 func countUndecided(c *Candidates) int {
 	n := 0
 	for _, cand := range c.Items {
-		if cand.State == CandidatePending || cand.State == CandidateEscalation {
+		if cand.State == CandidatePending || cand.State == CandidateEscalation || cand.State == CandidateReviewPending {
 			n++
 		}
 	}

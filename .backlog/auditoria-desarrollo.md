@@ -200,9 +200,14 @@ Aceptación y pruebas:
 
 ## P1-3 — Dos pasadas y reemplazos materiales
 
-**Estado:** pendiente. **Dependencias:** P1-1. **Estimación:** 4 días.
+**Estado:** completada. **Dependencias:** P1-1. **Estimación:** 4 días.
 
-**Archivos:** `internal/audit/broker.go`, `internal/audit/report.go`, contratos afectados.
+**Decisión tomada:** la segunda pasada (`final_review`) aplica a los perfiles
+con dos verificaciones (`standard`, `deep`); el candidato decidido pasa a
+`review_pending` y un revisor independiente lo aprueba o reemplaza. La
+materialidad (`MaterialChange`: veredicto, causa raíz, traza, ejecución,
+impacto, severidad) solo se aplica en la revisión final; `quick` conserva su
+escalación por rango de veredicto.
 
 Trabajo:
 
