@@ -396,6 +396,27 @@ escaneo (`scan`/`agent`, contrato `1.1.0`) como **leads pendientes de caza**:
   se deduplican por fingerprint. Entradas incompatibles se rechazan sin dejar
   estado parcial.
 
+## Política de salida para CI
+
+`audit report --fail-on <umbral>` centraliza el código de salida para CI.
+**Decisión de producto documentada:**
+
+- Umbrales válidos: `confirmed` (cualquier hallazgo confirmado),
+  `needs_validation` (registros pendientes de validación) o una severidad
+  auditada de la escala propia del contrato (`informational|low|medium|high|
+  critical`): cuenta confirmados con overall ≥ umbral.
+- **Precedencia:** cancelación (130) → error operativo o argumentos (2) →
+  **corrida incompleta (3)** → umbral incumplido (1) → éxito (0). La corrida
+  incompleta siempre precede al umbral: una corrida parcial nunca se declara
+  limpia por umbral.
+- **Difiere de `scan --fail-on`**: el escaneo cuenta hallazgos del motor por
+  su severidad normalizada (`info`); la auditoría cuenta veredictos auditados
+  sellados con la escala del contrato de hallazgos (`informational`).
+- **Sin flag:** el comportamiento de compatibilidad se mantiene: corrida
+  completa → 0 sin evaluar hallazgos.
+- La política de salida se evalúa tras el sellado: no altera hallazgos ni
+  estado; la ayuda y esta documentación describen los códigos efectivos.
+
 ## Consolidación por causa raíz
 
 Dos variantes comprobadas del mismo defecto se consolidan en un registro. La

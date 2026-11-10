@@ -436,9 +436,13 @@ Aceptación y pruebas:
 
 ## P2-3 — Política de salida para CI
 
-**Estado:** pendiente. **Dependencias:** P1-4. **Estimación:** decisión de producto + 2 días.
+**Estado:** completada. **Dependencias:** P1-4. **Estimación:** decisión de producto + 2 días.
 
-**Decisión previa:** umbrales, veredictos aplicables y precedencia entre hallazgos, corrida incompleta y error operativo.
+**Decisión de producto tomada:** umbrales `confirmed`, `needs_validation` o
+severidad auditada (overall ≥ umbral); precedencia cancelación (130) → error
+operativo (2) → corrida incompleta (3) → umbral incumplido (1) → éxito (0);
+sin flag, compatibilidad: corrida completa → 0. Difiere de `scan --fail-on`,
+que cuenta hallazgos del motor.
 
 Trabajo:
 

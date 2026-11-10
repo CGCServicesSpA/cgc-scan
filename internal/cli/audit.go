@@ -16,6 +16,7 @@ import (
 	"github.com/CGCServicesSpA/cgc-scan/internal/audit"
 	"github.com/CGCServicesSpA/cgc-scan/internal/discovery"
 	"github.com/CGCServicesSpA/cgc-scan/internal/plan"
+	"github.com/CGCServicesSpA/cgc-scan/internal/policy"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policyfile"
 	"github.com/CGCServicesSpA/cgc-scan/internal/report"
 	"github.com/CGCServicesSpA/cgc-scan/internal/version"
@@ -578,6 +579,7 @@ func (a *App) newAuditSubmitCommand(out *string) *cobra.Command {
 func (a *App) newAuditReportCommand(out *string) *cobra.Command {
 	var format string
 	var verify bool
+	var failOn string
 	cmd := &cobra.Command{
 		Use:   "report [ruta]",
 		Short: "Sella la corrida y deriva findings.json y los reportes",
@@ -586,6 +588,9 @@ func (a *App) newAuditReportCommand(out *string) *cobra.Command {
 			if err := oneOf("format", format, "json", "text"); err != nil {
 				return err
 			}
+			if failOn != "" && !policy.AuditFailOnValid(failOn) {
+				return UsageErrorf("--fail-on inválido: %q (confirmed, needs_validation o una severidad)", failOn)
+			}
 			target := ""
 			if len(args) == 1 {
 				target = args[0]
@@ -593,11 +598,12 @@ func (a *App) newAuditReportCommand(out *string) *cobra.Command {
 			if verify {
 				return a.runAuditReportVerify(cmd.Context(), auditTarget(target), *out, format)
 			}
-			return a.runAuditReport(cmd.Context(), auditTarget(target), *out, format)
+			return a.runAuditReport(cmd.Context(), auditTarget(target), *out, format, failOn)
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text")
 	cmd.Flags().BoolVar(&verify, "verify", false, "verifica la integridad del informe sellado sin reescribir nada")
+	cmd.Flags().StringVar(&failOn, "fail-on", "", "umbral de salida para CI: confirmed|needs_validation|informational|low|medium|high|critical")
 	return cmd
 }
 
@@ -961,7 +967,7 @@ func (a *App) runAuditSubmit(cmd *cobra.Command, target, out, format, file strin
 	return err
 }
 
-func (a *App) runAuditReport(ctx context.Context, target, out, format string) error {
+func (a *App) runAuditReport(ctx context.Context, target, out, format, failOn string) error {
 	store, err := a.auditStore(target, out)
 	if err != nil {
 		return err
@@ -1072,6 +1078,30 @@ func (a *App) runAuditReport(ctx context.Context, target, out, format string) er
 	}
 	if status != audit.StatusComplete {
 		return IncompleteErrorf("la auditoría quedó incompleta: %s", incomplete)
+	}
+	// Umbral de salida para CI: la precedencia centralizada sitúa la corrida
+	// incompleta (3) antes del umbral incumplido (1). La política de salida
+	// no altera hallazgos ni estado: se evalúa tras el sellado.
+	if failOn != "" {
+		summaryCounts := policy.AuditFindingsSummary{
+			ConfirmedBySeverity: map[string]int{
+				"informational": findings.Summary.BySeverity.Informational,
+				"low":           findings.Summary.BySeverity.Low,
+				"medium":        findings.Summary.BySeverity.Medium,
+				"high":          findings.Summary.BySeverity.High,
+				"critical":      findings.Summary.BySeverity.Critical,
+			},
+			NeedsValidation: findings.Summary.NeedsValidation,
+		}
+		violated, terr := policy.AuditThresholdViolated(failOn, summaryCounts)
+		if terr != nil {
+			return UsageErrorf("%v", terr)
+		}
+		if violated {
+			return Errorf(policy.ExitViolation,
+				"el umbral --fail-on %s se incumple: %d confirmado(s) y %d por validar",
+				failOn, findings.Summary.Confirmed, findings.Summary.NeedsValidation)
+		}
 	}
 	return nil
 }

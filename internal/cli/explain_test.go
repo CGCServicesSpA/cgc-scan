@@ -182,3 +182,42 @@ func auditExplainFixture(t *testing.T) (*App, string, string, string) {
 	}
 	return app, root, runDir, unitID
 }
+
+func TestAuditFailOnMatrixWithRealRuns(t *testing.T) {
+	app, _, runDir, _ := auditExplainFixture(t)
+	// sellar la corrida completa con un hallazgo needs_validation decidido
+	coverRemainingUnits(t, app, runDir)
+	if code, out, errOut := auditRun(t, app, "audit", "report", "--out", runDir, "--format", "json"); code != 0 {
+		t.Fatalf("report = %d: %s %s", code, out, errOut)
+	}
+
+	// Sin flag: comportamiento de compatibilidad (corrida completa → 0).
+	code, _, _ := auditRun(t, app, "audit", "report", "--out", runDir)
+	if code != 0 {
+		t.Fatalf("sin flag = %d, want 0", code)
+	}
+
+	// confirmed con un hallazgo needs_validation decidido → 1.
+	code, _, errOut := auditRun(t, app, "audit", "report", "--out", runDir, "--fail-on", "needs_validation")
+	if code != 1 || !strings.Contains(errOut, "umbral") {
+		t.Fatalf("needs_validation = %d: %s; want 1", code, errOut)
+	}
+
+	// critical: el hallazgo no es confirmado critical → 0.
+	code, _, _ = auditRun(t, app, "audit", "report", "--out", runDir, "--fail-on", "critical")
+	if code != 0 {
+		t.Fatalf("critical = %d, want 0", code)
+	}
+
+	// Umbral desconocido → 2.
+	code, _, errOut = auditRun(t, app, "audit", "report", "--out", runDir, "--fail-on", "no-existe")
+	if code != 2 {
+		t.Fatalf("umbral desconocido = %d: %s; want 2", code, errOut)
+	}
+
+	// La política de salida no altera hallazgos ni estado.
+	code, out, _ := auditRun(t, app, "audit", "status", "--out", runDir, "--format", "json")
+	if code != 0 || !strings.Contains(out, "run_status") {
+		t.Fatalf("status tras la política de salida = %d: %s", code, out)
+	}
+}

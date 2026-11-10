@@ -2,6 +2,12 @@
 
 ## Sin publicar
 
+- Nuevo `audit report --fail-on <umbral>` para CI: `confirmed`,
+  `needs_validation` o una severidad auditada de la escala del contrato. La
+  precedencia centralizada sitúa la corrida incompleta (3) antes del umbral
+  incumplido (1); sin flag, el comportamiento de compatibilidad se mantiene
+  (corrida completa → 0). La política de salida no altera hallazgos ni estado
+  y difiere de `scan --fail-on` (que cuenta hallazgos del motor).
 - Nuevo `audit import --file <reporte.json>`: importa los hallazgos de un
   escaneo (`scan`/`agent`, contrato 1.1.0) como leads pendientes de caza.
   Ningún hallazgo importado aparece automáticamente como confirmado: el
