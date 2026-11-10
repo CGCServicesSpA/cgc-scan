@@ -460,42 +460,44 @@
       "additionalProperties": false,
       "required": [
         "run_id",
-        "source_ref",
-        "same_revision_clean",
-        "covered_same_source",
-        "rejected_fingerprints",
-        "needs_validation_fingerprints"
+        "source_ref"
       ],
       "properties": {
         "run_id": {
-          "type": "string",
-          "minLength": 1
+          "type": "string"
         },
         "source_ref": {
-          "type": "string",
-          "minLength": 1
+          "type": "string"
         },
         "same_revision_clean": {
           "type": "boolean"
         },
         "covered_same_source": {
           "type": "array",
-          "uniqueItems": true,
           "items": {
-            "type": "string",
-            "minLength": 1
+            "type": "string"
           }
         },
         "rejected_fingerprints": {
           "type": "array",
-          "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/fingerprint"
           }
         },
         "needs_validation_fingerprints": {
           "type": "array",
-          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fingerprint"
+          }
+        },
+        "stale_confirmed": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fingerprint"
+          }
+        },
+        "stale_rejected": {
+          "type": "array",
           "items": {
             "$ref": "#/$defs/fingerprint"
           }

@@ -120,8 +120,8 @@ func TestProfilePolicyPhases(t *testing.T) {
 	for _, phase := range deep.UnimplementedPhases() {
 		pending = append(pending, phase)
 	}
-	if strings.Join(pending, ",") != "prior-rework" {
-		t.Fatalf("deep: fases pendientes = %v", pending)
+	if len(pending) != 0 {
+		t.Fatalf("las fases del protocolo están entregadas; quedan pendientes: %v", pending)
 	}
 }
 
@@ -147,25 +147,19 @@ func TestBuildFindingsHonorsProfilePhases(t *testing.T) {
 		t.Fatalf("standard = %s/%s, want incomplete/critique_pending", l2.RunStatus, l2.IncompleteReason)
 	}
 
-	// deep exige además prior-rework, todavía sin implementación: la
-	// limitación nombra la fase pendiente.
+	// deep exige prior-rework: una corrida con confirmados previos con la
+	// fuente cambiada queda pendiente de revalidación (probada con la
+	// continuidad); sin corrida previa, cierra con crítica limpia.
 	l3, c3 := sealedFixture(t)
 	l3.Profile = ProfileDeep
+	l3.Critique = &CritiqueState{FinalClean: true}
 	l3.Recompute()
 	if _, err := BuildFindings(l3, c3); err != nil {
 		t.Fatalf("build deep: %v", err)
 	}
-	if l3.IncompleteReason != IncompletePhaseNotImplemented {
-		t.Fatalf("deep = %s/%s", l3.RunStatus, l3.IncompleteReason)
-	}
-	found := false
-	for _, lim := range l3.Limitations {
-		if strings.Contains(lim, "prior-rework") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("la limitación debe nombrar la fase pendiente: %v", l3.Limitations)
+	if l3.RunStatus != StatusComplete {
+		t.Fatalf("deep sin corrida previa debe completar con crítica limpia: %s/%s",
+			l3.RunStatus, l3.IncompleteReason)
 	}
 }
 

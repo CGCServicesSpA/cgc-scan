@@ -18,6 +18,7 @@ const (
 	IncompleteSourceDiverged       = "source_diverged"
 	IncompletePhaseNotImplemented  = "phase_not_implemented"
 	IncompleteCritiquePending      = "critique_pending"
+	IncompletePriorReworkPending   = "prior_rework_pending"
 )
 
 // BuildFindings sella el estado de la corrida y deriva el documento de
@@ -55,6 +56,8 @@ func BuildFindings(l *Ledger, c *Candidates) (*Findings, error) {
 		reason = IncompleteUnverifiedCandidates
 	case pendingCritique(l):
 		reason = IncompleteCritiquePending
+	case pendingPriorRework(l):
+		reason = IncompletePriorReworkPending
 	default:
 		if err := checkCandidateStateComplete(l, c); err != nil {
 			return nil, err
@@ -112,6 +115,21 @@ func pendingCritique(l *Ledger) bool {
 	}
 	if l.Critique == nil || l.Critique.Pending || !l.Critique.FinalClean {
 		return true
+	}
+	return false
+}
+
+// pendingPriorRework declara si quedan confirmados previos con la fuente
+// cambiada sin revalidar: los perfiles que exigen prior-rework (deep) no
+// cierran hasta que la crítica los revalide.
+func pendingPriorRework(l *Ledger) bool {
+	if l.Prior == nil || len(l.Prior.StaleConfirmed) == 0 {
+		return false
+	}
+	for _, fp := range l.Prior.StaleConfirmed {
+		if l.Critique == nil || !containsString(l.Critique.ResolvedLeads, fp) {
+			return true
+		}
 	}
 	return false
 }

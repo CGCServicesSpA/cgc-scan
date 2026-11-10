@@ -3,8 +3,6 @@ package audit
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -38,6 +36,7 @@ const (
 type SourceInfo struct {
 	Mode     string `json:"mode"`
 	Revision string `json:"revision,omitempty"`
+	Dirty    bool   `json:"dirty,omitempty"`
 }
 
 // gitTimeout acota cada invocación local de git.
@@ -65,7 +64,7 @@ func DeriveSourceInfo(l *Ledger) SourceInfo {
 	if ref != "" && ref != "worktree" && !l.Run.Dirty {
 		return SourceInfo{Mode: SourceModeRevision, Revision: ref}
 	}
-	return SourceInfo{Mode: SourceModeWorktree}
+	return SourceInfo{Mode: SourceModeWorktree, Dirty: l.Run.Dirty}
 }
 
 // ResolveSource determina el modo de fuente de una corrida nueva a partir de
@@ -351,9 +350,19 @@ func hashLocalFile(path string) (string, error) {
 	return hashBytes(data), nil
 }
 
+// dirtiness declara si la fuente de la corrida es un árbol con cambios.
+func (s *Source) dirtiness() bool { return s.Info.Dirty }
+
+// sourceRef es la referencia declarada: el oid de la revisión o "worktree".
+func (s *Source) sourceRef() string {
+	if s.Info.Mode == SourceModeRevision {
+		return s.Info.Revision
+	}
+	return "worktree"
+}
+
 func hashBytes(data []byte) string {
-	sum := sha256.Sum256(data)
-	return "sha256:" + hex.EncodeToString(sum[:])
+	return "sha256:" + platform.HashBytes(data)
 }
 
 // countLines cuenta las líneas de una fuente: un archivo vacío tiene 0

@@ -2,6 +2,14 @@
 
 ## Sin publicar
 
+- **Continuidad verificable entre corridas**: `audit init --prior` compara
+  cada unidad de la corrida anterior con su identidad archivada (hash de la
+  fuente de sus rutas de partida, versión de catálogo y perfil) y declara
+  modificados, añadidos y eliminados. Un confirmado previo con la fuente
+  cambiada exige revalidación (`stale_confirmed`); un rechazado se reabre
+  (`stale_rejected`); un cambio de catálogo o de perfil invalida la
+  reutilización orientativa. El hash está centralizado en la plataforma
+  (`platform.HashBytes`/`HashFile`) y la caché por unidad lo reutiliza.
 - `audit next --format prompt` renderiza la asignación como prompt con una
   plantilla versionada: contexto de la corrida, reglas por tipo de tarea
   (caza, verificación, revisión de escalación, revisión final, crítica), el

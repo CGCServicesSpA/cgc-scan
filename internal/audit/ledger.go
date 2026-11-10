@@ -134,6 +134,10 @@ type PriorRun struct {
 	CoveredSameSource           []string `json:"covered_same_source"`
 	RejectedFingerprints        []string `json:"rejected_fingerprints"`
 	NeedsValidationFingerprints []string `json:"needs_validation_fingerprints"`
+	// Continuidad: veredictos previos cuya fuente cambió desde su registro.
+	// Los confirmados exigen revalidación; los rechazados se reabren.
+	StaleConfirmed []string `json:"stale_confirmed,omitempty"`
+	StaleRejected  []string `json:"stale_rejected,omitempty"`
 }
 
 // CritiqueState archiva las rondas de crítica de cobertura de una corrida.

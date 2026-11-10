@@ -304,9 +304,12 @@ Aceptación y pruebas:
 
 ## P1-6 — Continuidad verificable entre corridas
 
-**Estado:** pendiente. **Dependencias:** P0-3 y P1-3. **Estimación:** 6 días.
+**Estado:** completada. **Dependencias:** P0-3 y P1-3. **Estimación:** 6 días.
 
-**Archivos:** build, broker y `internal/unitcache`.
+**Decisión tomada:** la identidad de una unidad son sus rutas de partida con
+el hash de su fuente, archivadas en `state.json` (`unit_identity`) al sellar el
+informe; la corrida siguiente compara y declara modificados, añadidos y
+eliminados. La reutilización orientativa caduca con el catálogo o el perfil.
 
 Trabajo:
 

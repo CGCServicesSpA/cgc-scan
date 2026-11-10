@@ -22,9 +22,15 @@ const StateSchemaVersion = "audit-state-1.0.0"
 type RunState struct {
 	SchemaVersion string      `json:"schema_version"`
 	Source        *SourceInfo `json:"source"`
-	Ledger        *Ledger     `json:"ledger"`
-	Candidates    *Candidates `json:"candidates"`
-	Findings      *Findings   `json:"findings,omitempty"`
+	// CatalogVersion es la versión del catálogo usada para construir el
+	// ledger; cambia invalida la reutilización orientativa.
+	CatalogVersion string      `json:"catalog_version"`
+	Ledger         *Ledger     `json:"ledger"`
+	Candidates     *Candidates `json:"candidates"`
+	Findings       *Findings   `json:"findings,omitempty"`
+	// UnitIdentity archiva, por coverage_id, el hash de la fuente de sus
+	// rutas de partida: la identidad que la corrida siguiente compara.
+	UnitIdentity map[string]map[string]string `json:"unit_identity,omitempty"`
 }
 
 // Normalize completa el estado: versiones, slices, resúmenes derivados y, si

@@ -296,8 +296,7 @@ func hashOne(h interface{ Write([]byte) (int, error) }, root, path string, d fs.
 		}
 		return err
 	}
-	sum := sha256.Sum256(data)
-	writeField(h, "sha", hex.EncodeToString(sum[:]))
+	writeField(h, "sha", platform.HashBytes(data))
 	return nil
 }
 

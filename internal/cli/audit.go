@@ -435,7 +435,13 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 		if err != nil {
 			return UsageErrorf("--prior: %v", err)
 		}
-		prior = audit.PriorFrom(priorState.Ledger, priorState.Findings, sourceRef, vcs.Dirty)
+		// Continuidad verificable: evalúa qué cambió respecto de la identidad
+		// archivada de cada unidad y exporta los veredictos que exigen
+		// revalidación.
+		prior, err = audit.ContinuityFrom(priorState, profile, src, catalog)
+		if err != nil {
+			return IncompleteErrorf("--prior: %v", err)
+		}
 	}
 	var limitations []string
 	if p.Partial {

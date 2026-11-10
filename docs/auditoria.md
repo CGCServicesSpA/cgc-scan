@@ -335,6 +335,30 @@ el contrato de respuesta exigido.
 - Los golden del render (`testdata/prompt/*.golden`) se crean con
   `go test ./internal/audit -update-prompt`.
 
+## Continuidad entre corridas
+
+`audit init --prior DIR` expone el contexto de una corrida anterior con
+**continuidad verificable**:
+
+- La **identidad** de una unidad son sus rutas de partida —archivos o
+  directorios reconocidos— con el hash de su fuente, junto con la versión de
+  catálogo y el perfil que las produjeron. El store la archiva al sellar el
+  informe (`unit_identity` en `state.json`).
+- La corrida siguiente compara cada unidad con su identidad: **modificados**
+  (contenido distinto), **añadidos** (archivos nuevos en el recorrido de un
+  directorio) y **eliminados** (desaparecidos). Una unidad cambia si alguno
+  de sus archivos participó.
+- Un **confirmado previo** con la fuente cambiada exige revalidación
+  (`stale_confirmed`): nunca se copia como confirmado actual; los perfiles que
+  exigen prior-rework (`deep`) no cierran hasta que la crítica los revalide.
+- Un **rechazado** con la fuente cambiada se reabre (`stale_rejected`): deja
+  de orientar la prioridad como rechazado sin cambios. Un rechazado sin
+  cambios evita repetir la misma afirmación.
+- Un cambio de catálogo o de perfil invalida la reutilización orientativa
+  (`same_revision_clean`, `covered_same_source`).
+- La cobertura nunca se suprime: una unidad auditada anteriormente sigue en el
+  mapa de la corrida nueva. Las listas orientan, no suprimen.
+
 ## Presupuesto
 
 `--budget N` es el máximo de invocaciones de agente en **todas las fases**, con
