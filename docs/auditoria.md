@@ -116,6 +116,28 @@ Una carga fallida no modifica archivos. Si falta `candidates.json` con un
 ledger presente, la corrida se declara dañada (`ErrNoCandidates`) en lugar de
 reinterpretarse como vacía.
 
+## Concurrencia
+
+Toda mutación de la corrida ocurre bajo un bloqueo exclusivo por corrida
+(`flock` sobre `<corrida>/.lock`): `init`, `next`, `submit` y `report`
+serializan el ciclo completo de carga, validación, mutación y persistencia.
+Dos `audit next` concurrentes nunca asignan la misma unidad a dueños
+distintos; dos `audit submit` concurrentes nunca pierden una entrega
+(última escritura gana está eliminado). `audit status` es lector: toma el
+bloqueo compartido y convive con otros lectores, pero espera si hay un
+escritor operando.
+
+- El bloqueo vive en un archivo estable (`.lock`), no en los documentos:
+  estos se reescriben de forma atómica y el inodo del cerrojo no cambia.
+- El bloqueo muere con su proceso: un agente interrumpido no deja cerrojos
+  huérfanos.
+- Cancelar una espera (Ctrl-C, timeout del llamador) libera el bloqueo y no
+  modifica la corrida; la espera máxima es de 30 segundos y su agotamiento
+  devuelve código 3.
+- `init` crea el bloqueo antes de escribir: otro proceso que llegue detrás
+  espera y observa la corrida íntegra, no un ledger sin estado de
+  verificación.
+
 ## Cobertura honesta
 
 El ledger nunca declara completa una corrida con unidades `planned` o

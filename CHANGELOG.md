@@ -2,6 +2,12 @@
 
 ## Sin publicar
 
+- `audit` serializa la corrida con un bloqueo exclusivo por directorio
+  (`flock` sobre `<corrida>/.lock`): `init`, `next`, `submit` y `report`
+  ejecutan su ciclo completo de carga-mutación-persistencia bajo el bloqueo y
+  `status` lee con bloqueo compartido. Dos procesos concurrentes ya no pueden
+  asignar la misma unidad a dueños distintos ni perder entregas; cancelar una
+  espera no modifica la corrida y el bloqueo muere con el proceso.
 - `audit` valida semánticamente `candidates.json` al cargarlo y antes de
   persistirlo (`ValidateCandidates`): independencia entre cazador y
   verificadores, ramas `escalated`/`final` permitidas por estado, coherencia de

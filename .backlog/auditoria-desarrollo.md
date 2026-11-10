@@ -49,7 +49,7 @@ Aceptación y pruebas:
 
 ## P0-2 — Exclusión mutua por corrida
 
-**Estado:** pendiente. **Dependencias:** P0-5. **Estimación:** 2 días.
+**Estado:** completada. **Dependencias:** P0-5. **Estimación:** 2 días.
 
 **Archivos:** `internal/audit/store.go`, `internal/cli/audit.go`; referencia: `internal/platform/lock.go`.
 

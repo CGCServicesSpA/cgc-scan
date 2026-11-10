@@ -1,12 +1,14 @@
 package audit
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
 )
@@ -56,6 +58,62 @@ func (s *Store) FindingsPath() string { return filepath.Join(s.dir, FindingsFile
 
 // ArtifactPath devuelve la ruta de un artefacto derivado (REPORT.md, etc.).
 func (s *Store) ArtifactPath(name string) string { return filepath.Join(s.dir, name) }
+
+// lockFilename es el archivo del bloqueo de la corrida. Vive dentro del
+// directorio y no se reemplaza al escribir los documentos: flock necesita un
+// inodo estable para serializar procesos aunque ledger.json y candidates.json
+// se reescriban de forma atómica.
+const lockFilename = ".lock"
+
+// LockPath es la ruta del bloqueo de la corrida.
+func (s *Store) LockPath() string { return filepath.Join(s.dir, lockFilename) }
+
+// WithLock ejecuta fn manteniendo el bloqueo exclusivo de la corrida: cubre el
+// ciclo completo de carga, validación, mutación y persistencia. La espera se
+// aborta cuando ctx se cancela o agota timeout (0 = solo ctx); en ese caso la
+// corrida no se modifica. El bloqueo se libera en todas las salidas y muere
+// con el proceso, así que no hay cerrojos huérfanos.
+func (s *Store) WithLock(ctx context.Context, timeout time.Duration, fn func() error) error {
+	return s.withLock(ctx, false, timeout, fn)
+}
+
+// WithSharedLock ejecuta fn con el bloqueo compartido de la corrida: varios
+// lectores conviven y ningún escritor está a medio operar mientras se lee.
+func (s *Store) WithSharedLock(ctx context.Context, timeout time.Duration, fn func() error) error {
+	return s.withLock(ctx, true, timeout, fn)
+}
+
+// WithRunLock toma el bloqueo exclusivo solo si el directorio de la corrida
+// existe; en otro caso informa ErrNoAudit sin crear nada.
+func (s *Store) WithRunLock(ctx context.Context, timeout time.Duration, fn func() error) error {
+	return s.withExistingRun(ctx, false, timeout, fn)
+}
+
+// WithSharedRunLock es la variante de lectura compartida de WithRunLock, para
+// comandos que solo observan el estado.
+func (s *Store) WithSharedRunLock(ctx context.Context, timeout time.Duration, fn func() error) error {
+	return s.withExistingRun(ctx, true, timeout, fn)
+}
+
+func (s *Store) withExistingRun(ctx context.Context, shared bool, timeout time.Duration, fn func() error) error {
+	if info, err := os.Stat(s.dir); err != nil || !info.IsDir() {
+		return ErrNoAudit
+	}
+	return s.withLock(ctx, shared, timeout, fn)
+}
+
+func (s *Store) withLock(ctx context.Context, shared bool, timeout time.Duration, fn func() error) error {
+	lock, err := platform.Acquire(ctx, s.LockPath(), shared, timeout)
+	if err != nil {
+		return err
+	}
+	fnErr := fn()
+	relErr := lock.Release()
+	if fnErr != nil {
+		return fnErr
+	}
+	return relErr
+}
 
 // Exists informa si hay un ledger guardado.
 func (s *Store) Exists() bool {

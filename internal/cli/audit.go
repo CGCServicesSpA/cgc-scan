@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,6 +20,11 @@ import (
 	"github.com/CGCServicesSpA/cgc-scan/internal/report"
 	"github.com/CGCServicesSpA/cgc-scan/internal/version"
 )
+
+// auditLockWait es la espera máxima por el bloqueo de la corrida. El bloqueo
+// muere con su proceso, así que no hay cerrojos huérfanos; el tope evita
+// esperas indefinidas ante un ciclo anómalo.
+const auditLockWait = 30 * time.Second
 
 // AuditStatusSchema identifica el resumen de estado de una auditoría.
 const AuditStatusSchema = "audit-status-1.0.0"
@@ -197,7 +204,7 @@ func (a *App) newAuditReportCommand(out *string) *cobra.Command {
 			if len(args) == 1 {
 				target = args[0]
 			}
-			return a.runAuditReport(auditTarget(target), *out, format)
+			return a.runAuditReport(cmd.Context(), auditTarget(target), *out, format)
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text")
@@ -218,7 +225,7 @@ func (a *App) newAuditStatusCommand(out *string) *cobra.Command {
 			if len(args) == 1 {
 				target = args[0]
 			}
-			return a.runAuditStatus(auditTarget(target), *out, format)
+			return a.runAuditStatus(cmd.Context(), auditTarget(target), *out, format)
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text")
@@ -351,12 +358,20 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 	if err != nil {
 		return err
 	}
-	if err := store.SaveLedger(ledger); err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	if err := store.SaveCandidates(ledger, &audit.Candidates{
-		SchemaVersion: audit.CandidatesSchemaVersion, RunID: ledger.Run.ID,
-		Items: []audit.Candidate{},
+	// El bloqueo cubre la creación completa de la corrida: otro proceso que
+	// llegue detrás espera y observa el estado íntegro, no un ledger sin
+	// estado de verificación.
+	if err := store.WithLock(cmd.Context(), auditLockWait, func() error {
+		if err := store.SaveLedger(ledger); err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		if err := store.SaveCandidates(ledger, &audit.Candidates{
+			SchemaVersion: audit.CandidatesSchemaVersion, RunID: ledger.Run.ID,
+			Items: []audit.Candidate{},
+		}); err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		return nil
 	}); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
@@ -380,47 +395,61 @@ func (a *App) runAuditNext(cmd *cobra.Command, target, out, format, agent string
 	if err != nil {
 		return err
 	}
-	ledger, err := store.LoadLedger()
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	candidates, err := store.LoadCandidates(ledger)
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	catalog, err := audit.LoadCatalog()
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	task, err := audit.Next(ledger, candidates, audit.NextOptions{
-		AgentID: agent, Catalog: catalog, MaxUnits: maxUnits,
-	})
-	switch {
-	case errors.Is(err, audit.ErrNoTask):
-		if ledger.RunStatus == audit.StatusIncomplete {
-			_, werr := fmt.Fprintf(a.Stdout, "No hay trabajo pendiente: la corrida está incompleta (%s).\n", ledger.IncompleteReason)
-			if werr != nil {
-				return werr
+	var (
+		ledger *audit.Ledger
+		task   *audit.Task
+	)
+	err = store.WithRunLock(cmd.Context(), auditLockWait, func() error {
+		var inner error
+		ledger, inner = store.LoadLedger()
+		if inner != nil {
+			return inner
+		}
+		candidates, inner := store.LoadCandidates(ledger)
+		if inner != nil {
+			return inner
+		}
+		catalog, inner := audit.LoadCatalog()
+		if inner != nil {
+			return inner
+		}
+		task, inner = audit.Next(ledger, candidates, audit.NextOptions{
+			AgentID: agent, Catalog: catalog, MaxUnits: maxUnits,
+		})
+		if err := inner; err != nil {
+			if errors.Is(err, audit.ErrBudgetExhausted) {
+				// El agotamiento difiere el resto y sella la corrida: ese
+				// cambio de estado se persiste antes de responder.
+				if saveErr := store.SaveLedger(ledger); saveErr != nil {
+					return saveErr
+				}
 			}
-			return IncompleteErrorf("la corrida está incompleta: %s", ledger.IncompleteReason)
+			return err
 		}
-		_, werr := fmt.Fprintf(a.Stdout, "No hay trabajo pendiente para este agente.\n")
-		return werr
-	case errors.Is(err, audit.ErrBudgetExhausted):
-		if saveErr := store.SaveLedger(ledger); saveErr != nil {
-			return IncompleteErrorf("%v", saveErr)
+		if err := store.SaveLedger(ledger); err != nil {
+			return err
 		}
-		return IncompleteErrorf("%v; las unidades pendientes quedaron diferidas y la corrida es incompleta", err)
-	case errors.Is(err, audit.ErrAgentIneligible):
-		return IncompleteErrorf("%v; usa un identificador de agente distinto del cazador y de los verificadores previos", err)
-	case err != nil:
-		return IncompleteErrorf("%v", err)
-	}
-	if err := store.SaveLedger(ledger); err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	if err := store.SaveCandidates(ledger, candidates); err != nil {
-		return IncompleteErrorf("%v", err)
+		return store.SaveCandidates(ledger, candidates)
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, audit.ErrNoTask):
+			if ledger != nil && ledger.RunStatus == audit.StatusIncomplete {
+				_, werr := fmt.Fprintf(a.Stdout, "No hay trabajo pendiente: la corrida está incompleta (%s).\n", ledger.IncompleteReason)
+				if werr != nil {
+					return werr
+				}
+				return IncompleteErrorf("la corrida está incompleta: %s", ledger.IncompleteReason)
+			}
+			_, werr := fmt.Fprintf(a.Stdout, "No hay trabajo pendiente para este agente.\n")
+			return werr
+		case errors.Is(err, audit.ErrBudgetExhausted):
+			return IncompleteErrorf("%v; las unidades pendientes quedaron diferidas y la corrida es incompleta", err)
+		case errors.Is(err, audit.ErrAgentIneligible):
+			return IncompleteErrorf("%v; usa un identificador de agente distinto del cazador y de los verificadores previos", err)
+		default:
+			return IncompleteErrorf("%v", err)
+		}
 	}
 	if format == "json" {
 		data, err := task.JSON()
@@ -449,22 +478,25 @@ func (a *App) runAuditSubmit(cmd *cobra.Command, target, out, format, file strin
 	if err != nil {
 		return err
 	}
-	ledger, err := store.LoadLedger()
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	candidates, err := store.LoadCandidates(ledger)
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	result, err := audit.Submit(ledger, candidates, sub)
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	if err := store.SaveLedger(ledger); err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	if err := store.SaveCandidates(ledger, candidates); err != nil {
+	var result *audit.SubmitOutcome
+	if err := store.WithRunLock(cmd.Context(), auditLockWait, func() error {
+		ledger, err := store.LoadLedger()
+		if err != nil {
+			return err
+		}
+		candidates, err := store.LoadCandidates(ledger)
+		if err != nil {
+			return err
+		}
+		result, err = audit.Submit(ledger, candidates, sub)
+		if err != nil {
+			return err
+		}
+		if err := store.SaveLedger(ledger); err != nil {
+			return err
+		}
+		return store.SaveCandidates(ledger, candidates)
+	}); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
 	if format == "json" {
@@ -478,54 +510,66 @@ func (a *App) runAuditSubmit(cmd *cobra.Command, target, out, format, file strin
 	return err
 }
 
-func (a *App) runAuditReport(target, out, format string) error {
+func (a *App) runAuditReport(ctx context.Context, target, out, format string) error {
 	store, err := a.auditStore(target, out)
 	if err != nil {
 		return err
 	}
-	ledger, err := store.LoadLedger()
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	candidates, err := store.LoadCandidates(ledger)
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	findings, err := audit.BuildFindings(ledger, candidates)
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	if err := store.SaveFindings(findings); err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	if err := store.SaveLedger(ledger); err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	artifacts := []struct {
-		name    string
-		content []byte
-	}{
-		{"REPORT.md", audit.RenderReport(ledger, findings)},
-		{"FINDINGS-DETAIL.md", audit.RenderFindingsDetail(ledger, findings)},
-		{"NEEDS-VALIDATION.md", audit.RenderNeedsValidation(findings)},
-	}
-	for _, art := range artifacts {
-		if err := store.WriteArtifact(art.name, art.content); err != nil {
-			return IncompleteErrorf("escribir %s: %v", art.name, err)
+	var (
+		summary    auditReportSummary
+		findings   *audit.Findings
+		runID      string
+		status     string
+		incomplete string
+	)
+	if err := store.WithRunLock(ctx, auditLockWait, func() error {
+		ledger, err := store.LoadLedger()
+		if err != nil {
+			return err
 		}
-	}
-
-	summary := auditReportSummary{
-		SchemaVersion: AuditReportSchema,
-		Status:        ledger.RunStatus,
-		Incomplete:    ledger.IncompleteReason,
-		Findings:      findings.Summary,
-		Coverage:      ledger.Summary,
-		Budget:        ledger.Budget,
-		FindingsPath:  store.FindingsPath(),
-		ReportPath:    store.ArtifactPath("REPORT.md"),
-		DetailPath:    store.ArtifactPath("FINDINGS-DETAIL.md"),
-		NeedsPath:     store.ArtifactPath("NEEDS-VALIDATION.md"),
+		candidates, err := store.LoadCandidates(ledger)
+		if err != nil {
+			return err
+		}
+		findings, err = audit.BuildFindings(ledger, candidates)
+		if err != nil {
+			return err
+		}
+		if err := store.SaveFindings(findings); err != nil {
+			return err
+		}
+		if err := store.SaveLedger(ledger); err != nil {
+			return err
+		}
+		artifacts := []struct {
+			name    string
+			content []byte
+		}{
+			{"REPORT.md", audit.RenderReport(ledger, findings)},
+			{"FINDINGS-DETAIL.md", audit.RenderFindingsDetail(ledger, findings)},
+			{"NEEDS-VALIDATION.md", audit.RenderNeedsValidation(findings)},
+		}
+		for _, art := range artifacts {
+			if err := store.WriteArtifact(art.name, art.content); err != nil {
+				return fmt.Errorf("escribir %s: %w", art.name, err)
+			}
+		}
+		summary = auditReportSummary{
+			SchemaVersion: AuditReportSchema,
+			Status:        ledger.RunStatus,
+			Incomplete:    ledger.IncompleteReason,
+			Findings:      findings.Summary,
+			Coverage:      ledger.Summary,
+			Budget:        ledger.Budget,
+			FindingsPath:  store.FindingsPath(),
+			ReportPath:    store.ArtifactPath("REPORT.md"),
+			DetailPath:    store.ArtifactPath("FINDINGS-DETAIL.md"),
+			NeedsPath:     store.ArtifactPath("NEEDS-VALIDATION.md"),
+		}
+		runID, status, incomplete = ledger.Run.ID, ledger.RunStatus, ledger.IncompleteReason
+		return nil
+	}); err != nil {
+		return IncompleteErrorf("%v", err)
 	}
 	if format == "json" {
 		payload, err := json.MarshalIndent(summary, "", "  ")
@@ -536,57 +580,66 @@ func (a *App) runAuditReport(target, out, format string) error {
 			return err
 		}
 	} else {
-		if _, err := fmt.Fprintf(a.Stdout, "Auditoría %s: %s\n", ledger.Run.ID, ledger.RunStatus); err != nil {
+		if _, err := fmt.Fprintf(a.Stdout, "Auditoría %s: %s\n", runID, status); err != nil {
 			return err
 		}
 		if _, err := fmt.Fprintf(a.Stdout, "Hallazgos: %d confirmados, %d por validar, %d rechazados\n",
 			findings.Summary.Confirmed, findings.Summary.NeedsValidation, findings.Summary.Rejected); err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(a.Stdout, "Informe: %s\n", store.ArtifactPath("REPORT.md")); err != nil {
+		if _, err := fmt.Fprintf(a.Stdout, "Informe: %s\n", summary.ReportPath); err != nil {
 			return err
 		}
 	}
-	if ledger.RunStatus != audit.StatusComplete {
-		return IncompleteErrorf("la auditoría quedó incompleta: %s", ledger.IncompleteReason)
+	if status != audit.StatusComplete {
+		return IncompleteErrorf("la auditoría quedó incompleta: %s", incomplete)
 	}
 	return nil
 }
 
-func (a *App) runAuditStatus(target, out, format string) error {
+func (a *App) runAuditStatus(ctx context.Context, target, out, format string) error {
 	store, err := a.auditStore(target, out)
 	if err != nil {
 		return err
 	}
-	ledger, err := store.LoadLedger()
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	candidates, err := store.LoadCandidates(ledger)
-	if err != nil {
-		return IncompleteErrorf("%v", err)
-	}
-	pending, escalation, decided := 0, 0, 0
-	for _, c := range candidates.Items {
-		switch c.State {
-		case audit.CandidatePending:
-			pending++
-		case audit.CandidateEscalation:
-			escalation++
-		case audit.CandidateDecided:
-			decided++
+	var doc *auditStatusDocument
+	// status es lector: bloqueo compartido, convive con otros lectores y no
+	// observa una escritura a medio operar.
+	if err := store.WithSharedRunLock(ctx, auditLockWait, func() error {
+		ledger, err := store.LoadLedger()
+		if err != nil {
+			return err
 		}
+		candidates, err := store.LoadCandidates(ledger)
+		if err != nil {
+			return err
+		}
+		pending, escalation, decided := 0, 0, 0
+		for _, c := range candidates.Items {
+			switch c.State {
+			case audit.CandidatePending:
+				pending++
+			case audit.CandidateEscalation:
+				escalation++
+			case audit.CandidateDecided:
+				decided++
+			}
+		}
+		d := auditStatusDocument{
+			SchemaVersion: AuditStatusSchema,
+			Run:           ledger.Run, Target: ledger.Target,
+			Status: ledger.RunStatus, Incomplete: ledger.IncompleteReason,
+			Profile: ledger.Profile, Budget: ledger.Budget, Coverage: ledger.Summary,
+			Dir: store.Dir(),
+		}
+		d.Candidates.Pending = pending
+		d.Candidates.Escalation = escalation
+		d.Candidates.Decided = decided
+		doc = &d
+		return nil
+	}); err != nil {
+		return IncompleteErrorf("%v", err)
 	}
-	doc := auditStatusDocument{
-		SchemaVersion: AuditStatusSchema,
-		Run:           ledger.Run, Target: ledger.Target,
-		Status: ledger.RunStatus, Incomplete: ledger.IncompleteReason,
-		Profile: ledger.Profile, Budget: ledger.Budget, Coverage: ledger.Summary,
-		Dir: store.Dir(),
-	}
-	doc.Candidates.Pending = pending
-	doc.Candidates.Escalation = escalation
-	doc.Candidates.Decided = decided
 	if format == "json" {
 		payload, err := json.MarshalIndent(doc, "", "  ")
 		if err != nil {
@@ -594,7 +647,7 @@ func (a *App) runAuditStatus(target, out, format string) error {
 		}
 		return report.EmitRaw(a.Stdout, append(payload, '\n'))
 	}
-	_, err = fmt.Fprint(a.Stdout, renderAuditStatus(doc))
+	_, err = fmt.Fprint(a.Stdout, renderAuditStatus(*doc))
 	return err
 }
 
