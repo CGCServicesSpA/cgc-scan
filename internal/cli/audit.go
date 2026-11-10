@@ -354,7 +354,7 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 	if err := store.SaveLedger(ledger); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
-	if err := store.SaveCandidates(&audit.Candidates{
+	if err := store.SaveCandidates(ledger, &audit.Candidates{
 		SchemaVersion: audit.CandidatesSchemaVersion, RunID: ledger.Run.ID,
 		Items: []audit.Candidate{},
 	}); err != nil {
@@ -384,7 +384,7 @@ func (a *App) runAuditNext(cmd *cobra.Command, target, out, format, agent string
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}
-	candidates, err := store.LoadCandidates()
+	candidates, err := store.LoadCandidates(ledger)
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}
@@ -419,7 +419,7 @@ func (a *App) runAuditNext(cmd *cobra.Command, target, out, format, agent string
 	if err := store.SaveLedger(ledger); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
-	if err := store.SaveCandidates(candidates); err != nil {
+	if err := store.SaveCandidates(ledger, candidates); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
 	if format == "json" {
@@ -453,7 +453,7 @@ func (a *App) runAuditSubmit(cmd *cobra.Command, target, out, format, file strin
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}
-	candidates, err := store.LoadCandidates()
+	candidates, err := store.LoadCandidates(ledger)
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}
@@ -464,7 +464,7 @@ func (a *App) runAuditSubmit(cmd *cobra.Command, target, out, format, file strin
 	if err := store.SaveLedger(ledger); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
-	if err := store.SaveCandidates(candidates); err != nil {
+	if err := store.SaveCandidates(ledger, candidates); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
 	if format == "json" {
@@ -487,7 +487,7 @@ func (a *App) runAuditReport(target, out, format string) error {
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}
-	candidates, err := store.LoadCandidates()
+	candidates, err := store.LoadCandidates(ledger)
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}
@@ -562,7 +562,7 @@ func (a *App) runAuditStatus(target, out, format string) error {
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}
-	candidates, err := store.LoadCandidates()
+	candidates, err := store.LoadCandidates(ledger)
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}

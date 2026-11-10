@@ -87,6 +87,35 @@ el contrato. El reporte lo repite.
   pendientes, la corrida queda `incomplete` con razón `budget_exhausted` y esas
   unidades pasan a `deferred`. Nunca se excede el presupuesto en silencio.
 
+## Validación del estado de verificación
+
+`candidates.json` es interno, pero no se confía en él: se valida semánticamente
+al cargarlo y antes de persistirlo (`ValidateCandidates`), siempre contra el
+ledger de la corrida. Cada error identifica al candidato y a la invariante
+incumplida.
+
+Se rechaza un estado que:
+
+- declare un `run_id` distinto del ledger o referencie unidades inexistentes;
+- tenga un candidato cuyo `unit` no lo declare en `candidate_fingerprints`, o
+  viceversa;
+- asigne la verificación al propio cazador, repita un verificador o conserve
+  `assigned_to` en un candidato `decided`;
+- mezcle fingerprints entre `proposed`, `escalated`, los intentos archivados y
+  `final`;
+- incumpla la rama de cada estado: `escalation` exige `escalated` con un
+  veredicto que supere al propuesto; `decided` exige `final` y que coincida con
+  el último intento archivado; `pending` no lleva intentos ni registros finales.
+  `decided` puede conservar `escalated` como historial de la escalación;
+- traiga un registro cuyo veredicto no corresponde a su autor: el cazador solo
+  propone `confirmed` o `needs_validation`;
+- lleve campos desconocidos o contenido JSON después del objeto (solo se
+  acepta espacio en blanco residual).
+
+Una carga fallida no modifica archivos. Si falta `candidates.json` con un
+ledger presente, la corrida se declara dañada (`ErrNoCandidates`) en lugar de
+reinterpretarse como vacía.
+
 ## Cobertura honesta
 
 El ledger nunca declara completa una corrida con unidades `planned` o

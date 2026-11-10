@@ -2,6 +2,12 @@
 
 ## Sin publicar
 
+- `audit` valida semánticamente `candidates.json` al cargarlo y antes de
+  persistirlo (`ValidateCandidates`): independencia entre cazador y
+  verificadores, ramas `escalated`/`final` permitidas por estado, coherencia de
+  `run_id` con el ledger y referencias en ambas direcciones. La decodificación
+  exige EOF después del objeto JSON, y una corrida con ledger pero sin estado
+  de verificación se declara dañada en lugar de reinterpretarse como vacía.
 - Nuevo protocolo `cgc-scan audit` (aditivo): ledger de cobertura
   (`audit-ledger-1.0.0`), asignaciones, verificación independiente, presupuesto y
   reportes derivados. El motor no llama a un modelo ni ejecuta código del

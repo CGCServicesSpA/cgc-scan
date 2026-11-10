@@ -14,6 +14,10 @@ import (
 // ErrNoAudit indica que el directorio no contiene una corrida de auditoría.
 var ErrNoAudit = errors.New("no hay una auditoría guardada en este directorio; ejecuta cgc-scan audit init")
 
+// ErrNoCandidates indica que hay corrida pero falta el estado de verificación:
+// una corrida en ese estado está dañada y no se reinterpreta silenciosamente.
+var ErrNoCandidates = errors.New("auditoría: la corrida no tiene estado de verificación; vuelve a crearla con audit init")
+
 // Nombres de archivo de una corrida.
 const (
 	LedgerFilename     = "ledger.json"
@@ -95,12 +99,20 @@ func (s *Store) LoadLedger() (*Ledger, error) {
 	return l, nil
 }
 
-// SaveCandidates escribe el estado de verificación de forma atómica.
-func (s *Store) SaveCandidates(c *Candidates) error {
+// SaveCandidates valida el estado de verificación contra el ledger y lo
+// escribe de forma atómica y privada. Nada se persiste si no cumple el
+// contrato.
+func (s *Store) SaveCandidates(l *Ledger, c *Candidates) error {
+	if l == nil {
+		return errors.New("auditoría: el ledger es obligatorio para validar el estado de verificación")
+	}
 	if c == nil {
 		return errors.New("auditoría: candidatos nulos")
 	}
 	c.Normalize()
+	if err := ValidateCandidates(c, l); err != nil {
+		return fmt.Errorf("auditoría: el estado de verificación no cumple el contrato: %w", err)
+	}
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
@@ -109,27 +121,24 @@ func (s *Store) SaveCandidates(c *Candidates) error {
 	return platform.WritePrivateFile(s.CandidatesPath(), data)
 }
 
-// LoadCandidates lee el estado de verificación; si no existe devuelve uno
-// vacío.
-func (s *Store) LoadCandidates() (*Candidates, error) {
+// LoadCandidates lee el estado de verificación y lo valida contra el ledger.
+// Una carga fallida no modifica ningún archivo.
+func (s *Store) LoadCandidates(l *Ledger) (*Candidates, error) {
 	data, err := platform.ReadFileBounded(s.CandidatesPath(), 16<<20)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return &Candidates{SchemaVersion: CandidatesSchemaVersion, Items: []Candidate{}}, nil
+			return nil, ErrNoCandidates
 		}
 		return nil, fmt.Errorf("auditoría: leer candidatos: %w", err)
 	}
-	var c Candidates
-	dec := json.NewDecoder(strings.NewReader(string(data)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&c); err != nil {
-		return nil, fmt.Errorf("auditoría: candidatos inválidos: %w", err)
+	c, err := DecodeCandidates(data)
+	if err != nil {
+		return nil, err
 	}
-	if c.SchemaVersion != CandidatesSchemaVersion {
-		return nil, fmt.Errorf("auditoría: candidatos con esquema %q, se esperaba %q", c.SchemaVersion, CandidatesSchemaVersion)
+	if err := ValidateCandidates(c, l); err != nil {
+		return nil, err
 	}
-	c.Normalize()
-	return &c, nil
+	return c, nil
 }
 
 // SaveFindings valida y escribe el documento de hallazgos.

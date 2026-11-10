@@ -59,22 +59,24 @@ func TestStoreCandidatesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	c, err := store.LoadCandidates()
-	if err != nil {
-		t.Fatalf("load vacío: %v", err)
+	ledger := plannerLedger("sql-injection")
+	if _, err := store.LoadCandidates(ledger); !errors.Is(err, ErrNoCandidates) {
+		t.Fatalf("err = %v, want ErrNoCandidates", err)
 	}
-	if c.SchemaVersion != CandidatesSchemaVersion || len(c.Items) != 0 {
-		t.Fatalf("candidatos vacíos mal formados: %+v", c)
-	}
+	c := &Candidates{SchemaVersion: CandidatesSchemaVersion, RunID: ledger.Run.ID}
 	c.Items = []Candidate{{
 		Fingerprint: "fp-1", Unit: "root/code/sql-injection", HunterAgent: "hunter-a",
 		Proposed: recordFor("fp-1", VerdictConfirmed), State: CandidatePending,
 		Attempts: []VerificationAttempt{},
 	}}
-	if err := store.SaveCandidates(c); err != nil {
+	ledger.Units[0].State = StateCandidate
+	ledger.Units[0].Owner = "hunter-a"
+	ledger.Units[0].Candidates = []string{"fp-1"}
+	ledger.Recompute()
+	if err := store.SaveCandidates(ledger, c); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	loaded, err := store.LoadCandidates()
+	loaded, err := store.LoadCandidates(ledger)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}

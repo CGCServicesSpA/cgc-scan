@@ -1,9 +1,12 @@
 package audit
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -32,6 +35,13 @@ const (
 	CandidateEscalation = "escalation"
 	CandidateDecided    = "decided"
 	CandidateDropped    = "dropped"
+)
+
+// Decisiones de una revisión de escalación: verified sostiene el registro
+// escalado; replace lo sustituye por el propio del revisor.
+const (
+	EscalationVerified = "verified"
+	EscalationReplace  = "replace"
 )
 
 // Modalidades de verificación.
@@ -120,6 +130,270 @@ func (c *Candidates) CandidateByFingerprint(fp string) *Candidate {
 	return nil
 }
 
+// ValidateCandidates comprueba que el estado de verificación sea coherente
+// consigo mismo y con el ledger de la corrida. Es la validación que el esquema
+// no puede expresar: identificadores canónicos, independencia entre cazador y
+// verificadores, ramas de escalated y final permitidas por estado,
+// fingerprints coincidentes y referencias que existen en ambas direcciones.
+// Cada error identifica al candidato y a la invariante incumplida.
+func ValidateCandidates(c *Candidates, l *Ledger) error {
+	if c == nil || l == nil {
+		return errors.New("auditoría: candidatos y ledger son obligatorios")
+	}
+	var is Issues
+	if c.SchemaVersion != CandidatesSchemaVersion {
+		is.addf("schema_version %q, se esperaba %q", c.SchemaVersion, CandidatesSchemaVersion)
+	}
+	if c.RunID != l.Run.ID {
+		is.addf("run_id %q no corresponde a la corrida %q", c.RunID, l.Run.ID)
+	}
+	known := map[string]bool{}
+	for i := range c.Items {
+		cand := &c.Items[i]
+		where := fmt.Sprintf("candidato %q", cand.Fingerprint)
+		if !fingerprintPattern.MatchString(cand.Fingerprint) {
+			is.addf("%s: fingerprint no cumple el patrón canónico", where)
+		} else if known[cand.Fingerprint] {
+			is.addf("fingerprint duplicado en verificación: %s", cand.Fingerprint)
+		}
+		known[cand.Fingerprint] = true
+		validateCandidate(l, cand, where, &is)
+	}
+	for _, u := range l.Units {
+		for _, fp := range u.Candidates {
+			if !known[fp] {
+				is.addf("unidad %s: declara el fingerprint %s sin candidato en verificación", u.CoverageID, fp)
+			}
+		}
+	}
+	return is.err()
+}
+
+// validateCandidate aplica las invariantes de un candidato contra el ledger.
+func validateCandidate(l *Ledger, cand *Candidate, where string, is *Issues) {
+	if unit := l.UnitByID(cand.Unit); unit == nil {
+		is.addf("%s: apunta a la unidad inexistente %q", where, cand.Unit)
+	} else if !slices.Contains(unit.Candidates, cand.Fingerprint) {
+		is.addf("%s: la unidad %s no lo declara en candidate_fingerprints", where, cand.Unit)
+	}
+	if !ValidAgentID(cand.HunterAgent) {
+		is.addf("%s: hunter_agent inválido: %q", where, cand.HunterAgent)
+	}
+	if cand.Proposed.Fingerprint != cand.Fingerprint {
+		is.addf("%s: proposed lleva el fingerprint %q", where, cand.Proposed.Fingerprint)
+	}
+	switch cand.Proposed.Verdict {
+	case VerdictConfirmed, VerdictNeedsValidation:
+	default:
+		is.addf("%s: proposed tiene el veredicto %q; un cazador solo propone confirmed o needs_validation",
+			where, cand.Proposed.Verdict)
+	}
+	if err := validateRecord(cand.Proposed); err != nil {
+		is.addf("%v", err)
+	}
+
+	seen := map[string]bool{}
+	for i, a := range cand.Attempts {
+		validateCandidateAttempt(cand, a, fmt.Sprintf("%s attempt[%d]", where, i), seen, is)
+	}
+	if cand.AssignedTo != "" {
+		if !ValidAgentID(cand.AssignedTo) {
+			is.addf("%s: assigned_to inválido: %q", where, cand.AssignedTo)
+		}
+		if cand.AssignedTo == cand.HunterAgent {
+			is.addf("%s: el cazador %q no puede ser su propio verificador", where, cand.AssignedTo)
+		}
+		if seen[cand.AssignedTo] {
+			is.addf("%s: assigned_to %q ya intervino; se pierde la independencia", where, cand.AssignedTo)
+		}
+	}
+
+	switch cand.State {
+	case CandidatePending:
+		if len(cand.Attempts) > 0 {
+			is.addf("%s: pending no puede tener intentos archivados", where)
+		}
+		if cand.Escalated != nil {
+			is.addf("%s: pending no puede llevar registro escalado", where)
+		}
+		if cand.Final != nil {
+			is.addf("%s: pending no puede llevar registro final", where)
+		}
+	case CandidateEscalation:
+		if cand.Escalated == nil {
+			is.addf("%s: escalation requiere escalated", where)
+		} else {
+			validateEscalatedRecord(cand, where, is)
+			if len(cand.Attempts) != 1 || cand.Attempts[0].Mode != ModeVerify ||
+				!sameRecord(cand.Attempts[0].Record, cand.Escalated) {
+				is.addf("%s: escalation exige exactamente la verificación que produjo el registro escalado", where)
+			}
+		}
+		if cand.Final != nil {
+			is.addf("%s: escalation no puede llevar registro final", where)
+		}
+	case CandidateDecided:
+		if cand.AssignedTo != "" {
+			is.addf("%s: decided no puede tener verificador asignado", where)
+		}
+		if cand.Escalated != nil {
+			validateEscalatedRecord(cand, where, is)
+		}
+		if cand.Final == nil {
+			is.addf("%s: decided exige final", where)
+		} else if err := validateRecord(*cand.Final); err != nil {
+			is.addf("%v", err)
+		}
+		validateDecidedBranch(cand, where, is)
+	case CandidateDropped:
+		if cand.Escalated != nil || cand.Final != nil {
+			is.addf("%s: dropped no puede llevar registro escalado ni final", where)
+		}
+		if cand.AssignedTo != "" {
+			is.addf("%s: dropped no puede tener verificador asignado", where)
+		}
+	default:
+		is.addf("%s: estado desconocido: %q", where, cand.State)
+	}
+}
+
+// validateCandidateAttempt comprueba cada intento archivado: agente canónico,
+// independiente del cazador y de los demás, y una decisión coherente con su
+// modo y su registro.
+func validateCandidateAttempt(cand *Candidate, a VerificationAttempt, at string, seen map[string]bool, is *Issues) {
+	if !ValidAgentID(a.AgentID) {
+		is.addf("%s: agent_id inválido: %q", at, a.AgentID)
+	}
+	if a.AgentID == cand.HunterAgent {
+		is.addf("%s: el cazador %q no puede verificar su propio candidato", at, a.AgentID)
+	}
+	if seen[a.AgentID] {
+		is.addf("%s: el agente %q interviene más de una vez; se pierde la independencia", at, a.AgentID)
+	}
+	seen[a.AgentID] = true
+	switch a.Mode {
+	case ModeVerify:
+		switch a.Decision {
+		case VerdictConfirmed, VerdictNeedsValidation, VerdictRejected:
+		default:
+			is.addf("%s: decisión desconocida %q en verificación", at, a.Decision)
+		}
+		if a.Record == nil {
+			is.addf("%s: una verificación requiere record", at)
+			return
+		}
+		if a.Record.Verdict != a.Decision {
+			is.addf("%s: la decisión %q no coincide con el veredicto %q", at, a.Decision, a.Record.Verdict)
+		}
+		if a.Record.Fingerprint != cand.Fingerprint {
+			is.addf("%s: el registro verifica %q", at, a.Record.Fingerprint)
+		}
+		if err := validateRecord(*a.Record); err != nil {
+			is.addf("%v", err)
+		}
+	case ModeEscalationCheck:
+		switch a.Decision {
+		case EscalationVerified:
+			if a.Record != nil {
+				is.addf("%s: verified no lleva record", at)
+			}
+		case EscalationReplace:
+			if a.Record == nil {
+				is.addf("%s: replace requiere record", at)
+				return
+			}
+			if a.Record.Fingerprint != cand.Fingerprint {
+				is.addf("%s: el registro verifica %q", at, a.Record.Fingerprint)
+			}
+			if err := validateRecord(*a.Record); err != nil {
+				is.addf("%v", err)
+			}
+		default:
+			is.addf("%s: decisión desconocida %q en revisión de escalación", at, a.Decision)
+		}
+	default:
+		is.addf("%s: modo desconocido: %q", at, a.Mode)
+	}
+}
+
+// validateEscalatedRecord comprueba el registro escalado: mismo fingerprint,
+// contrato válido y un veredicto que de verdad supera al propuesto.
+func validateEscalatedRecord(cand *Candidate, where string, is *Issues) {
+	if cand.Escalated.Fingerprint != cand.Fingerprint {
+		is.addf("%s: escalated lleva el fingerprint %q", where, cand.Escalated.Fingerprint)
+	}
+	if err := validateRecord(*cand.Escalated); err != nil {
+		is.addf("%v", err)
+	}
+	if VerdictRank(cand.Escalated.Verdict) <= VerdictRank(cand.Proposed.Verdict) {
+		is.addf("%s: el registro escalado no supera al propuesto; no había motivo de escalación", where)
+	}
+}
+
+// validateDecidedBranch exige que el registro final sea exactamente el que
+// produjo el último intento: la verificación única sin escalación, el registro
+// escalado confirmado o el reemplazo del revisor de escalación.
+func validateDecidedBranch(cand *Candidate, where string, is *Issues) {
+	if cand.Final == nil {
+		return
+	}
+	if len(cand.Attempts) == 0 {
+		is.addf("%s: decided sin intentos archivados; el final no tiene origen", where)
+		return
+	}
+	last := cand.Attempts[len(cand.Attempts)-1]
+	if cand.Escalated == nil {
+		if len(cand.Attempts) != 1 || last.Mode != ModeVerify {
+			is.addf("%s: decided sin escalación exige exactamente una verificación", where)
+			return
+		}
+		if !sameRecord(last.Record, cand.Final) {
+			is.addf("%s: el final no coincide con la verificación archivada", where)
+			return
+		}
+		if VerdictRank(cand.Final.Verdict) > VerdictRank(cand.Proposed.Verdict) {
+			is.addf("%s: el final supera al propuesto sin escalación; debió escalar", where)
+		}
+		return
+	}
+	if len(cand.Attempts) != 2 || cand.Attempts[0].Mode != ModeVerify || last.Mode != ModeEscalationCheck {
+		is.addf("%s: decided con escalación exige una verificación y una revisión de escalación", where)
+		return
+	}
+	switch last.Decision {
+	case EscalationVerified:
+		if !sameRecord(cand.Escalated, cand.Final) {
+			is.addf("%s: verified debe confirmar el registro escalado como final", where)
+		}
+	case EscalationReplace:
+		if !sameRecord(last.Record, cand.Final) {
+			is.addf("%s: el final no coincide con el reemplazo archivado", where)
+		}
+		if VerdictRank(cand.Final.Verdict) > VerdictRank(cand.Escalated.Verdict) {
+			is.addf("%s: el reemplazo supera al escalado; debió reescalar en lugar de decidir", where)
+		}
+	default:
+		is.addf("%s: revisión de escalación con decisión desconocida: %q", where, last.Decision)
+	}
+}
+
+// sameRecord compara dos registros por su serialización canónica: el broker
+// copia el registro tal cual, así que la forma emitida debe coincidir.
+func sameRecord(a, b *Record) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	ja, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	jb, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
+	return bytes.Equal(ja, jb)
+}
+
 // UnitResult es el resultado que un cazador devuelve para una unidad.
 type UnitResult struct {
 	CoverageID            string   `json:"coverage_id"`
@@ -161,22 +435,54 @@ type Submission struct {
 	Uncovered     []Uncovered   `json:"uncovered,omitempty"`
 }
 
+// decodeStrict decodifica un único objeto JSON en v rechazando campos
+// desconocidos y exigiendo que después del objeto solo quede espacio en
+// blanco: un segundo objeto o basura residual invalida el documento.
+func decodeStrict(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return errors.New("hay contenido adicional después del objeto JSON")
+	}
+	return nil
+}
+
 // DecodeSubmission lee y decodifica una entrega, rechazando campos
-// desconocidos.
+// desconocidos y contenido posterior al objeto.
 func DecodeSubmission(data []byte) (*Submission, error) {
 	if !json.Valid(data) {
 		return nil, errors.New("la entrega no es JSON válido")
 	}
 	var s Submission
-	dec := json.NewDecoder(strings.NewReader(string(data)))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&s); err != nil {
+	if err := decodeStrict(data, &s); err != nil {
 		return nil, fmt.Errorf("entrega inválida: %w", err)
 	}
 	if s.SchemaVersion != SubmissionSchemaVersion {
 		return nil, fmt.Errorf("entrega con schema_version %q, se esperaba %q", s.SchemaVersion, SubmissionSchemaVersion)
 	}
 	return &s, nil
+}
+
+// DecodeCandidates lee y decodifica el estado de verificación, rechazando
+// campos desconocidos y contenido posterior al objeto. No valida la coherencia
+// con el ledger: para eso está ValidateCandidates.
+func DecodeCandidates(data []byte) (*Candidates, error) {
+	if !json.Valid(data) {
+		return nil, errors.New("el estado de verificación no es JSON válido")
+	}
+	var c Candidates
+	if err := decodeStrict(data, &c); err != nil {
+		return nil, fmt.Errorf("estado de verificación inválido: %w", err)
+	}
+	if c.SchemaVersion != CandidatesSchemaVersion {
+		return nil, fmt.Errorf("estado de verificación con esquema %q, se esperaba %q", c.SchemaVersion, CandidatesSchemaVersion)
+	}
+	c.Normalize()
+	return &c, nil
 }
 
 // AssignmentUnit describe una unidad asignada con su clase.
@@ -700,7 +1006,7 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutco
 
 	case CandidateEscalation:
 		switch v.Decision {
-		case "verified":
+		case EscalationVerified:
 			if cand.Escalated == nil {
 				return nil, errors.New("auditoría: escalación sin registro que verificar")
 			}
@@ -711,7 +1017,7 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutco
 			cand.Final = cand.Escalated
 			cand.AssignedTo = ""
 			out.Decided++
-		case "replace":
+		case EscalationReplace:
 			if v.Record == nil {
 				return nil, errors.New("auditoría: replace requiere record")
 			}
