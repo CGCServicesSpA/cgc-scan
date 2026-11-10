@@ -500,7 +500,13 @@ Aceptación y pruebas:
 
 ## P2-6 — Requisitos, aceptación y documentación
 
-**Estado:** pendiente. **Dependencias:** incremental durante todo el backlog. **Estimación:** 3 días.
+**Estado:** en curso. **Dependencias:** incremental durante todo el backlog. **Estimación:** 3 días.
+
+**Entregado:** RF-39…RF-56 de auditoría en §7.6 con su trazabilidad a tarea y
+criterio; CA-73…CA-91 nuevos sin renumerar; comandos, perfiles, recuperación,
+presupuesto, fuentes, integridad y límites documentados en
+`docs/auditoria.md`. **Pendiente:** actualizar los ejemplos de `docs/uso.md` y
+la skill incluida.
 
 Trabajo:
 
