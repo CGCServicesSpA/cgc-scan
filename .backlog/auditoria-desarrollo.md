@@ -418,7 +418,7 @@ Aceptación y pruebas:
 
 ## P2-2 — Explicación y observabilidad
 
-**Estado:** pendiente. **Dependencias:** P0-1, P0-4 y contratos P1. **Estimación:** 2 días.
+**Estado:** completada. **Dependencias:** P0-1, P0-4 y contratos P1. **Estimación:** 2 días.
 
 Trabajo:
 
