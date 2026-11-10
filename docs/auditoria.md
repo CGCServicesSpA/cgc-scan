@@ -36,9 +36,10 @@ proyecto (`<cache>/cgc-scan/projects/<id>/audit`), nunca dentro del proyecto.
 
 | Documento | Versión | Qué es |
 | --- | --- | --- |
-| `ledger.json` | `audit-ledger-1.0.0` | Cobertura: unidades, estados, dueños, intentos y presupuesto |
-| `findings.json` | `findings-1.0.0` | Registros con veredicto final, sin mezclar veredictos |
-| `candidates.json` | interno | Estado de verificación (pendiente, escalación, decidido) |
+| `state.json` | `audit-state-1.0.0` | **Estado autoritativo**: ledger, estado de verificación y, si la corrida se selló, hallazgos en una sola frontera de commit |
+| `ledger.json` | `audit-ledger-1.0.0` | Vista derivada de cobertura; se regenera desde `state.json` tras cada commit |
+| `findings.json` | `findings-1.0.0` | Vista derivada de hallazgos con veredicto final, sin mezclar veredictos |
+| `candidates.json` | interno | Vista derivada del estado de verificación (pendiente, escalación, decidido) |
 | `audit next` | `audit-task-1.0.0` | Asignación que el agente debe cumplir |
 | entrega | `audit-submission-1.0.0` | Resultado del agente para `audit submit` |
 
@@ -115,6 +116,30 @@ Se rechaza un estado que:
 Una carga fallida no modifica archivos. Si falta `candidates.json` con un
 ledger presente, la corrida se declara dañada (`ErrNoCandidates`) en lugar de
 reinterpretarse como vacía.
+
+## Persistencia transaccional
+
+El estado de una corrida vive en un solo archivo, `state.json`, que se escribe
+y se lee con una operación atómica (temporal + `rename` + `fsync` del
+directorio). Ledger, estado de verificación y —en el sellado— hallazgos
+quedan dentro de la misma frontera: una interrupción deja íntegro el estado
+anterior o el nuevo, nunca un punto intermedio.
+
+- `ledger.json`, `candidates.json` y `findings.json` son **vistas derivadas**
+  informativas: se regeneran desde `state.json` tras cada commit. Si una
+  escritura de vista falla, el estado ya está íntegro y el error lo declara;
+  repetir el comando regenera las vistas y no vuelve a aplicar operación
+  alguna.
+- Los archivos temporales abandonados (`.state.json.tmp-*`) son residuos
+  inofensivos de una interrupción y se ignoran al cargar.
+- **Formato heredado:** una corrida creada antes del estado único (solo
+  `ledger.json` + `candidates.json`) se carga de forma explícita como legado y
+  la primera escritura la migra a `state.json`. Un legado inconsistente —un
+  ledger sin estado de verificación, o hallazgos de otra corrida— se rechaza;
+  nunca se reinterpreta silenciosamente un estado antiguo.
+- Qué cubre cada garantía: la escritura atómica protege contra la **caída del
+  proceso** en cualquier punto; contra la **pérdida de energía** protegen el
+  `fsync` del archivo y del directorio antes de responder.
 
 ## Concurrencia
 

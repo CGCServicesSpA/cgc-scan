@@ -307,3 +307,42 @@ func TestAuditStatusUsesSharedLock(t *testing.T) {
 		t.Fatalf("status tras soltar = %d: %s %s", code, out, errOut)
 	}
 }
+
+func TestAuditRunUsesAuthoritativeState(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	root := auditProject(t)
+	runDir := filepath.Join(t.TempDir(), "run")
+	if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", runDir, "--format", "json"); code != 0 {
+		t.Fatalf("init = %d: %s %s", code, out, errOut)
+	}
+	// El estado autoritativo y sus vistas derivadas quedan escritos y
+	// cargan con la misma corrida.
+	for _, name := range []string{"state.json", "ledger.json", "candidates.json"} {
+		if _, err := os.Stat(filepath.Join(runDir, name)); err != nil {
+			t.Fatalf("falta %s: %v", name, err)
+		}
+	}
+	store, err := audit.OpenStore(runDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.LoadState()
+	if err != nil {
+		t.Fatalf("load state: %v", err)
+	}
+	code, out, errOut := auditRun(t, app, "audit", "status", "--out", runDir, "--format", "json")
+	if code != 0 {
+		t.Fatalf("status = %d: %s %s", code, out, errOut)
+	}
+	var status struct {
+		Status string    `json:"run_status"`
+		Run    audit.Run `json:"run"`
+	}
+	if err := json.Unmarshal([]byte(out), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != st.Ledger.RunStatus || status.Run.ID != st.Ledger.Run.ID {
+		t.Fatalf("status observa otra generación: %s/%s != %s/%s",
+			status.Status, status.Run.ID, st.Ledger.RunStatus, st.Ledger.Run.ID)
+	}
+}

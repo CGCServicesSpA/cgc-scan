@@ -70,11 +70,13 @@ Aceptación y pruebas:
 
 ## P0-1 — Persistencia transaccional y recuperación
 
-**Estado:** pendiente. **Dependencias:** P0-5 y P0-2. **Estimación:** 3 días.
+**Estado:** completada. **Dependencias:** P0-5 y P0-2. **Estimación:** 3 días.
 
-**Archivos:** `internal/audit/store.go`, `internal/cli/audit.go`.
-
-**Decisión previa:** elegir estado único autoritativo o journal con recuperación; definir compatibilidad con el formato existente.
+**Decisión tomada:** estado único autoritativo (`state.json` con ledger,
+candidatos y hallazgos sellados); `ledger.json`, `candidates.json` y
+`findings.json` se conservan como vistas derivadas regeneradas tras cada
+commit. El formato heredado de dos archivos se carga de forma explícita como
+legado y migra en la primera escritura; un legado inconsistente se rechaza.
 
 Trabajo:
 

@@ -329,15 +329,11 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 		if err != nil {
 			return UsageErrorf("--prior: %v", err)
 		}
-		priorLedger, err := priorStore.LoadLedger()
+		priorState, err := priorStore.LoadState()
 		if err != nil {
 			return UsageErrorf("--prior: %v", err)
 		}
-		priorFindings, ferr := priorStore.LoadFindings()
-		if ferr != nil && !errors.Is(ferr, audit.ErrNoAudit) {
-			return IncompleteErrorf("--prior: %v", ferr)
-		}
-		prior = audit.PriorFrom(priorLedger, priorFindings, sourceRef, vcs.Dirty)
+		prior = audit.PriorFrom(priorState.Ledger, priorState.Findings, sourceRef, vcs.Dirty)
 	}
 	var limitations []string
 	if p.Partial {
@@ -362,16 +358,11 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 	// llegue detrás espera y observa el estado íntegro, no un ledger sin
 	// estado de verificación.
 	if err := store.WithLock(cmd.Context(), auditLockWait, func() error {
-		if err := store.SaveLedger(ledger); err != nil {
-			return IncompleteErrorf("%v", err)
+		st := &audit.RunState{
+			Ledger:     ledger,
+			Candidates: &audit.Candidates{SchemaVersion: audit.CandidatesSchemaVersion, RunID: ledger.Run.ID, Items: []audit.Candidate{}},
 		}
-		if err := store.SaveCandidates(ledger, &audit.Candidates{
-			SchemaVersion: audit.CandidatesSchemaVersion, RunID: ledger.Run.ID,
-			Items: []audit.Candidate{},
-		}); err != nil {
-			return IncompleteErrorf("%v", err)
-		}
-		return nil
+		return store.CommitState(st)
 	}); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
@@ -400,36 +391,29 @@ func (a *App) runAuditNext(cmd *cobra.Command, target, out, format, agent string
 		task   *audit.Task
 	)
 	err = store.WithRunLock(cmd.Context(), auditLockWait, func() error {
-		var inner error
-		ledger, inner = store.LoadLedger()
+		st, inner := store.LoadState()
 		if inner != nil {
 			return inner
 		}
-		candidates, inner := store.LoadCandidates(ledger)
-		if inner != nil {
-			return inner
-		}
+		ledger = st.Ledger
 		catalog, inner := audit.LoadCatalog()
 		if inner != nil {
 			return inner
 		}
-		task, inner = audit.Next(ledger, candidates, audit.NextOptions{
+		task, inner = audit.Next(st.Ledger, st.Candidates, audit.NextOptions{
 			AgentID: agent, Catalog: catalog, MaxUnits: maxUnits,
 		})
 		if err := inner; err != nil {
 			if errors.Is(err, audit.ErrBudgetExhausted) {
 				// El agotamiento difiere el resto y sella la corrida: ese
 				// cambio de estado se persiste antes de responder.
-				if saveErr := store.SaveLedger(ledger); saveErr != nil {
+				if saveErr := store.CommitState(st); saveErr != nil {
 					return saveErr
 				}
 			}
 			return err
 		}
-		if err := store.SaveLedger(ledger); err != nil {
-			return err
-		}
-		return store.SaveCandidates(ledger, candidates)
+		return store.CommitState(st)
 	})
 	if err != nil {
 		switch {
@@ -480,22 +464,15 @@ func (a *App) runAuditSubmit(cmd *cobra.Command, target, out, format, file strin
 	}
 	var result *audit.SubmitOutcome
 	if err := store.WithRunLock(cmd.Context(), auditLockWait, func() error {
-		ledger, err := store.LoadLedger()
+		st, err := store.LoadState()
 		if err != nil {
 			return err
 		}
-		candidates, err := store.LoadCandidates(ledger)
+		result, err = audit.Submit(st.Ledger, st.Candidates, sub)
 		if err != nil {
 			return err
 		}
-		result, err = audit.Submit(ledger, candidates, sub)
-		if err != nil {
-			return err
-		}
-		if err := store.SaveLedger(ledger); err != nil {
-			return err
-		}
-		return store.SaveCandidates(ledger, candidates)
+		return store.CommitState(st)
 	}); err != nil {
 		return IncompleteErrorf("%v", err)
 	}
@@ -523,22 +500,17 @@ func (a *App) runAuditReport(ctx context.Context, target, out, format string) er
 		incomplete string
 	)
 	if err := store.WithRunLock(ctx, auditLockWait, func() error {
-		ledger, err := store.LoadLedger()
+		st, err := store.LoadState()
 		if err != nil {
 			return err
 		}
-		candidates, err := store.LoadCandidates(ledger)
+		ledger := st.Ledger
+		findings, err = audit.BuildFindings(ledger, st.Candidates)
 		if err != nil {
 			return err
 		}
-		findings, err = audit.BuildFindings(ledger, candidates)
-		if err != nil {
-			return err
-		}
-		if err := store.SaveFindings(findings); err != nil {
-			return err
-		}
-		if err := store.SaveLedger(ledger); err != nil {
+		st.Findings = findings
+		if err := store.CommitState(st); err != nil {
 			return err
 		}
 		artifacts := []struct {
@@ -606,14 +578,11 @@ func (a *App) runAuditStatus(ctx context.Context, target, out, format string) er
 	// status es lector: bloqueo compartido, convive con otros lectores y no
 	// observa una escritura a medio operar.
 	if err := store.WithSharedRunLock(ctx, auditLockWait, func() error {
-		ledger, err := store.LoadLedger()
+		st, err := store.LoadState()
 		if err != nil {
 			return err
 		}
-		candidates, err := store.LoadCandidates(ledger)
-		if err != nil {
-			return err
-		}
+		ledger, candidates := st.Ledger, st.Candidates
 		pending, escalation, decided := 0, 0, 0
 		for _, c := range candidates.Items {
 			switch c.State {

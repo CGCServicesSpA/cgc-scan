@@ -2,7 +2,6 @@ package audit
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -115,27 +114,11 @@ func (s *Store) withLock(ctx context.Context, shared bool, timeout time.Duration
 	return relErr
 }
 
-// Exists informa si hay un ledger guardado.
-func (s *Store) Exists() bool {
-	info, err := os.Stat(s.LedgerPath())
-	return err == nil && info.Mode().IsRegular()
-}
-
-// SaveLedger escribe el ledger de forma atómica y privada.
+// SaveLedger escribe solo la vista derivada del ledger. El ciclo de mutación
+// debe usar CommitState: escribir el ledger sin el estado de verificación
+// deja una corrida desalineada.
 func (s *Store) SaveLedger(l *Ledger) error {
-	if l == nil {
-		return errors.New("auditoría: ledger nulo")
-	}
-	l.Recompute()
-	data, err := json.MarshalIndent(l, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	if err := ValidateLedger(data); err != nil {
-		return fmt.Errorf("auditoría: el ledger no cumple el contrato: %w", err)
-	}
-	return platform.WritePrivateFile(s.LedgerPath(), data)
+	return s.writeLedgerView(l)
 }
 
 // LoadLedger lee y valida el ledger.
@@ -157,9 +140,8 @@ func (s *Store) LoadLedger() (*Ledger, error) {
 	return l, nil
 }
 
-// SaveCandidates valida el estado de verificación contra el ledger y lo
-// escribe de forma atómica y privada. Nada se persiste si no cumple el
-// contrato.
+// SaveCandidates valida el estado de verificación contra el ledger y escribe
+// solo la vista derivada. El ciclo de mutación debe usar CommitState.
 func (s *Store) SaveCandidates(l *Ledger, c *Candidates) error {
 	if l == nil {
 		return errors.New("auditoría: el ledger es obligatorio para validar el estado de verificación")
@@ -171,12 +153,7 @@ func (s *Store) SaveCandidates(l *Ledger, c *Candidates) error {
 	if err := ValidateCandidates(c, l); err != nil {
 		return fmt.Errorf("auditoría: el estado de verificación no cumple el contrato: %w", err)
 	}
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return platform.WritePrivateFile(s.CandidatesPath(), data)
+	return s.writeCandidatesView(c)
 }
 
 // LoadCandidates lee el estado de verificación y lo valida contra el ledger.
@@ -199,24 +176,10 @@ func (s *Store) LoadCandidates(l *Ledger) (*Candidates, error) {
 	return c, nil
 }
 
-// SaveFindings valida y escribe el documento de hallazgos.
+// SaveFindings valida y escribe solo la vista derivada de hallazgos. El
+// sellado de la corrida debe usar CommitState.
 func (s *Store) SaveFindings(f *Findings) error {
-	if f == nil {
-		return errors.New("auditoría: hallazgos nulos")
-	}
-	f.Recompute()
-	data, err := json.MarshalIndent(f, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	if err := ValidateFindings(data); err != nil {
-		return fmt.Errorf("auditoría: los hallazgos no cumplen el contrato: %w", err)
-	}
-	if err := ValidateFindingsSemantics(f); err != nil {
-		return err
-	}
-	return platform.WritePrivateFile(s.FindingsPath(), data)
+	return s.writeFindingsView(f)
 }
 
 // LoadFindings lee y valida el documento de hallazgos.

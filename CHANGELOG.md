@@ -2,6 +2,14 @@
 
 ## Sin publicar
 
+- `audit` persiste la corrida de forma transaccional en un único archivo
+  autoritativo (`state.json`, `audit-state-1.0.0`): ledger, estado de
+  verificación y —en el sellado— hallazgos comparten una frontera de commit
+  atómica, así que una interrupción deja íntegro el estado anterior o el
+  nuevo y ya no existe la combinación «unidad `candidate` sin candidato».
+  `ledger.json`, `candidates.json` y `findings.json` quedan como vistas
+  derivadas regeneradas tras cada commit, y una corrida antigua de dos
+  archivos se carga como legado y migra en la primera escritura.
 - `audit` serializa la corrida con un bloqueo exclusivo por directorio
   (`flock` sobre `<corrida>/.lock`): `init`, `next`, `submit` y `report`
   ejecutan su ciclo completo de carga-mutación-persistencia bajo el bloqueo y
