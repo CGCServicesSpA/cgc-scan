@@ -2,6 +2,15 @@
 
 ## Sin publicar
 
+- `audit` valida las citas (`trace` y `evidence`) contra la fuente declarada
+  por la corrida y la representa explícitamente: modo `revision` (snapshot de
+  Git con árbol limpio; las citas se resuelven contra los blobs y siguen
+  válidas aunque el árbol cambie) o modo `worktree` (árbol actual; los
+  registros presentables sellan el hash de su fuente al crearse). Una traza
+  fabricada se rechaza en `submit`; una revisión no disponible es un bloqueo
+  explícito; un archivo citado que cambió impide presentar el hallazgo como
+  vigente: la corrida queda incompleta con razón `source_diverged` y el
+  informe exige revalidación, sin fabricar veredictos automáticos.
 - `audit` persiste la corrida de forma transaccional en un único archivo
   autoritativo (`state.json`, `audit-state-1.0.0`): ledger, estado de
   verificación y —en el sellado— hallazgos comparten una frontera de commit

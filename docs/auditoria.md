@@ -141,6 +141,38 @@ anterior o el nuevo, nunca un punto intermedio.
   proceso** en cualquier punto; contra la **pérdida de energía** protegen el
   `fsync` del archivo y del directorio antes de responder.
 
+## Fuentes y citas
+
+Toda cita (`trace[].file`, `evidence[].file`) se valida contra la fuente que
+la corrida declara. El modo de fuente se declara explícitamente en el estado
+interno (`state.json`, campo `source`); el contrato público del ledger no
+cambia:
+
+- **`revision`**: la corrida describe el snapshot de una revisión de Git con
+  el árbol limpio al iniciar. Las citas se resuelven contra los blobs de esa
+  revisión (`git cat-file`, todo local, sin red) y **permanecen válidas
+  aunque el árbol cambie después**.
+- **`worktree`**: la corrida describe el árbol actual de trabajo (sin Git o
+  con árbol sucio). Las citas se validan contra el árbol y cada registro
+  presentable registra el hash de la fuente de sus archivos al crearse.
+
+Reglas:
+
+- En `submit`, cada registro de la entrega valida su traza y evidencia contra
+  la fuente: archivo inexistente, línea fuera de rango o ruta que escapa de
+  la raíz (incluso por enlace simbólico) rechazan la entrega sin mutar nada.
+- Una revisión declarada que no es resoluble localmente es un **bloqueo
+  explícito**, nunca un fallback al árbol actual.
+- En modo `worktree`, `audit report` compara los sellos con la fuente actual:
+  si un archivo citado por un registro final cambió o desapareció, la corrida
+  queda `incomplete` con razón `source_diverged`, el informe declara el cambio
+  y **exige revalidación**. El motor no fabrica automáticamente un
+  `needs_validation`: ese veredicto exige hipótesis y bloqueo propios.
+- En modo `revision` no se exige vigencia actual: el informe presenta el
+  hallazgo como perteneciente al snapshot declarado.
+- El conteo de líneas define que un archivo vacío tiene 0 líneas y que la
+  última línea sin salto final cuenta como línea.
+
 ## Concurrencia
 
 Toda mutación de la corrida ocurre bajo un bloqueo exclusivo por corrida

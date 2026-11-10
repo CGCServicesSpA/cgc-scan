@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
 )
@@ -20,15 +21,22 @@ const StateSchemaVersion = "audit-state-1.0.0"
 // derivadas informativas que se regeneran desde aquí tras cada commit.
 type RunState struct {
 	SchemaVersion string      `json:"schema_version"`
+	Source        *SourceInfo `json:"source"`
 	Ledger        *Ledger     `json:"ledger"`
 	Candidates    *Candidates `json:"candidates"`
 	Findings      *Findings   `json:"findings,omitempty"`
 }
 
-// Normalize completa el estado: versiones, slices y resúmenes derivados.
+// Normalize completa el estado: versiones, slices, resúmenes derivados y, si
+// falta, el modo de fuente derivado del ledger (estados anteriores a la
+// declaración explícita).
 func (st *RunState) Normalize() {
 	if st.SchemaVersion == "" {
 		st.SchemaVersion = StateSchemaVersion
+	}
+	if st.Source == nil && st.Ledger != nil {
+		info := DeriveSourceInfo(st.Ledger)
+		st.Source = &info
 	}
 	if st.Ledger != nil {
 		st.Ledger.Recompute()
@@ -59,6 +67,15 @@ func ValidateRunState(st *RunState) error {
 	}
 	if err := is.err(); err != nil {
 		return err
+	}
+	switch st.Source.Mode {
+	case SourceModeRevision:
+		if strings.TrimSpace(st.Source.Revision) == "" {
+			is.addf("el modo revisión exige una revisión declarada")
+		}
+	case SourceModeWorktree:
+	default:
+		is.addf("modo de fuente desconocido: %q", st.Source.Mode)
 	}
 	if err := ValidateLedgerSemantics(st.Ledger); err != nil {
 		return fmt.Errorf("auditoría: ledger inválido: %w", err)

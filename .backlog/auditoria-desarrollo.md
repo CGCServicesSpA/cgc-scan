@@ -97,11 +97,14 @@ Aceptación y pruebas:
 
 ## P0-3 — Validación de citas y vigencia de la fuente
 
-**Estado:** pendiente. **Dependencias:** P0-1. **Estimación:** 3 días.
+**Estado:** completada. **Dependencias:** P0-1. **Estimación:** 3 días.
 
-**Archivos:** `internal/audit/validate.go`, `internal/audit/broker.go`, `internal/cli/audit.go`.
-
-**Decisión previa:** representar explícitamente si la corrida describe un snapshot histórico o el árbol actual.
+**Decisión tomada:** el modo de fuente se declara explícitamente en el estado
+interno (`state.json → source`): `revision` (snapshot de Git con árbol limpio;
+las citas se resuelven contra los blobs del snapshot) o `worktree` (árbol
+actual; los registros presentables sellan el hash de su fuente al crearse y
+`report` declara la divergencia exigiendo revalidación). El contrato público
+del ledger no cambia.
 
 Trabajo:
 

@@ -15,6 +15,7 @@ const (
 	IncompleteUnassigned           = "unassigned_units"
 	IncompleteUnverifiedCandidates = "unverified_candidates"
 	IncompleteMissingCandidate     = "missing_candidate_state"
+	IncompleteSourceDiverged       = "source_diverged"
 )
 
 // BuildFindings sella el estado de la corrida y deriva el documento de

@@ -26,6 +26,33 @@ import (
 // esperas indefinidas ante un ciclo anómalo.
 const auditLockWait = 30 * time.Second
 
+// sourceForRun resuelve la fuente declarada por el estado de la corrida. Una
+// revisión no disponible es un bloqueo explícito.
+func sourceForRun(st *audit.RunState) (*audit.Source, error) {
+	src, err := audit.SourceFrom(st.Ledger.Target.Root, *st.Source)
+	if err != nil {
+		return nil, err
+	}
+	return src, nil
+}
+
+// sourceStamper devuelve el sellador que usa el broker: valida la cita (ya
+// comprobada antes de aplicar) y registra el hash de la fuente de cada
+// archivo citado en el momento del registro.
+func sourceStamper(src *audit.Source) audit.SourceStamper {
+	return func(fingerprint, role string, record *audit.Record) (map[string]string, error) {
+		hashes := map[string]string{}
+		for _, file := range audit.CitedFiles(record) {
+			hash, err := src.HashFile(file)
+			if err != nil {
+				return nil, fmt.Errorf("el candidato %s cita %q: %w", fingerprint, file, err)
+			}
+			hashes[file] = hash
+		}
+		return hashes, nil
+	}
+}
+
 // AuditStatusSchema identifica el resumen de estado de una auditoría.
 const AuditStatusSchema = "audit-status-1.0.0"
 
@@ -323,6 +350,10 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 	if vcs.Available && vcs.Revision != "" {
 		sourceRef = vcs.Revision
 	}
+	src, err := audit.ResolveSource(abs, sourceRef, vcs.Dirty)
+	if err != nil {
+		return IncompleteErrorf("%v", err)
+	}
 	var prior *audit.PriorRun
 	if priorDir != "" {
 		priorStore, err := audit.OpenStore(priorDir)
@@ -359,6 +390,7 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 	// estado de verificación.
 	if err := store.WithLock(cmd.Context(), auditLockWait, func() error {
 		st := &audit.RunState{
+			Source:     &src.Info,
 			Ledger:     ledger,
 			Candidates: &audit.Candidates{SchemaVersion: audit.CandidatesSchemaVersion, RunID: ledger.Run.ID, Items: []audit.Candidate{}},
 		}
@@ -468,7 +500,27 @@ func (a *App) runAuditSubmit(cmd *cobra.Command, target, out, format, file strin
 		if err != nil {
 			return err
 		}
-		result, err = audit.Submit(st.Ledger, st.Candidates, sub)
+		src, err := sourceForRun(st)
+		if err != nil {
+			return err
+		}
+		// Las citas de la entrega se validan contra la fuente declarada por
+		// la corrida antes de aplicar cualquier cambio: una traza fabricada
+		// se rechaza aquí.
+		for i := range sub.Candidates {
+			if err := src.ValidateRecord(fmt.Sprintf("candidato %q", sub.Candidates[i].Fingerprint), &sub.Candidates[i]); err != nil {
+				return err
+			}
+		}
+		if sub.Verification != nil && sub.Verification.Record != nil {
+			where := fmt.Sprintf("verificación %q", sub.Verification.Fingerprint)
+			if err := src.ValidateRecord(where, sub.Verification.Record); err != nil {
+				return err
+			}
+		}
+		result, err = audit.SubmitWithOptions(st.Ledger, st.Candidates, sub, audit.SubmitOptions{
+			Source: sourceStamper(src),
+		})
 		if err != nil {
 			return err
 		}
@@ -508,6 +560,28 @@ func (a *App) runAuditReport(ctx context.Context, target, out, format string) er
 		findings, err = audit.BuildFindings(ledger, st.Candidates)
 		if err != nil {
 			return err
+		}
+		// Vigencia actual: si la corrida describe el árbol de trabajo y los
+		// archivos citados cambiaron desde su registro, el sellado no puede
+		// presentarlos como vigentes. Se declara el cambio y se exige
+		// revalidación; no se fabrica un needs_validation automático.
+		src, err := sourceForRun(st)
+		if err != nil {
+			return err
+		}
+		diverged, err := src.CheckDivergence(st.Candidates)
+		if err != nil {
+			return err
+		}
+		if len(diverged) > 0 {
+			ledger.Limitations = append(ledger.Limitations, fmt.Sprintf(
+				"%d archivo(s) citado(s) por registros finales cambiaron o desaparecieron desde su registro: esos hallazgos exigen revalidación antes de presentarse como vigentes",
+				len(diverged)))
+			if ledger.RunStatus == audit.StatusComplete {
+				ledger.RunStatus = audit.StatusIncomplete
+				ledger.IncompleteReason = audit.IncompleteSourceDiverged
+			}
+			ledger.Recompute()
 		}
 		st.Findings = findings
 		if err := store.CommitState(st); err != nil {

@@ -84,6 +84,10 @@ type Candidate struct {
 	Escalated *Record               `json:"escalated,omitempty"`
 	Attempts  []VerificationAttempt `json:"attempts"`
 	Final     *Record               `json:"final,omitempty"`
+	// SourceHashes registra, por archivo citado, el hash de la fuente en el
+	// momento en que se creó el registro presentable. Las claves tienen la
+	// forma "<role>:<file>" con role escalated o final.
+	SourceHashes map[string]string `json:"source_hashes,omitempty"`
 }
 
 // VerificationAttempt archiva una decisión de verificación.
@@ -225,7 +229,7 @@ func validateCandidate(l *Ledger, cand *Candidate, where string, is *Issues) {
 		} else {
 			validateEscalatedRecord(cand, where, is)
 			if len(cand.Attempts) != 1 || cand.Attempts[0].Mode != ModeVerify ||
-				!sameRecord(cand.Attempts[0].Record, cand.Escalated) {
+				!SameRecord(cand.Attempts[0].Record, cand.Escalated) {
 				is.addf("%s: escalation exige exactamente la verificación que produjo el registro escalado", where)
 			}
 		}
@@ -347,7 +351,7 @@ func validateDecidedBranch(cand *Candidate, where string, is *Issues) {
 			is.addf("%s: decided sin escalación exige exactamente una verificación", where)
 			return
 		}
-		if !sameRecord(last.Record, cand.Final) {
+		if !SameRecord(last.Record, cand.Final) {
 			is.addf("%s: el final no coincide con la verificación archivada", where)
 			return
 		}
@@ -362,11 +366,11 @@ func validateDecidedBranch(cand *Candidate, where string, is *Issues) {
 	}
 	switch last.Decision {
 	case EscalationVerified:
-		if !sameRecord(cand.Escalated, cand.Final) {
+		if !SameRecord(cand.Escalated, cand.Final) {
 			is.addf("%s: verified debe confirmar el registro escalado como final", where)
 		}
 	case EscalationReplace:
-		if !sameRecord(last.Record, cand.Final) {
+		if !SameRecord(last.Record, cand.Final) {
 			is.addf("%s: el final no coincide con el reemplazo archivado", where)
 		}
 		if VerdictRank(cand.Final.Verdict) > VerdictRank(cand.Escalated.Verdict) {
@@ -377,9 +381,9 @@ func validateDecidedBranch(cand *Candidate, where string, is *Issues) {
 	}
 }
 
-// sameRecord compara dos registros por su serialización canónica: el broker
+// SameRecord compara dos registros por su serialización canónica: el broker
 // copia el registro tal cual, así que la forma emitida debe coincidir.
-func sameRecord(a, b *Record) bool {
+func SameRecord(a, b *Record) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
@@ -764,9 +768,23 @@ type SubmitOutcome struct {
 	Notes         []string `json:"notes"`
 }
 
+// SubmitOptions configura una entrega.
+type SubmitOptions struct {
+	// Source, si no es nil, sella la fuente de cada registro presentable que
+	// la entrega crea. Se invoca durante la fase de validación: un fallo
+	// aborta la entrega sin mutar ledger ni candidatos. Los roles posibles
+	// son escalated y final; el cazador no sella su propuesta.
+	Source SourceStamper
+}
+
 // Submit aplica una entrega de forma atómica: si algo no cumple el contrato,
 // no se modifica ni el ledger ni los candidatos.
 func Submit(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, error) {
+	return SubmitWithOptions(l, c, sub, SubmitOptions{})
+}
+
+// SubmitWithOptions aplica una entrega con sellado de fuente opcional.
+func SubmitWithOptions(l *Ledger, c *Candidates, sub *Submission, opts SubmitOptions) (*SubmitOutcome, error) {
 	if l == nil || c == nil || sub == nil {
 		return nil, errors.New("auditoría: ledger, candidatos y entrega son obligatorios")
 	}
@@ -778,7 +796,7 @@ func Submit(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, error) {
 	}
 
 	if sub.Verification != nil {
-		return submitVerification(l, c, sub)
+		return submitVerification(l, c, sub, opts)
 	}
 	return submitHunt(l, c, sub)
 }
@@ -947,7 +965,7 @@ func submitHunt(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, erro
 	return out, nil
 }
 
-func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, error) {
+func submitVerification(l *Ledger, c *Candidates, sub *Submission, opts SubmitOptions) (*SubmitOutcome, error) {
 	if len(sub.Units) > 0 || len(sub.Candidates) > 0 || len(sub.Uncovered) > 0 {
 		return nil, errors.New("auditoría: una verificación no puede traer unidades, candidatos ni superficies nuevas")
 	}
@@ -988,6 +1006,20 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutco
 			return nil, err
 		}
 		record := *v.Record
+		// El sello de fuente se resuelve antes de cualquier mutación: si la
+		// cita no se puede validar o sellar, la entrega no aplica.
+		role := SourceRoleFinal
+		if VerdictRank(record.Verdict) > VerdictRank(cand.Proposed.Verdict) {
+			role = SourceRoleEscalated
+		}
+		var stamps map[string]string
+		if opts.Source != nil {
+			var err error
+			stamps, err = opts.Source(v.Fingerprint, role, &record)
+			if err != nil {
+				return nil, err
+			}
+		}
 		cand.Attempts = append(cand.Attempts, VerificationAttempt{
 			AgentID: sub.AgentID, Mode: ModeVerify, Decision: v.Decision, Record: &record,
 		})
@@ -995,6 +1027,7 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutco
 			cand.State = CandidateEscalation
 			cand.Escalated = &record
 			cand.AssignedTo = ""
+			mergeSourceStamps(cand, role, stamps)
 			out.Escalations++
 			out.Notes = append(out.Notes, "la promoción de veredicto exige un segundo verificador independiente")
 			break
@@ -1002,6 +1035,7 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutco
 		cand.State = CandidateDecided
 		cand.Final = &record
 		cand.AssignedTo = ""
+		mergeSourceStamps(cand, role, stamps)
 		out.Decided++
 
 	case CandidateEscalation:
@@ -1016,6 +1050,9 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutco
 			cand.State = CandidateDecided
 			cand.Final = cand.Escalated
 			cand.AssignedTo = ""
+			// El final es exactamente el registro escalado: hereda sus
+			// sellos de fuente; la fuente no se relee.
+			inheritSourceStamps(cand, SourceRoleEscalated, SourceRoleFinal)
 			out.Decided++
 		case EscalationReplace:
 			if v.Record == nil {
@@ -1028,12 +1065,25 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutco
 				return nil, err
 			}
 			record := *v.Record
+			role := SourceRoleFinal
+			if cand.Escalated != nil && VerdictRank(record.Verdict) > VerdictRank(cand.Escalated.Verdict) {
+				role = SourceRoleEscalated
+			}
+			var stamps map[string]string
+			if opts.Source != nil {
+				var err error
+				stamps, err = opts.Source(v.Fingerprint, role, &record)
+				if err != nil {
+					return nil, err
+				}
+			}
 			cand.Attempts = append(cand.Attempts, VerificationAttempt{
 				AgentID: sub.AgentID, Mode: ModeEscalationCheck, Decision: v.Decision, Record: &record,
 			})
 			if cand.Escalated != nil && VerdictRank(record.Verdict) > VerdictRank(cand.Escalated.Verdict) {
 				cand.Escalated = &record
 				cand.AssignedTo = ""
+				mergeSourceStamps(cand, role, stamps)
 				out.Escalations++
 				out.Notes = append(out.Notes, "el reemplazo vuelve a escalar el veredicto; se exige otro verificador")
 				break
@@ -1041,6 +1091,7 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutco
 			cand.State = CandidateDecided
 			cand.Final = &record
 			cand.AssignedTo = ""
+			mergeSourceStamps(cand, role, stamps)
 			out.Decided++
 		default:
 			return nil, fmt.Errorf("auditoría: decisión desconocida %q en escalación", v.Decision)
