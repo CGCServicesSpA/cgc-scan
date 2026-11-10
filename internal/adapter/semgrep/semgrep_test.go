@@ -51,11 +51,11 @@ func TestParseRealOutput(t *testing.T) {
 
 func TestAppliesAndExit(t *testing.T) {
 	a := testAdapter(t)
-	if a.Applies(discovery.Unit{Kind: "repository"}) {
-		t.Fatal("no debe analizar la unidad de proyecto")
+	if !a.Applies(discovery.Unit{Kind: "repository"}) {
+		t.Fatal("debe analizar la unidad de proyecto en una sola ejecución")
 	}
-	if !a.Applies(discovery.Unit{Kind: "package"}) {
-		t.Fatal("debe analizar unidades de código")
+	if a.Applies(discovery.Unit{Kind: "package"}) {
+		t.Fatal("no debe ejecutarse por unidad de código")
 	}
 	if !a.AcceptExit(0) || !a.AcceptExit(1) || a.AcceptExit(2) {
 		t.Fatal("política de salida inesperada")

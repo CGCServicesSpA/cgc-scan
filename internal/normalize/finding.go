@@ -158,6 +158,12 @@ type PackageRef struct {
 	Name         string  `json:"name"`
 	Version      string  `json:"version"`
 	FixedVersion *string `json:"fixed_version"`
+	// Direct indica si la dependencia vulnerable es directa. nil significa
+	// que la fuente no lo declaró; nunca se inventa.
+	Direct       *bool  `json:"direct,omitempty"`
+	Relationship string `json:"relationship,omitempty"`
+	// Via es la dependencia directa por la que llega una transitiva.
+	Via string `json:"via,omitempty"`
 }
 
 // Location es una ubicación relativa a la raíz del proyecto.
@@ -197,6 +203,11 @@ type Priority struct {
 	EPSS       *float64 `json:"epss,omitempty"`
 	KEV        *bool    `json:"kev,omitempty"`
 	Reachable  *bool    `json:"reachable,omitempty"`
+	// Score es la prioridad calculada (0-100) y Rank su posición en el
+	// reporte. Factors enumera los factores aplicados, en orden estable.
+	Score   *int     `json:"score,omitempty"`
+	Rank    *int     `json:"rank,omitempty"`
+	Factors []string `json:"factors,omitempty"`
 }
 
 // FindingPolicy indica si el hallazgo está suprimido y por qué.

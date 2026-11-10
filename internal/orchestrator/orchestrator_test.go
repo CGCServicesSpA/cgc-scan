@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -155,4 +156,92 @@ type missingAdapter struct{ stubAdapter }
 
 func (m *missingAdapter) Requirements(context.Context, discovery.Unit) []adapter.Requirement {
 	return []adapter.Requirement{{Kind: "toolchain", Name: "go", Detail: "no instalado", Missing: true}}
+}
+
+type memoryCache struct {
+	mu    sync.Mutex
+	items map[string]CachedUnit
+	saved int
+}
+
+func (m *memoryCache) key(req CacheRequest) string { return req.EngineID + "|" + req.UnitID }
+func (m *memoryCache) Lookup(req CacheRequest) (CachedUnit, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.items == nil {
+		return CachedUnit{}, false
+	}
+	v, ok := m.items[m.key(req)]
+	return v, ok
+}
+func (m *memoryCache) Save(req CacheRequest, res CachedUnit) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.items == nil {
+		m.items = map[string]CachedUnit{}
+	}
+	m.items[m.key(req)] = res
+	m.saved++
+	return nil
+}
+
+type countingRunner struct {
+	stubRunner
+	mu    sync.Mutex
+	calls int
+}
+
+func (c *countingRunner) Run(ctx context.Context, inv runner.Invocation) (runner.Result, error) {
+	c.mu.Lock()
+	c.calls++
+	c.mu.Unlock()
+	return c.stubRunner.Run(ctx, inv)
+}
+
+func (c *countingRunner) total() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls
+}
+
+func TestExecuteUsesUnitCache(t *testing.T) {
+	cache := &memoryCache{}
+	runnerCalls := &countingRunner{}
+	engine := Engine{
+		ID: "stub", Version: "1.0.0", Mode: "global",
+		Adapter: &stubAdapter{id: "stub"}, Runner: runnerCalls,
+		Isolation: runner.IsolationConfigured, CacheMode: "source",
+	}
+	first := ExecuteWithOptions(context.Background(), testPlan(), []Engine{engine}, 2, Options{Cache: cache})
+	if cache.saved != 2 || runnerCalls.total() != 2 {
+		t.Fatalf("primera ejecución: saved=%d calls=%d", cache.saved, runnerCalls.total())
+	}
+	for _, e := range first.Engines {
+		for _, u := range e.Units {
+			if u.Cache != "miss" {
+				t.Errorf("estado de caché = %q, want miss", u.Cache)
+			}
+		}
+	}
+	second := ExecuteWithOptions(context.Background(), testPlan(), []Engine{engine}, 2, Options{Cache: cache})
+	if runnerCalls.total() != 2 {
+		t.Fatalf("la caché no evitó ejecuciones: %d", runnerCalls.total())
+	}
+	if len(second.Findings) != 2 {
+		t.Fatalf("hallazgos cacheados = %d", len(second.Findings))
+	}
+	for _, e := range second.Engines {
+		if e.Cache != "hit" {
+			t.Errorf("caché del motor = %q", e.Cache)
+		}
+	}
+	third := ExecuteWithOptions(context.Background(), testPlan(), []Engine{engine}, 2, Options{Cache: cache, NoCache: true})
+	if runnerCalls.total() != 4 {
+		t.Fatalf("--no-cache no ejecutó: %d", runnerCalls.total())
+	}
+	for _, e := range third.Engines {
+		if e.Cache != "disabled" {
+			t.Errorf("caché con --no-cache = %q", e.Cache)
+		}
+	}
 }

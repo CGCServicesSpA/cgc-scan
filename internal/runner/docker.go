@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -33,6 +34,11 @@ type Docker struct {
 	Mounts []Mount
 	// DockerBin es el binario del CLI de Docker (por defecto "docker").
 	DockerBin string
+	// Network declara que las invocaciones de este runner resuelven
+	// dependencias del proyecto (imágenes de toolchain por lenguaje). El
+	// contenedor no queda aislado de la red y el reporte lo declara como
+	// aislamiento configured, nunca enforced.
+	Network   bool
 	MaxOutput int64
 	MaxStderr int64
 }
@@ -40,19 +46,27 @@ type Docker struct {
 // Kind identifica el runner en el reporte.
 func (d *Docker) Kind() string { return "docker" }
 
-// Isolation declara el nivel fuerte: el sistema impide la salida de red.
+// Isolation declara el nivel efectivo: enforced solo cuando el contenedor no
+// tiene red.
 func (d *Docker) Isolation(context.Context) (IsolationLevel, error) {
+	if d.Network {
+		return IsolationConfigured, nil
+	}
 	return IsolationEnforced, nil
 }
 
 // Run ejecuta una invocación en un contenedor efímero. El contenedor
 // actualizador (AllowNetwork) no monta el proyecto; el escáner no tiene red.
 func (d *Docker) Run(ctx context.Context, inv Invocation) (Result, error) {
-	if d.Image == "" || !strings.Contains(d.Image, "@sha256:") {
-		return Result{}, errors.New("runner docker: falta la imagen fijada por digest")
-	}
-	if d.Volume == "" {
-		return Result{}, errors.New("runner docker: falta el volumen de caché")
+	image := inv.Image
+	if image == "" {
+		if d.Image == "" || !strings.Contains(d.Image, "@sha256:") {
+			return Result{}, errors.New("runner docker: falta la imagen fijada por digest")
+		}
+		image = d.Image
+		if d.Volume == "" {
+			return Result{}, errors.New("runner docker: falta el volumen de caché")
+		}
 	}
 	if inv.MaxOutput == 0 {
 		inv.MaxOutput = d.maxOutput()
@@ -120,6 +134,13 @@ func (d *Docker) Run(ctx context.Context, inv Invocation) (Result, error) {
 }
 
 func (d *Docker) buildArgs(inv Invocation) ([]string, error) {
+	image := inv.Image
+	if image == "" {
+		image = d.Image
+	}
+	if image == "" {
+		return nil, errors.New("runner docker: falta la imagen")
+	}
 	args := []string{"run", "--rm"}
 	if !inv.AllowNetwork {
 		args = append(args, "--network", "none")
@@ -130,6 +151,20 @@ func (d *Docker) buildArgs(inv Invocation) ([]string, error) {
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--pids-limit", "512", "--memory", "2g",
 	)
+	keys := make([]string, 0, len(inv.Env))
+	for k := range inv.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if !allowEnvKey(k) {
+			return nil, fmt.Errorf("runner Docker: variable de entorno no permitida en %s: %q", inv.Engine, k)
+		}
+		if strings.ContainsAny(inv.Env[k], "\x00\n") {
+			return nil, fmt.Errorf("runner Docker: valor inválido para %s", k)
+		}
+		args = append(args, "--env", k+"="+inv.Env[k])
+	}
 	if inv.Entrypoint != "" {
 		args = append(args, "--entrypoint", inv.Entrypoint)
 	}
@@ -155,15 +190,28 @@ func (d *Docker) buildArgs(inv Invocation) ([]string, error) {
 		}
 		args = append(args, "-w", work)
 	}
-	for _, m := range d.Mounts {
+	mounts := append(append([]Mount{}, d.Mounts...), inv.Mounts...)
+	for _, m := range mounts {
+		if m.Source == "" || m.Target == "" {
+			return nil, errors.New("runner docker: montaje incompleto")
+		}
 		if m.ReadOnly {
 			args = append(args, "-v", m.Source+":"+m.Target+":ro")
 		} else {
 			args = append(args, "-v", m.Source+":"+m.Target)
 		}
 	}
-	args = append(args, "-v", d.Volume+":/cache", d.Image)
+	if d.Volume != "" {
+		args = append(args, "-v", d.Volume+":/cache")
+	}
+	args = append(args, image)
 	return append(args, inv.Args...), nil
+}
+
+// allowEnvKey acota lo que un adaptador puede entregar al contenedor. Es la
+// misma lista que usa el runner global más las cachés de cada toolchain.
+func allowEnvKey(k string) bool {
+	return allowedEnvKey(k)
 }
 
 func (d *Docker) maxOutput() int64 {

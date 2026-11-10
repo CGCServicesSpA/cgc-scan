@@ -17,16 +17,101 @@ import (
 
 // Document es el reporte completo.
 type Document struct {
-	SchemaVersion string              `json:"schema_version"`
-	Run           Run                 `json:"run"`
-	Target        Target              `json:"target"`
-	Coverage      Coverage            `json:"coverage"`
-	Tools         Tools               `json:"tools"`
-	Isolation     Isolation           `json:"isolation"`
-	Validation    Validation          `json:"validation"`
-	Findings      []normalize.Finding `json:"findings"`
-	Policy        Policy              `json:"policy"`
-	Errors        []Error             `json:"errors"`
+	SchemaVersion     string              `json:"schema_version"`
+	Run               Run                 `json:"run"`
+	Target            Target              `json:"target"`
+	Coverage          Coverage            `json:"coverage"`
+	Tools             Tools               `json:"tools"`
+	Isolation         Isolation           `json:"isolation"`
+	Validation        Validation          `json:"validation"`
+	Findings          []normalize.Finding `json:"findings"`
+	RemediationGroups []RemediationGroup  `json:"remediation_groups"`
+	NextActions       []NextAction        `json:"next_actions"`
+	Delta             *Delta              `json:"delta,omitempty"`
+	Policy            Policy              `json:"policy"`
+	Errors            []Error             `json:"errors"`
+}
+
+// RemediationGroup agrupa hallazgos que se corrigen con una sola acción.
+// El identificador es estable y se usa en `verify`.
+type RemediationGroup struct {
+	ID            string             `json:"id"`
+	Kind          string             `json:"kind"`
+	Unit          string             `json:"unit"`
+	Package       *GroupPackage      `json:"package,omitempty"`
+	File          string             `json:"file,omitempty"`
+	Rule          string             `json:"rule,omitempty"`
+	Fixes         []string           `json:"fixes"`
+	Locations     int                `json:"locations,omitempty"`
+	MaxSeverity   normalize.Severity `json:"max_severity"`
+	PriorityScore int                `json:"priority_score"`
+	BreakingRisk  string             `json:"breaking_risk"`
+	Direct        *bool              `json:"direct,omitempty"`
+	Commands      GroupCommands      `json:"commands"`
+	Verification  GroupVerification  `json:"verification"`
+	Note          string             `json:"note,omitempty"`
+}
+
+// GroupPackage describe el componente y el salto de versión propuesto.
+type GroupPackage struct {
+	Ecosystem string `json:"ecosystem"`
+	Name      string `json:"name"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+}
+
+// GroupCommands son sugerencias de aplicación. La CLI nunca las ejecuta.
+type GroupCommands struct {
+	Apply    string `json:"apply,omitempty"`
+	Override string `json:"override,omitempty"`
+	Origin   string `json:"origin"`
+}
+
+// GroupVerification dice cómo comprobar que el grupo quedó corregido.
+type GroupVerification struct {
+	Status  string                         `json:"status"`
+	Recipes []normalize.VerificationRecipe `json:"recipes"`
+	Missing []string                       `json:"missing"`
+	Verify  string                         `json:"verify"`
+	Note    string                         `json:"note,omitempty"`
+}
+
+// NextAction es un paso ordenado y determinista para el agente.
+type NextAction struct {
+	Action       string `json:"action"`
+	Unit         string `json:"unit,omitempty"`
+	Group        string `json:"group,omitempty"`
+	Fingerprint  string `json:"fingerprint,omitempty"`
+	Tool         string `json:"tool,omitempty"`
+	Command      string `json:"command,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	Fixes        int    `json:"fixes,omitempty"`
+	UserRequired bool   `json:"user_required,omitempty"`
+}
+
+// Delta clasifica los hallazgos frente a la línea base.
+type Delta struct {
+	BaselineRun        string       `json:"baseline_run,omitempty"`
+	CurrentRun         string       `json:"current_run,omitempty"`
+	CoverageComparable bool         `json:"coverage_comparable"`
+	Reason             string       `json:"reason,omitempty"`
+	New                []DeltaEntry `json:"new"`
+	Persistent         []DeltaEntry `json:"persistent"`
+	Resolved           []DeltaEntry `json:"resolved"`
+	NotEvaluated       []DeltaEntry `json:"not_evaluated"`
+}
+
+// DeltaEntry es un hallazgo dentro del delta.
+type DeltaEntry struct {
+	Fingerprint  string             `json:"fingerprint"`
+	Kind         normalize.Kind     `json:"kind"`
+	Title        string             `json:"title"`
+	Severity     normalize.Severity `json:"severity"`
+	Path         string             `json:"path,omitempty"`
+	Engine       string             `json:"engine,omitempty"`
+	Package      string             `json:"package,omitempty"`
+	FixedVersion string             `json:"fixed_version,omitempty"`
+	Group        string             `json:"group,omitempty"`
 }
 
 // Run agrupa los campos volátiles.
@@ -125,6 +210,7 @@ type EngineState struct {
 	Status   string `json:"status"`
 	Reason   string `json:"reason,omitempty"`
 	Findings int    `json:"findings,omitempty"`
+	Cache    string `json:"cache,omitempty"`
 }
 
 // Tools agrupa los motores.
@@ -142,6 +228,7 @@ type EngineReport struct {
 	DurationMS  int64         `json:"duration_ms,omitempty"`
 	Path        string        `json:"path,omitempty"`
 	Image       string        `json:"image,omitempty"`
+	Cache       string        `json:"cache,omitempty"`
 	DB          *DBState      `json:"db,omitempty"`
 	Rules       *RulesState   `json:"rules,omitempty"`
 	Preparation []Preparation `json:"preparation,omitempty"`
@@ -321,6 +408,37 @@ func (d *Document) Normalize() {
 	}
 	if d.Findings == nil {
 		d.Findings = []normalize.Finding{}
+	}
+	if d.RemediationGroups == nil {
+		d.RemediationGroups = []RemediationGroup{}
+	}
+	if d.NextActions == nil {
+		d.NextActions = []NextAction{}
+	}
+	for i := range d.RemediationGroups {
+		if d.RemediationGroups[i].Fixes == nil {
+			d.RemediationGroups[i].Fixes = []string{}
+		}
+		if d.RemediationGroups[i].Verification.Recipes == nil {
+			d.RemediationGroups[i].Verification.Recipes = []normalize.VerificationRecipe{}
+		}
+		if d.RemediationGroups[i].Verification.Missing == nil {
+			d.RemediationGroups[i].Verification.Missing = []string{}
+		}
+	}
+	if d.Delta != nil {
+		if d.Delta.New == nil {
+			d.Delta.New = []DeltaEntry{}
+		}
+		if d.Delta.Persistent == nil {
+			d.Delta.Persistent = []DeltaEntry{}
+		}
+		if d.Delta.Resolved == nil {
+			d.Delta.Resolved = []DeltaEntry{}
+		}
+		if d.Delta.NotEvaluated == nil {
+			d.Delta.NotEvaluated = []DeltaEntry{}
+		}
 	}
 	if d.Policy.Exceptions == nil {
 		d.Policy.Exceptions = []ExceptionReport{}

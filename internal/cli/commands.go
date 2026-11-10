@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -13,6 +14,56 @@ func oneOf(flag, value string, allowed ...string) error {
 		}
 	}
 	return UsageErrorf("valor inválido para --%s: %q (admitidos: %v)", flag, value, allowed)
+}
+
+var knownCategories = []string{"deps", "secrets", "code", "config"}
+
+var knownEngines = []string{"trivy", "govulncheck", "eslint", "psalm", "bandit", "cargo-audit", "semgrep"}
+
+func validateOnly(values []string) error {
+	for _, v := range values {
+		for _, p := range strings.Split(v, ",") {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if err := oneOf("only", p, knownCategories...); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateEngines(values []string) error {
+	for _, v := range values {
+		for _, p := range strings.Split(v, ",") {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if err := oneOf("engines", p, knownEngines...); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func expandList(values []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, v := range values {
+		for _, p := range strings.Split(v, ",") {
+			p = strings.TrimSpace(p)
+			if p == "" || seen[p] {
+				continue
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (a *App) newSetupCommand() *cobra.Command {
@@ -79,6 +130,12 @@ func (a *App) newScanCommand() *cobra.Command {
 		timeout          time.Duration
 		concurrency      int
 		confirmRecipes   bool
+		maxGroups        int
+		only             []string
+		engines          []string
+		changed          bool
+		noCache          bool
+		minSeverity      string
 	)
 	cmd := &cobra.Command{
 		Use:   "scan [ruta]",
@@ -88,7 +145,7 @@ prompt de remediación. La selección de rutas con --include y --exclude queda
 registrada en coverage y marca el escaneo como parcial cuando corresponde.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := oneOf("format", format, "json", "text", "prompt"); err != nil {
+			if err := oneOf("format", format, "json", "text", "prompt", "agent"); err != nil {
 				return err
 			}
 			if err := oneOf("fail-on", failOn, "critical", "high", "medium", "low", "info", "unknown"); err != nil {
@@ -108,6 +165,20 @@ registrada en coverage y marca el escaneo como parcial cuando corresponde.`,
 			if concurrency < 0 {
 				return UsageErrorf("--concurrency no puede ser negativo")
 			}
+			if maxGroups < 0 {
+				return UsageErrorf("--max-groups no puede ser negativo")
+			}
+			if err := validateOnly(only); err != nil {
+				return err
+			}
+			if err := validateEngines(engines); err != nil {
+				return err
+			}
+			if minSeverity != "" {
+				if err := oneOf("min-severity", minSeverity, "critical", "high", "medium", "low", "info", "unknown"); err != nil {
+					return err
+				}
+			}
 			target := ""
 			if len(args) == 1 {
 				target = args[0]
@@ -117,11 +188,13 @@ registrada en coverage y marca el escaneo como parcial cuando corresponde.`,
 				TrivyMode: trivyMode, NoAutoInstall: noAutoInstall, Offline: offline,
 				RequireIsolation: requireIsolation, Include: include, Exclude: exclude,
 				Timeout: timeout, Concurrency: concurrency,
-				ConfirmRecipes: confirmRecipes,
+				ConfirmRecipes: confirmRecipes, MaxGroups: maxGroups,
+				Only: only, Engines: engines, Changed: changed, NoCache: noCache,
+				MinSeverity: minSeverity,
 			})
 		},
 	}
-	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text|prompt")
+	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text|prompt|agent")
 	cmd.Flags().StringVar(&failOn, "fail-on", "high", "severidad mínima que bloquea")
 	cmd.Flags().StringVar(&reportOut, "report-out", "", "escribe además el JSON canónico en este archivo")
 	cmd.Flags().StringVar(&trivyMode, "trivy-mode", "", "modalidad de Trivy: docker|global")
@@ -133,23 +206,49 @@ registrada en coverage y marca el escaneo como parcial cuando corresponde.`,
 	cmd.Flags().DurationVar(&timeout, "timeout", 10*time.Minute, "tiempo máximo por invocación")
 	cmd.Flags().IntVar(&concurrency, "concurrency", 0, "invocaciones concurrentes (0 = automático)")
 	cmd.Flags().BoolVar(&confirmRecipes, "confirm-recipes", false, "confirma y guarda los candidatos detectados para este proyecto")
+	cmd.Flags().IntVar(&maxGroups, "max-groups", 0, "máximo de grupos en --format agent (0 = todos)")
+	cmd.Flags().StringSliceVar(&only, "only", nil, "categorías a analizar: deps,secrets,code,config")
+	cmd.Flags().StringSliceVar(&engines, "engines", nil, "motores a ejecutar: trivy,govulncheck,eslint,psalm,bandit,cargo-audit,semgrep")
+	cmd.Flags().BoolVar(&changed, "changed", false, "solo unidades con cambios desde la línea base (Git local)")
+	cmd.Flags().BoolVar(&noCache, "no-cache", false, "ignora la caché incremental por unidad y motor")
+	cmd.Flags().StringVar(&minSeverity, "min-severity", "", "filtro de vista (texto/agent); no cambia la política ni el JSON canónico")
 	return cmd
 }
 
 func (a *App) newCompareCommand() *cobra.Command {
-	var format string
+	var (
+		format   string
+		baseline bool
+	)
 	cmd := &cobra.Command{
-		Use:   "compare <anterior.json> <actual.json>",
-		Short: "Compara dos reportes: nuevo, persistente, resuelto y no evaluado",
-		Args:  cobra.ExactArgs(2),
+		Use:   "compare [anterior.json actual.json] [ruta]",
+		Short: "Compara dos reportes o el último resultado con la línea base",
+		Long: `Con dos rutas compara esos reportes. Con --baseline compara latest.json
+contra baseline.json del proyecto sin volver a escanear, sin pasar rutas.`,
+		Args: cobra.RangeArgs(0, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := oneOf("format", format, "json", "text"); err != nil {
 				return err
+			}
+			if baseline {
+				target := ""
+				switch len(args) {
+				case 0:
+				case 1:
+					target = args[0]
+				default:
+					return UsageErrorf("compare --baseline acepta como máximo una ruta de proyecto")
+				}
+				return a.runCompareBaseline(target, format)
+			}
+			if len(args) != 2 {
+				return UsageErrorf("compare requiere dos reportes o --baseline")
 			}
 			return a.runCompare(cmd.Context(), args[0], args[1], format)
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "json", "formato: json|text")
+	cmd.Flags().BoolVar(&baseline, "baseline", false, "compara el último reporte contra la línea base guardada")
 	return cmd
 }
 
@@ -193,7 +292,7 @@ func (a *App) newRecipesCommand() *cobra.Command {
 
 // FormatAllowed valida y normaliza un formato de salida.
 func FormatAllowed(format string) (string, error) {
-	if err := oneOf("format", format, "json", "text", "prompt"); err != nil {
+	if err := oneOf("format", format, "json", "text", "prompt", "agent"); err != nil {
 		return "", err
 	}
 	return format, nil

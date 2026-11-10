@@ -45,6 +45,7 @@ func (a *App) semgrepEngine(ctx context.Context, ms *manifest.Manifest, cfg conf
 			Runner:    &runner.Docker{Image: spec.Image, Volume: setup.Volume, Mounts: []runner.Mount{{Source: rulesHost, Target: "/rules", ReadOnly: true}}},
 			Isolation: runner.IsolationEnforced,
 			Image:     spec.Image,
+			CacheMode: "source",
 		}
 		if _, err := provision.EnsureDockerImage(ctx, "docker", spec.Image, !opts.Offline && !opts.NoAutoInstall); err != nil {
 			eng.Adapter = semgrep.New(spec.Version, disc.Root, "", "", "docker", 0, m)
@@ -63,6 +64,7 @@ func (a *App) semgrepEngine(ctx context.Context, ms *manifest.Manifest, cfg conf
 		Runner:     host,
 		Isolation:  runner.IsolationConfigured,
 		BinaryPath: binary,
+		CacheMode:  "source",
 	}
 }
 

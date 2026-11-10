@@ -18,13 +18,13 @@ los módulos originales y en el SBOM del release.
 | `github.com/google/go-cmp` | BSD-3-Clause | Comparación en pruebas |
 | `github.com/rogpeppe/go-internal` | BSD-3-Clause | `testscript` |
 | `golang.org/x/sync` | BSD-3-Clause | `errgroup` |
-| `golang.org/x/vuln` | BSD-3-Clause | govulncheck como biblioteca |
+| `golang.org/x/vuln` | BSD-3-Clause | govulncheck como biblioteca en modo host |
 | `golang.org/x/sys`, `golang.org/x/text`, `golang.org/x/mod`, `golang.org/x/tools`, `golang.org/x/telemetry` | BSD-3-Clause | Dependencias indirectas |
 
 ## Motores y herramientas externas
 
 Se descargan o instalan en tiempo de preparación y conservan su propia licencia.
-No se enlazan estáticamente con la CLI, salvo `govulncheck`.
+No se enlazan estáticamente con la CLI, salvo `govulncheck` en modo host.
 
 | Componente | Licencia |
 | --- | --- |
@@ -38,6 +38,23 @@ No se enlazan estáticamente con la CLI, salvo `govulncheck`.
 | Semgrep CE | LGPL-2.1 |
 | Reglas propias de CGC | Apache-2.0 |
 
+## Imágenes base de lenguaje
+
+Con Docker, la CLI descarga la imagen oficial del lenguaje (`golang`, `node`,
+`php`, `rust`, `python`) en la versión del proyecto y construye una imagen
+derivada. No se redistribuyen con CGC Scan: se obtienen del registro público y
+conservan sus licencias y avisos. Las herramientas que se instalan dentro están
+fijadas por el manifiesto de confianza o por los lockfiles/requisitos embebidos.
+
+## Material de referencia reutilizado
+
+El protocolo de auditoría (`internal/audit`, `docs/auditoria.md`) y el catálogo
+de clases se inspiran en la estructura y las categorías de
+[`cloudflare/security-audit-skill`](https://github.com/cloudflare/security-audit-skill),
+publicado bajo licencia MIT. No se redistribuye su código ni sus prompts
+verbatim: se adaptaron conceptos de cobertura, veredictos y verificación
+independiente, y los textos del catálogo son propios.
+
 ## Obligaciones
 
 - Conservar este archivo y `LICENSE` en cada distribución.
@@ -45,3 +62,4 @@ No se enlazan estáticamente con la CLI, salvo `govulncheck`.
 - No redistribuir reglas del registro público de Semgrep.
 - Revisar cada dependencia directa nueva antes de incorporarla y registrarla en
   `design.md` §2.
+- Conservar el aviso MIT del material de referencia citado arriba.

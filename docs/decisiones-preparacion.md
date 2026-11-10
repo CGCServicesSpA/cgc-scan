@@ -27,13 +27,44 @@ Reglas comunes, sin excepciones:
 1. Todo artefacto se fija por versión **y** hash en `manifest/trust.json`; nunca se resuelve `latest`.
 2. La instalación ocurre en `<data>/cgc-scan/engines/<motor>/<versión>/` con escritura atómica; jamás en el proyecto.
 3. No se ejecuta `sh`, `bash`, `postinstall`, `setup.py` ni ningún script del artefacto.
-4. Si falta el toolchain del ecosistema (Node, PHP, Python, Cargo, Go), el adaptador se omite con `requirement_missing`, la ejecución es incompleta y el código de salida es 3.
+4. Si falta el toolchain del ecosistema (Node, PHP, Python, Cargo, Go), el adaptador se omite con `requirement_missing`, la ejecución es incompleta y el código de salida es 3. Con Docker, D-01b prepara la imagen del lenguaje y evita este caso; el host sigue siendo el fallback.
 5. Los paquetes de ecosistema se instalan desde un lockfile empaquetado en el binario (integridad), no desde el lockfile del proyecto.
 6. `scan` nunca instala herramientas de adaptadores sin `--no-auto-install` explícito; la preparación de adaptadores ocurre en `setup` o en el primer `scan` con auto-instalación permitida, y queda registrada en `state.json`.
 
 **Descartado.** (a) Requerir que el usuario instale cada herramienta a mano: deja la cobertura a la deriva y contradice RF-21. (b) Instalar con los gestores del proyecto (`npm i`, `composer require`, `pip install`): ejecuta scripts y mezcla dependencias del proyecto. (c) Empaquetar los motores dentro del binario de la CLI: multiplica el tamaño y rompe la actualización independiente.
 
 **Consecuencia.** PRD §6.3 se amplía: el aprovisionamiento automático deja de ser exclusivo de Trivy, pero conserva todas sus garantías. El detalle de implementación vive en H4-02.
+
+---
+
+## D-01b — Toolchain por lenguaje en contenedor (RF-38)
+
+**Origen:** PRD §6.3, §6.6; design §8.4; ADR-18.
+**Estado:** Cerrada. Amplía D-01 para el caso en que el toolchain del ecosistema no está instalado en el equipo.
+
+**Decisión.** Con un daemon local disponible, la CLI lee la versión que declara el proyecto y construye una imagen derivada de la imagen oficial del lenguaje:
+
+| Lenguaje | Fuente de la versión | Base |
+| --- | --- | --- |
+| Go | `go.mod` (`go`, `toolchain`) | `golang:<versión>` |
+| Node/TypeScript | `.nvmrc`, `.node-version`, `engines.node`, `volta.node` | `node:<versión>` |
+| PHP | `config.platform.php`, `require.php`, `.php-version` | `php:<versión>-cli` |
+| Rust | `rust-version`, `rust-toolchain.toml`, `edition` | `rust:<versión>-slim` |
+| Python | `requires-python`, `.python-version`, `runtime.txt`, `Pipfile` | `python:<versión>-slim` |
+
+Reglas:
+
+1. La herramienta sigue fijada por versión y hash en `manifest/trust.json`. La imagen base se resuelve por digest al construir y el digest efectivo se registra en `tools.engines[].preparation[]`; no se añade al manifiesto porque depende del proyecto.
+2. La etiqueta derivada es determinista (`cgc-scan/toolchain:<lenguaje>-<versión>-<motor>-<versión>`) y se reutiliza. La base se prueba de la más precisa a la más general y nunca se sustituye la versión del proyecto por otra en silencio.
+3. El proyecto se monta en `/src` en solo lectura; la CLI no escribe en él. Las bases locales y la configuración de Psalm se montan desde un staging temporal del usuario.
+4. Cada lenguaje usa un volumen de caché propio del usuario (`cgc-scan-toolchain-*`).
+5. El contenedor de toolchain mantiene red para resolver dependencias del proyecto y declara `configured`; nunca `enforced`. `--offline` ejecuta con `--network none`.
+6. Sin Docker, sin imagen construible o con `--offline`/`--no-auto-install` sin imagen local, se mantiene la regla 4 de D-01: toolchain del host o `requirement_missing` con ejecución incompleta.
+7. `CGC_SCAN_TOOLCHAIN=host` fuerza el modo host para diagnóstico.
+
+**Descartado.** (a) Instalar toolchains en el host: depende de la máquina y no respeta la versión del proyecto. (b) Ejecutar la imagen oficial con la herramienta instalada en cada arranque: exige red en cada escaneo y no es determinista. (c) Fijar cada combinación lenguaje/versión/herramienta en el manifiesto: imposible de cubrir para todas las versiones que declaran los proyectos.
+
+**Consecuencia.** La cobertura deja de depender de los toolchains del equipo, pero aparece un riesgo de privacidad acotado: la resolución de dependencias revela nombres y versiones al registro público, nunca código ni secretos. Se documenta en `docs/privacidad.md` y en la limitación del reporte.
 
 ---
 

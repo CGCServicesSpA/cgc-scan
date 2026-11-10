@@ -29,6 +29,9 @@ type Adapter struct {
 	Install provision.AdapterInstall
 	Root    string
 	Masker  *masking.Masker
+	// ContainerFor resuelve la imagen de toolchain de una unidad. Si es nil o
+	// devuelve nil, el adaptador usa Node del host.
+	ContainerFor func(discovery.Unit) *adapter.Container
 }
 
 // New construye el adaptador.
@@ -52,8 +55,11 @@ func (a *Adapter) Applies(u discovery.Unit) bool {
 }
 
 // Requirements comprueba Node y el árbol npm fijado.
-func (a *Adapter) Requirements(context.Context, discovery.Unit) []adapter.Requirement {
+func (a *Adapter) Requirements(_ context.Context, u discovery.Unit) []adapter.Requirement {
 	var reqs []adapter.Requirement
+	if c := a.container(u); c != nil {
+		return nil
+	}
 	if _, err := exec.LookPath("node"); err != nil {
 		reqs = append(reqs, adapter.Requirement{Kind: "toolchain", Name: "node", Detail: "no está en PATH", Missing: true})
 	}
@@ -63,16 +69,48 @@ func (a *Adapter) Requirements(context.Context, discovery.Unit) []adapter.Requir
 	return reqs
 }
 
+// container resuelve la imagen de toolchain de la unidad, si existe.
+func (a *Adapter) container(u discovery.Unit) *adapter.Container {
+	if a.ContainerFor == nil {
+		return nil
+	}
+	return a.ContainerFor(u)
+}
+
 // Invocations ejecuta ESLint con la configuración generada y propaga las
 // exclusiones al motor (T-08).
 func (a *Adapter) Invocations(u discovery.Unit, p plan.Plan) ([]runner.Invocation, error) {
+	var args []string
+	if c := a.container(u); c != nil {
+		args = []string{"node", "/opt/cgc/eslint/node_modules/eslint/bin/eslint.js", "--no-config-lookup", "--config", "/opt/cgc/eslint/cgc-eslint.config.mjs", "--format", "json"}
+		for _, e := range p.Exclusions {
+			if pat := expressible(e.Pattern); pat != "" {
+				args = append(args, "--ignore-pattern", pat)
+			}
+		}
+		args = append(args, ".")
+		return []runner.Invocation{{
+			Engine:       ID,
+			Image:        c.Image,
+			ProjectRO:    a.Root,
+			Dir:          filepath.Join(a.Root, u.Path),
+			Mounts:       c.Mounts,
+			AllowNetwork: !c.Offline,
+			Args:         args,
+			Env: map[string]string{
+				"NO_COLOR": "1", "CI": "1",
+				"npm_config_cache": filepath.ToSlash(c.CacheDir) + "/npm",
+			},
+			Timeout: 10 * time.Minute,
+		}}, nil
+	}
 	node, err := exec.LookPath("node")
 	if err != nil {
 		return nil, fmt.Errorf("eslint: node no está en PATH")
 	}
 	script := filepath.Join(a.Install.Dir, "node_modules", "eslint", "bin", "eslint.js")
 	config := filepath.Join(a.Install.Dir, "cgc-eslint.config.mjs")
-	args := []string{
+	args = []string{
 		script, "--no-config-lookup", "--config", config, "--format", "json",
 	}
 	for _, e := range p.Exclusions {
@@ -197,11 +235,7 @@ func (a *Adapter) toFinding(path string, m Message) normalize.Finding {
 }
 
 func (a *Adapter) relative(path string) string {
-	rel, err := filepath.Rel(a.Root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return filepath.ToSlash(path)
-	}
-	return filepath.ToSlash(rel)
+	return adapter.RelativePath(a.Root, adapter.ContainerRoot, path)
 }
 
 // Redact sanea la salida antes de persistirla.

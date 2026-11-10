@@ -13,6 +13,7 @@ import (
 
 	"github.com/CGCServicesSpA/cgc-scan/internal/adapter/semgrep"
 	"github.com/CGCServicesSpA/cgc-scan/internal/adapter/trivy"
+	"github.com/CGCServicesSpA/cgc-scan/internal/agent"
 	"github.com/CGCServicesSpA/cgc-scan/internal/config"
 	"github.com/CGCServicesSpA/cgc-scan/internal/discovery"
 	"github.com/CGCServicesSpA/cgc-scan/internal/masking"
@@ -22,9 +23,12 @@ import (
 	"github.com/CGCServicesSpA/cgc-scan/internal/platform"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policy"
 	"github.com/CGCServicesSpA/cgc-scan/internal/policyfile"
+	"github.com/CGCServicesSpA/cgc-scan/internal/provision"
 	"github.com/CGCServicesSpA/cgc-scan/internal/recipes"
+	"github.com/CGCServicesSpA/cgc-scan/internal/remediation"
 	"github.com/CGCServicesSpA/cgc-scan/internal/report"
 	"github.com/CGCServicesSpA/cgc-scan/internal/runner"
+	"github.com/CGCServicesSpA/cgc-scan/internal/unitcache"
 	"github.com/CGCServicesSpA/cgc-scan/internal/version"
 	"github.com/CGCServicesSpA/cgc-scan/manifest"
 )
@@ -44,63 +48,122 @@ type scanOptions struct {
 	Timeout          time.Duration
 	Concurrency      int
 	ConfirmRecipes   bool
+	MaxGroups        int
+	// Filtros de alcance (Fase D).
+	Only      []string
+	Engines   []string
+	Changed   bool
+	NoCache   bool
+	Units     []string
+	NoPersist bool
+	// MinSeverity filtra solo la representación textual/compacta.
+	MinSeverity string
+	// Limitations acumula motivos de alcance restringido para el reporte.
+	Limitations []string
+	// AgentBaselineCreated solo se usa al emitir el one-shot.
+	AgentBaselineCreated bool
 }
 
-func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
+// scanOutcome es el resultado interno de un escaneo, antes de emitirlo.
+type scanOutcome struct {
+	Doc      *report.Document
+	ExitCode int
+}
+
+func (a *App) runScan(cmd *cobra.Command, opts scanOptions) error {
+	started := a.Now()
+	target := opts.Target
+	if target == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return IncompleteErrorf("obtener el directorio actual: %v", err)
+		}
+		target = wd
+	}
+	abs, absErr := filepath.Abs(target)
+
+	res, err := a.executeScan(cmd, opts)
+	if err != nil {
+		var ee *ExitError
+		if absErr == nil && errors.As(err, &ee) && ee.Code == 3 {
+			switch opts.Format {
+			case "json":
+				_ = report.Emit(a.Stdout, failureDocument(started, abs, err), "json")
+			case "agent":
+				doc := failureDocument(started, abs, err)
+				_ = a.emitAgentDocument(agent.Build(doc, agent.Options{ExitCode: ee.Code}), 0)
+			}
+		}
+		return err
+	}
+	var emitErr error
+	switch opts.Format {
+	case "prompt":
+		reportPath := ""
+		if opts.ReportOut != "" {
+			reportPath, _ = filepath.Abs(opts.ReportOut)
+		}
+		emitErr = report.EmitPrompt(a.Stdout, res.Doc, report.PromptOptions{ReportPath: reportPath})
+	case "agent":
+		emitErr = a.emitAgent(res.Doc, opts, res.ExitCode)
+	default:
+		if opts.MinSeverity != "" && opts.Format == "text" {
+			emitErr = report.Emit(a.Stdout, filterView(res.Doc, opts.MinSeverity), "text")
+		} else {
+			emitErr = report.Emit(a.Stdout, res.Doc, opts.Format)
+		}
+	}
+	if emitErr != nil {
+		return IncompleteErrorf("%v", emitErr)
+	}
+	if res.ExitCode != 0 {
+		return &ExitError{Code: res.ExitCode}
+	}
+	return nil
+}
+
+func (a *App) executeScan(cmd *cobra.Command, opts scanOptions) (*scanOutcome, error) {
 	started := a.Now()
 	runID := report.NewRunID(started)
 	if opts.Target == "" {
 		wd, err := os.Getwd()
 		if err != nil {
-			return IncompleteErrorf("obtener el directorio actual: %v", err)
+			return nil, IncompleteErrorf("obtener el directorio actual: %v", err)
 		}
 		opts.Target = wd
 	}
 	target, err := filepath.Abs(opts.Target)
 	if err != nil {
-		return UsageErrorf("ruta objetivo inválida: %v", err)
+		return nil, UsageErrorf("ruta objetivo inválida: %v", err)
 	}
 
 	if err := a.Paths.EnsureDirs(); err != nil {
-		return IncompleteErrorf("preparar directorios: %v", err)
+		return nil, IncompleteErrorf("preparar directorios: %v", err)
 	}
 	cfg, err := config.Load(a.Paths.ConfigFile())
 	if err != nil {
-		return UsageErrorf("%v", err)
+		return nil, UsageErrorf("%v", err)
 	}
-	targetRef := target
-	emitted := false
-	defer func() {
-		if retErr == nil || emitted || opts.Format != "json" {
-			return
-		}
-		var ee *ExitError
-		if !errors.As(retErr, &ee) || ee.Code != 3 {
-			return
-		}
-		doc := failureDocument(started, targetRef, retErr)
-		_ = report.Emit(a.Stdout, doc, "json")
-	}()
 
 	rootGuess := discovery.DetectRoot(target)
 	pol, err := policyfile.Load(rootGuess, started)
 	if err != nil {
-		return IncompleteErrorf("%v", err)
+		return nil, IncompleteErrorf("%v", err)
 	}
 
 	ms, err := manifest.Load()
 	if err != nil {
-		return IncompleteErrorf("%v", err)
+		return nil, IncompleteErrorf("%v", err)
 	}
 	engine, err := ms.Engine("trivy")
 	if err != nil {
-		return IncompleteErrorf("%v", err)
+		return nil, IncompleteErrorf("%v", err)
 	}
 
 	slog.Info("preparando Trivy", "version", engine.Version, "mode", opts.TrivyMode)
 	setup, err := a.setupEngine(cmd.Context(), opts, cfg, ms, engine)
 	if err != nil {
-		return IncompleteErrorf("%v", err)
+		return nil, IncompleteErrorf("%v", err)
 	}
 	defer func() { _ = setup.Shared.Release() }()
 	if setup.FallbackReason != "" {
@@ -108,7 +171,7 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	}
 	level, err := setup.Runner.Isolation(cmd.Context())
 	if err != nil {
-		return IncompleteErrorf("determinar aislamiento: %v", err)
+		return nil, IncompleteErrorf("determinar aislamiento: %v", err)
 	}
 
 	// Paso 5: descubrimiento y plan.
@@ -132,12 +195,43 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 		Target: target, Exclude: exclusions, ReportOut: opts.ReportOut,
 	})
 	if err != nil {
-		return IncompleteErrorf("%v", err)
+		return nil, IncompleteErrorf("%v", err)
 	}
 	p := plan.Build(disc, []string{"trivy"})
 	p.Include = opts.Include
 	p.Exclude = opts.Exclude
 	plan.ApplySelection(&p)
+
+	if opts.Changed {
+		baseline, err := a.loadBaselineFor(disc.Root)
+		if err != nil {
+			return nil, IncompleteErrorf("%v", err)
+		}
+		changed, note := changedUnits(cmd.Context(), disc.Root, baseline)
+		if changed != nil {
+			filterPlanUnits(&p, changed, "sin cambios desde la línea base")
+			opts.Limitations = append(opts.Limitations, "alcance --changed: solo unidades con cambios")
+		}
+		if note != "" {
+			opts.Limitations = append(opts.Limitations, note)
+		}
+	}
+	if len(opts.Units) > 0 {
+		keep := map[string]bool{}
+		for _, u := range opts.Units {
+			keep[u] = true
+		}
+		filterPlanUnits(&p, keep, "fuera del alcance de verify")
+		opts.Limitations = append(opts.Limitations, "alcance de verify: solo las unidades seleccionadas")
+	}
+	if len(opts.Only) > 0 {
+		opts.Only = expandList(opts.Only)
+		opts.Limitations = append(opts.Limitations, "alcance --only: "+strings.Join(opts.Only, ", "))
+	}
+	if len(opts.Engines) > 0 {
+		opts.Engines = expandList(opts.Engines)
+		opts.Limitations = append(opts.Limitations, "alcance --engines: "+strings.Join(opts.Engines, ", "))
+	}
 
 	if opts.ConfirmRecipes {
 		allowed := make(map[string]bool, len(p.Units))
@@ -148,7 +242,7 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 		n := recipes.ConfirmDetected(&cfg, disc.Root, candidates, allowed)
 		if n > 0 {
 			if err := config.Save(a.Paths.ConfigFile(), cfg); err != nil {
-				return IncompleteErrorf("confirmar recetas detectadas: %v", err)
+				return nil, IncompleteErrorf("confirmar recetas detectadas: %v", err)
 			}
 			for _, c := range candidates {
 				if allowed[c.Unit] {
@@ -164,11 +258,11 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 
 	salt, err := masking.LoadOrCreateSalt(a.Paths.SaltFile())
 	if err != nil {
-		return IncompleteErrorf("cargar la sal de enmascarado: %v", err)
+		return nil, IncompleteErrorf("cargar la sal de enmascarado: %v", err)
 	}
 	masker, err := masking.NewMasker(salt)
 	if err != nil {
-		return IncompleteErrorf("%v", err)
+		return nil, IncompleteErrorf("%v", err)
 	}
 	trivyAdapter := trivy.New(masker)
 	trivyAdapter.CacheDir = setup.CacheDir
@@ -177,7 +271,16 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 
 	// Requisitos dependientes del proyecto: adaptadores y sus bases.
 	runDir := filepath.Join(a.Paths.CacheDir, "runs", runID)
-	adapterSetup := a.prepareAdapters(cmd.Context(), ms, disc, masker, opts, runDir)
+	// Solo las unidades del plan pueden recibir una imagen de toolchain: las
+	// excluidas o fuera de alcance no se analizan ni se preparan.
+	allowedUnits := make(map[string]bool, len(p.Units))
+	for _, u := range p.Units {
+		allowedUnits[u.Unit.ID] = true
+	}
+	adapterSetup := a.prepareAdapters(cmd.Context(), ms, disc, masker, opts, runDir, cfg, allowedUnits)
+	if adapterSetup.StagingDir != "" {
+		defer func() { _ = os.RemoveAll(adapterSetup.StagingDir) }()
+	}
 	engines := append([]orchestrator.Engine{{
 		ID:         trivy.ID,
 		Version:    engine.Version,
@@ -187,6 +290,8 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 		Isolation:  level,
 		Image:      setup.Image,
 		BinaryPath: setup.Binary,
+		DBKey:      dbKey(setup.DB),
+		CacheMode:  "full",
 	}}, adapterSetup.Engines...)
 	semgrepRuleCount := 0
 	if sem := a.semgrepEngine(cmd.Context(), ms, cfg, setup, disc, masker, runDir, opts); sem != nil {
@@ -203,7 +308,19 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 		}
 	}
 	if opts.RequireIsolation == "enforced" && overall.Rank() < runner.IsolationEnforced.Rank() {
-		return IncompleteErrorf("se exigió aislamiento enforced, pero los adaptadores de este proyecto se ejecutan en el host (configured); no se analizó el proyecto")
+		return nil, IncompleteErrorf("se exigió aislamiento enforced, pero los adaptadores de este proyecto se ejecutan en el host (configured); no se analizó el proyecto")
+	}
+
+	var omitted []orchestrator.Engine
+	engines, omitted = filterEngines(engines, opts)
+	if len(omitted) > 0 {
+		recountIsolation := level
+		for _, e := range engines {
+			if e.Isolation.Rank() < recountIsolation.Rank() {
+				recountIsolation = e.Isolation
+			}
+		}
+		overall = recountIsolation
 	}
 
 	// Paso 6: ejecución.
@@ -211,7 +328,13 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	if concurrency == 0 {
 		concurrency = 4
 	}
-	out := orchestrator.Execute(cmd.Context(), p, engines, concurrency)
+	var cache orchestrator.Cache
+	if cs, err := unitcache.Open(a.Paths, disc.Root); err == nil {
+		cache = cs
+	}
+	out := orchestrator.ExecuteWithOptions(cmd.Context(), p, engines, concurrency, orchestrator.Options{
+		Cache: cache, NoCache: opts.NoCache,
+	})
 	for i := range out.Engines {
 		if out.Engines[i].ID == "semgrep" {
 			out.Engines[i].Rules = &orchestrator.RulesRef{Source: "cgc-rules", Version: "1.0.0", Count: semgrepRuleCount}
@@ -227,6 +350,10 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 		}
 	}
 	out.Findings = normalize.Correlate(out.Findings)
+	if len(opts.Only) > 0 {
+		out.Findings = filterFindings(out.Findings, opts.Only)
+		recountFindings(&out, p)
+	}
 	a.writeRawOutputs(runID, out.RawOutputs)
 
 	// Pasos 7 y 8: política.
@@ -236,7 +363,15 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 	eval := policy.Evaluate(out.Findings, failOn, true, pol.Exceptions)
 
 	// Paso 9: reporte.
-	doc := buildDocument(cmd, opts, cfg, pol, failOn, setup, disc, out, runID, started, time.Since(started), overall, eval, adapterSetup.Preparations)
+	doc := buildDocument(cmd, opts, cfg, pol, failOn, setup, disc, out, runID, started, time.Since(started), overall, eval, adapterSetup.Preparations, adapterSetup.Limitations)
+	for _, e := range omitted {
+		doc.Tools.Engines = append(doc.Tools.Engines, report.EngineReport{
+			ID: e.ID, Version: e.Version, Status: "not_requested", Mode: e.Mode,
+			Units: []report.EngineState{}, Limitations: []string{"omitido por --only/--engines"},
+		})
+		doc.Coverage.Limitations = append(doc.Coverage.Limitations, "motor "+e.ID+" omitido por el alcance seleccionado")
+	}
+	doc.Normalize()
 
 	if !cfg.SemgrepEnabled {
 		if disabled := semgrepDisabledReport(ms); disabled != nil {
@@ -245,45 +380,29 @@ func (a *App) runScan(cmd *cobra.Command, opts scanOptions) (retErr error) {
 		}
 	}
 
+	a.attachDelta(doc)
+	if !opts.NoPersist {
+		a.persistProjectState(doc)
+	}
+
 	if opts.ReportOut != "" {
 		if err := a.validateReportOut(target, doc, opts.ReportOut); err != nil {
-			return IncompleteErrorf("%v", err)
+			return nil, IncompleteErrorf("%v", err)
 		}
 		if err := report.WriteFile(opts.ReportOut, doc); err != nil {
-			return IncompleteErrorf("%v", err)
+			return nil, IncompleteErrorf("%v", err)
 		}
 	}
-	var emitErr error
-	if opts.Format == "prompt" {
-		reportPath := ""
-		if !cfg.SemgrepEnabled {
-			if disabled := semgrepDisabledReport(ms); disabled != nil {
-				doc.Tools.Engines = append(doc.Tools.Engines, *disabled)
-				doc.Normalize()
-			}
-		}
-
-		if opts.ReportOut != "" {
-			reportPath, _ = filepath.Abs(opts.ReportOut)
-		}
-		emitErr = report.EmitPrompt(a.Stdout, doc, report.PromptOptions{ReportPath: reportPath})
-	} else {
-		emitErr = report.Emit(a.Stdout, doc, opts.Format)
-	}
-	if emitErr != nil {
-		emitted = true
-		return IncompleteErrorf("%v", emitErr)
-	}
-	emitted = true
-
 	code := policy.Decide(
 		policy.RunOutcome{Complete: out.Complete, Canceled: out.Canceled},
 		policy.PolicyOutcome{Violated: eval.Violated},
 	)
-	if code != 0 {
-		return &ExitError{Code: code}
-	}
-	return nil
+	return &scanOutcome{Doc: doc, ExitCode: code}, nil
+}
+
+func dbKey(info provision.DBInfo) string {
+	return fmt.Sprintf("%s|%s|%d", info.Source,
+		info.UpdatedAt.UTC().Format(time.RFC3339Nano), info.Schema)
 }
 
 // failureDocument construye un reporte mínimo con el error estructurado, para
@@ -335,7 +454,7 @@ func (a *App) validateReportOut(root string, _ *report.Document, path string) er
 func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol policyfile.Policy,
 	failOn normalize.Severity, setup *engineSetup, disc discovery.Result, out orchestrator.Outcome,
 	runID string, started time.Time, elapsed time.Duration, level runner.IsolationLevel,
-	eval policy.Evaluation, adapterPreps []report.Preparation) *report.Document {
+	eval policy.Evaluation, adapterPreps []report.Preparation, adapterLimited []string) *report.Document {
 
 	units := make([]report.UnitInfo, 0, len(disc.Units))
 	for _, u := range disc.Units {
@@ -370,7 +489,7 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		for _, st := range e.Units {
 			unitEngines[st.Unit] = append(unitEngines[st.Unit], report.EngineState{
 				ID: e.ID, Status: st.Status, Reason: st.Reason,
-				Findings: findingsByUnitEngine[st.Unit][e.ID],
+				Findings: findingsByUnitEngine[st.Unit][e.ID], Cache: st.Cache,
 			})
 		}
 	}
@@ -390,11 +509,11 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		er := report.EngineReport{
 			ID: e.ID, Version: e.Version, Status: e.Status, Mode: e.Mode,
 			Isolation: string(e.Isolation), DurationMS: e.Duration.Milliseconds(),
-			Path: e.Path, Image: e.Image,
+			Path: e.Path, Image: e.Image, Cache: e.Cache,
 		}
 		for _, st := range e.Units {
 			er.Units = append(er.Units, report.EngineState{
-				ID: st.Unit, Status: st.Status, Reason: st.Reason, Findings: st.Findings,
+				ID: st.Unit, Status: st.Status, Reason: st.Reason, Findings: st.Findings, Cache: st.Cache,
 			})
 		}
 		if e.DB != nil {
@@ -430,6 +549,9 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 				if strings.HasPrefix(p.Action, "adapter:"+e.ID) && p.Status == "failed" {
 					er.Limitations = append(er.Limitations, p.Detail)
 				}
+				if p.Action == "toolchain:"+e.ID && p.Status == "failed" {
+					er.Limitations = append(er.Limitations, p.Detail)
+				}
 				if strings.HasPrefix(p.Action, "db:") && p.Status == "failed" {
 					er.Limitations = append(er.Limitations, p.Detail)
 				}
@@ -445,6 +567,8 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 	if opts.Offline {
 		limitations = append(limitations, "modo offline: no se actualizaron motores ni bases")
 	}
+	limitations = append(limitations, opts.Limitations...)
+	limitations = append(limitations, adapterLimited...)
 	if setup.FallbackReason != "" {
 		limitations = append(limitations, setup.FallbackReason)
 	}
@@ -467,6 +591,14 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 	if len(out.Engines) > 0 {
 		mode = out.Engines[0].Mode
 	}
+	only := opts.Only
+	if only == nil {
+		only = []string{}
+	}
+	enginesArg := opts.Engines
+	if enginesArg == nil {
+		enginesArg = []string{}
+	}
 	args := map[string]any{
 		"format":            opts.Format,
 		"fail_on":           string(failOn),
@@ -477,6 +609,14 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		"include":           include,
 		"exclude":           excludeList,
 		"confirm_recipes":   opts.ConfirmRecipes,
+		"only":              only,
+		"engines":           enginesArg,
+		"changed":           opts.Changed,
+		"no_cache":          opts.NoCache,
+		"min_severity":      opts.MinSeverity,
+	}
+	if opts.Units != nil {
+		args["units"] = opts.Units
 	}
 	failOnOrigin := "default"
 	switch {
@@ -523,10 +663,10 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		Run:           report.NewRun(runID, started, elapsed, args),
 		Target: report.Target{
 			Root: disc.Root, LocalID: report.LocalID(disc.Root),
-			VCS: report.VCS{Available: false}, Units: units,
+			VCS: collectVCS(disc.Root), Units: units,
 		},
 		Coverage: report.Coverage{
-			Partial:     out.Plan.Partial,
+			Partial:     out.Plan.Partial || restrictedScope(opts),
 			Scope:       report.Scope{Root: disc.Root, Include: include, Exclude: excludeList},
 			Exclusions:  exclusions,
 			NotAnalyzed: notAnalyzed,
@@ -552,6 +692,9 @@ func buildDocument(cmd *cobra.Command, opts scanOptions, cfg config.Config, pol 
 		})
 	}
 	attachVerification(doc, suggested)
+	remediation.ApplyPriority(doc.Findings)
+	doc.RemediationGroups = remediation.Build(doc)
+	doc.NextActions = remediation.Actions(doc, doc.RemediationGroups)
 	if out.Canceled {
 		doc.Run.Cancelled = true
 	}
@@ -593,6 +736,18 @@ func preparationsFor(engineID string, all []report.Preparation) []report.Prepara
 	for _, p := range all {
 		if strings.HasPrefix(p.Action, "adapter:") {
 			if p.Action == "adapter:"+engineID {
+				out = append(out, p)
+			}
+			continue
+		}
+		if strings.HasPrefix(p.Action, "toolchain:") {
+			if p.Action == "toolchain:"+engineID {
+				out = append(out, p)
+			}
+			continue
+		}
+		if strings.HasPrefix(p.Action, "stage:") {
+			if p.Action == "stage:"+engineID {
 				out = append(out, p)
 			}
 			continue
@@ -687,4 +842,133 @@ func originOf(cmd *cobra.Command, flag, fallback string) string {
 		return "flag"
 	}
 	return fallback
+}
+
+// restrictedScope informa si algún filtro reduce el universo analizado.
+func restrictedScope(opts scanOptions) bool {
+	return len(opts.Only) > 0 || len(opts.Engines) > 0 || opts.Changed || len(opts.Units) > 0
+}
+
+var categoryEngines = map[string]map[string]bool{
+	"deps":    {"trivy": true, "govulncheck": true, "cargo-audit": true},
+	"secrets": {"trivy": true, "semgrep": true},
+	"code":    {"eslint": true, "psalm": true, "bandit": true, "semgrep": true},
+	"config":  {"trivy": true},
+}
+
+// filterEngines aplica --engines y --only. Devuelve los motores conservados y
+// los omitidos para declararlos en el reporte.
+func filterEngines(in []orchestrator.Engine, opts scanOptions) ([]orchestrator.Engine, []orchestrator.Engine) {
+	explicit := map[string]bool{}
+	for _, e := range opts.Engines {
+		explicit[e] = true
+	}
+	cats := map[string]bool{}
+	for _, c := range opts.Only {
+		cats[c] = true
+	}
+	kept := make([]orchestrator.Engine, 0, len(in))
+	var omitted []orchestrator.Engine
+	for _, e := range in {
+		keep := true
+		if len(explicit) > 0 && !explicit[e.ID] {
+			keep = false
+		}
+		if keep && len(cats) > 0 {
+			keep = false
+			for c := range cats {
+				if categoryEngines[c][e.ID] {
+					keep = true
+					break
+				}
+			}
+		}
+		if keep {
+			kept = append(kept, e)
+		} else {
+			omitted = append(omitted, e)
+		}
+	}
+	return kept, omitted
+}
+
+func filterFindings(in []normalize.Finding, cats []string) []normalize.Finding {
+	allowed := map[normalize.Kind]bool{}
+	for _, c := range cats {
+		switch c {
+		case "deps":
+			allowed[normalize.KindVulnerability] = true
+		case "secrets":
+			allowed[normalize.KindSecret] = true
+		case "code":
+			allowed[normalize.KindCode] = true
+		case "config":
+			allowed[normalize.KindMisconfig] = true
+		}
+	}
+	out := make([]normalize.Finding, 0, len(in))
+	for _, f := range in {
+		if allowed[f.Kind] {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func filterView(doc *report.Document, min string) *report.Document {
+	threshold := normalize.Severity(min).Rank()
+	out := *doc
+	out.Findings = make([]normalize.Finding, 0, len(doc.Findings))
+	for _, f := range doc.Findings {
+		if f.Severity.Normalized.Rank() >= threshold {
+			out.Findings = append(out.Findings, f)
+		}
+	}
+	out.RemediationGroups = make([]report.RemediationGroup, 0, len(doc.RemediationGroups))
+	for _, g := range doc.RemediationGroups {
+		if g.MaxSeverity.Rank() >= threshold {
+			out.RemediationGroups = append(out.RemediationGroups, g)
+		}
+	}
+	return &out
+}
+
+// recountFindings ajusta los contadores por unidad tras un filtro de
+// categorías, para que coverage no atribuya hallazgos que ya no se emiten.
+func recountFindings(out *orchestrator.Outcome, p plan.Plan) {
+	unitFor := func(path string) string {
+		best, bestLen := "project", -1
+		for _, u := range p.Units {
+			up := strings.TrimSuffix(u.Unit.Path, "/")
+			if up == "" || up == "." {
+				if bestLen < 0 {
+					best, bestLen = u.Unit.ID, 0
+				}
+				continue
+			}
+			if path == up || strings.HasPrefix(path, up+"/") {
+				if len(up) > bestLen {
+					best, bestLen = u.Unit.ID, len(up)
+				}
+			}
+		}
+		return best
+	}
+	counts := map[string]int{}
+	for _, f := range out.Findings {
+		path := ""
+		if len(f.Locations) > 0 {
+			path = f.Locations[0].Path
+		}
+		unit := unitFor(path)
+		for _, s := range f.Sources {
+			counts[s.Engine+"|"+unit]++
+		}
+	}
+	for i := range out.Engines {
+		for j := range out.Engines[i].Units {
+			st := &out.Engines[i].Units[j]
+			st.Findings = counts[out.Engines[i].ID+"|"+st.Unit]
+		}
+	}
 }

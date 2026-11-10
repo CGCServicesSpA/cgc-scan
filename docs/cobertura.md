@@ -33,16 +33,56 @@ del proyecto o de `--exclude`. Sí marcan parcialidad. `--include` también.
 | Bandit | Patrones inseguros en Python | `requirement_missing` |
 | Semgrep CE | Reglas propias o del usuario; opcional | `disabled` si no se habilitó |
 
+Un motor puede ejecutarse en el host o dentro de una imagen de toolchain. El
+estado (`completed`, `skipped`, `failed`) significa lo mismo en ambos casos; para
+distinguirlos usa `tools.engines[].mode` (`docker` para el contenedor),
+`tools.engines[].image` y las acciones `toolchain:<motor>` de
+`tools.engines[].preparation[]`. Un fallo de preparación de la imagen no se
+convierte en un resultado limpio: la unidad cae al host o queda
+`requirement_missing`.
+
 Un motor `skipped` o `failed` se suma a `coverage` y marca la ejecución como
 incompleta (código 3). Semgrep `disabled` es la excepción: no marca
 incompletitud ni cambia el código de salida.
 
-## Requisitos que no se instalan
+## Toolchains por lenguaje
 
-Los toolchains de los proyectos no se instalan: Go, Node, PHP/Composer,
-Rust/Cargo y Python deben estar presentes. Si falta uno, la unidad queda sin
-analizar y el reporte lo dice. Esto incluye el caso de PHP con `composer.json`
-pero sin `composer install`: Psalm se omite con `requirement_missing`.
+Si el daemon local de Docker responde, cada adaptador se ejecuta dentro de una
+imagen derivada de la imagen oficial del lenguaje, en la versión que declara el
+proyecto:
+
+| Lenguaje | Fuente de la versión | Imagen base |
+| --- | --- | --- |
+| Go | `go.mod` (`go` y `toolchain`) | `golang:<versión>` |
+| Node/TypeScript | `.nvmrc`, `.node-version`, `engines.node` o `volta.node` | `node:<versión>` |
+| PHP | `config.platform.php`, `require.php` o `.php-version` | `php:<versión>-cli` |
+| Rust | `rust-version`, `rust-toolchain.toml` o `edition` | `rust:<versión>-slim` |
+| Python | `requires-python`, `.python-version`, `runtime.txt` o `Pipfile` | `python:<versión>-slim` |
+
+Cada imagen se construye una vez por combinación lenguaje/versión/herramienta,
+se etiqueta de forma determinista (`cgc-scan/toolchain:...`) y se reutiliza. La
+imagen base se fija en el momento de la construcción por su digest y el reporte
+lo registra; como no está en `manifest/trust.json`, se declara como limitación.
+
+El proyecto se monta en `/src` en solo lectura y la red del contenedor queda
+habilitada para resolver dependencias del proyecto. Por eso el motor declara
+`isolation: configured`, nunca `enforced`. Las bases locales (Go, RustSec) y la
+configuración de Psalm se montan desde un directorio temporal compartido con el
+daemon; los cachés de cada lenguaje viven en volúmenes `cgc-scan-toolchain-*`
+propios del usuario.
+
+Sin Docker se mantiene el comportamiento anterior: se usan los toolchains del
+host y, si falta alguno, la unidad queda sin analizar con
+`requirement_missing`. `--offline` y `--no-auto-install` reutilizan imágenes ya
+construidas y nunca descargan ni construyen otras. La variable
+`CGC_SCAN_TOOLCHAIN=host` fuerza el uso de los toolchains del equipo para una
+operación de emergencia.
+
+## Requisitos de Composer
+
+Psalm sigue exigiendo `vendor/autoload.php` en la unidad. El contenedor monta el
+proyecto en solo lectura, así que `composer install` sigue siendo un paso
+previo del usuario: la CLI nunca escribe en el proyecto.
 
 ## Exclusiones y motores
 

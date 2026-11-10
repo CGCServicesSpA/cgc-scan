@@ -197,7 +197,10 @@ func (g *Global) buildEnv(inv Invocation) ([]string, error) {
 // allowedEnvKey acota lo que un adaptador puede añadir al entorno.
 func allowedEnvKey(k string) bool {
 	switch k {
-	case "NO_COLOR", "CI", "GOTOOLCHAIN", "GOFLAGS", "GOMODCACHE", "GOCACHE", "GOPATH", "GOPROXY", "GOSUMDB", "GONOSUMDB", "GOWORK":
+	case "NO_COLOR", "CI", "GOTOOLCHAIN", "GOFLAGS", "GOMODCACHE", "GOCACHE",
+		"GOPATH", "GOPROXY", "GOSUMDB", "GONOSUMDB", "GOWORK",
+		"npm_config_cache", "PIP_CACHE_DIR", "CARGO_HOME", "CARGO_NET_OFFLINE",
+		"COMPOSER_HOME":
 		return true
 	}
 	for _, prefix := range []string{"TRIVY_", "SEMGREP_", "BANDIT_", "ESLINT_", "PSALM_", "CGC_SCAN_"} {

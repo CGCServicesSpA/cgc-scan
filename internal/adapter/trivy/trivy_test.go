@@ -50,6 +50,41 @@ func TestArgsAlwaysDisableVersionCheck(t *testing.T) {
 	}
 }
 
+func TestTransitiveDependencyFindsDirectAncestor(t *testing.T) {
+	raw := []byte(`{
+	  "SchemaVersion": 2,
+	  "Results": [{
+	    "Target": "package-lock.json",
+	    "Type": "npm",
+	    "Packages": [
+	      {"ID": "app@1.0.0", "Name": "app", "Version": "1.0.0", "Relationship": "root", "DependsOn": ["parent@2.0.0"]},
+	      {"ID": "parent@2.0.0", "Name": "parent", "Version": "2.0.0", "Relationship": "direct", "DependsOn": ["lodash@4.17.0"]},
+	      {"ID": "lodash@4.17.0", "Name": "lodash", "Version": "4.17.0", "Relationship": "transitive"}
+	    ],
+	    "Vulnerabilities": [{
+	      "VulnerabilityID": "CVE-2021-0000", "PkgID": "lodash@4.17.0",
+	      "PkgName": "lodash", "InstalledVersion": "4.17.0", "FixedVersion": "4.17.21",
+	      "Severity": "HIGH", "Title": "prototype pollution",
+	      "PkgIdentifier": {"PURL": "pkg:npm/lodash@4.17.0"}
+	    }]
+	  }]
+	}`)
+	parsed, err := testAdapter(t).Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed.Findings) != 1 {
+		t.Fatalf("hallazgos = %d", len(parsed.Findings))
+	}
+	p := parsed.Findings[0].Package
+	if p == nil || p.Direct == nil || *p.Direct {
+		t.Fatalf("paquete = %+v", p)
+	}
+	if p.Relationship != "transitive" || p.Via != "parent" {
+		t.Fatalf("relación = %+v", p)
+	}
+}
+
 func TestInvocationsPropagateExclusions(t *testing.T) {
 	a := testAdapter(t)
 	p := plan.Plan{
@@ -126,6 +161,9 @@ func TestParseRealTrivyOutput(t *testing.T) {
 	}
 	if vuln.Package.FixedVersion == nil || *vuln.Package.FixedVersion != "0.3.7" {
 		t.Errorf("versión corregida = %v", vuln.Package.FixedVersion)
+	}
+	if vuln.Package.Direct == nil || !*vuln.Package.Direct || vuln.Package.Relationship != "direct" {
+		t.Errorf("relación directa = %+v", vuln.Package)
 	}
 	if vuln.Priority == nil || vuln.Priority.CVSSScore == nil {
 		t.Error("no se conservó CVSS")

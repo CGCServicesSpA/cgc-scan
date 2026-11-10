@@ -19,14 +19,56 @@ import (
 
 // Engine agrupa un adaptador con el runner y los datos que van al reporte.
 type Engine struct {
-	ID         string
-	Version    string
-	Mode       string
-	Adapter    adapter.Adapter
-	Runner     runner.Runner
-	Isolation  runner.IsolationLevel
-	BinaryPath string
-	Image      string
+	ID      string
+	Version string
+	Mode    string
+	Adapter adapter.Adapter
+	Runner  runner.Runner
+	// ContainerRunner ejecuta las invocaciones que declaran una imagen de
+	// toolchain (Invocation.Image). Permite que una misma unidad use el
+	// contenedor del lenguaje y otra caiga al runner del host.
+	ContainerRunner runner.Runner
+	Isolation       runner.IsolationLevel
+	BinaryPath      string
+	Image           string
+	// DBKey identifica la versión de la base usada por el motor en la clave
+	// de caché. Vacío si el motor no usa base.
+	DBKey string
+	// CacheMode declara qué entradas invalidan el resultado: deps, source o
+	// full. Vacío desactiva la caché para ese motor.
+	CacheMode string
+}
+
+// CacheRequest identifica un resultado cacheable por motor y unidad.
+type CacheRequest struct {
+	EngineID      string
+	EngineVersion string
+	Mode          string
+	DBKey         string
+	Root          string
+	UnitID        string
+	UnitPath      string
+	Invocations   []runner.Invocation
+}
+
+// CachedUnit es el resultado persistido de un motor en una unidad.
+type CachedUnit struct {
+	Status   string
+	Reason   string
+	Findings []normalize.Finding
+}
+
+// Cache es la interfaz que implementa la caché incremental. Lookup y Save
+// calculan la misma clave a partir del request.
+type Cache interface {
+	Lookup(req CacheRequest) (CachedUnit, bool)
+	Save(req CacheRequest, res CachedUnit) error
+}
+
+// Options ajusta la ejecución.
+type Options struct {
+	Cache   Cache
+	NoCache bool
 }
 
 // UnitState es el estado de un motor en una unidad.
@@ -35,6 +77,7 @@ type UnitState struct {
 	Status   string `json:"status"`
 	Reason   string `json:"reason,omitempty"`
 	Findings int    `json:"findings,omitempty"`
+	Cache    string `json:"cache,omitempty"`
 }
 
 // DBRef describe la base que usó un motor.
@@ -67,6 +110,7 @@ type EngineResult struct {
 	Rules       *RulesRef
 	Path        string
 	Image       string
+	Cache       string
 }
 
 // RunError es un error estructurado del reporte.
@@ -96,9 +140,15 @@ type Outcome struct {
 	Canceled   bool
 }
 
-// Execute corre todos los motores aplicables. Un fallo de un motor no impide
-// que los demás entreguen resultados, pero marca la ejecución como incompleta.
+// Execute corre todos los motores aplicables sin caché.
 func Execute(ctx context.Context, p plan.Plan, engines []Engine, concurrency int) Outcome {
+	return ExecuteWithOptions(ctx, p, engines, concurrency, Options{})
+}
+
+// ExecuteWithOptions corre todos los motores aplicables con caché opcional.
+// Un fallo de un motor no impide que los demás entreguen resultados, pero
+// marca la ejecución como incompleta.
+func ExecuteWithOptions(ctx context.Context, p plan.Plan, engines []Engine, concurrency int, opts Options) Outcome {
 	if concurrency < 1 {
 		concurrency = 4
 	}
@@ -132,11 +182,11 @@ func Execute(ctx context.Context, p plan.Plan, engines []Engine, concurrency int
 				if err := gctx.Err(); err != nil {
 					return err
 				}
-				status, findings, duration, diags, errs, used, raw := runOne(gctx, p, u, e)
+				status, findings, duration, diags, errs, used, raw, cacheState := runOne(gctx, p, u, e, opts)
 				mu.Lock()
 				defer mu.Unlock()
 				p.SetEngineStatus(u.Unit.ID, e.ID, status, reasonOf(errs))
-				states[e.ID] = append(states[e.ID], UnitState{Unit: u.Unit.ID, Status: status, Reason: reasonOf(errs), Findings: findings})
+				states[e.ID] = append(states[e.ID], UnitState{Unit: u.Unit.ID, Status: status, Reason: reasonOf(errs), Findings: findings, Cache: cacheState})
 				if status != plan.StatusCompleted {
 					invalid = true
 				}
@@ -171,6 +221,7 @@ func Execute(ctx context.Context, p plan.Plan, engines []Engine, concurrency int
 		case completed > 0:
 			status = plan.StatusCompleted
 		}
+		cacheState := aggregateCache(units)
 		out.Engines = append(out.Engines, EngineResult{
 			ID:        e.ID,
 			Version:   e.Version,
@@ -182,6 +233,7 @@ func Execute(ctx context.Context, p plan.Plan, engines []Engine, concurrency int
 			Units:     units,
 			Path:      e.BinaryPath,
 			Image:     e.Image,
+			Cache:     cacheState,
 		})
 	}
 
@@ -198,7 +250,33 @@ func Execute(ctx context.Context, p plan.Plan, engines []Engine, concurrency int
 	return out
 }
 
-func runOne(ctx context.Context, p plan.Plan, u plan.UnitPlan, e Engine) (string, int, time.Duration, []string, []RunError, []normalize.Finding, []RawOutput) {
+func aggregateCache(units []UnitState) string {
+	hit, miss, disabled := 0, 0, 0
+	for _, u := range units {
+		switch u.Cache {
+		case "hit":
+			hit++
+		case "miss":
+			miss++
+		case "disabled":
+			disabled++
+		}
+	}
+	switch {
+	case hit > 0 && miss > 0:
+		return "mixed"
+	case hit > 0:
+		return "hit"
+	case miss > 0:
+		return "miss"
+	case disabled > 0:
+		return "disabled"
+	default:
+		return ""
+	}
+}
+
+func runOne(ctx context.Context, p plan.Plan, u plan.UnitPlan, e Engine, opts Options) (string, int, time.Duration, []string, []RunError, []normalize.Finding, []RawOutput, string) {
 	start := time.Now()
 	for _, req := range e.Adapter.Requirements(ctx, u.Unit) {
 		if req.Missing {
@@ -208,7 +286,7 @@ func runOne(ctx context.Context, p plan.Plan, u plan.UnitPlan, e Engine) (string
 					Code:    "requirement_missing",
 					Scope:   e.ID + ":" + u.Unit.ID,
 					Message: fmt.Sprintf("falta %s (%s); la unidad no se analizó", req.Name, req.Detail),
-				}}, nil, nil
+				}}, nil, nil, ""
 		}
 	}
 
@@ -216,7 +294,26 @@ func runOne(ctx context.Context, p plan.Plan, u plan.UnitPlan, e Engine) (string
 	if err != nil {
 		return plan.StatusFailed, 0, time.Since(start), nil, []RunError{{
 			Code: "invocation_failed", Scope: e.ID + ":" + u.Unit.ID, Message: err.Error(),
-		}}, nil, nil
+		}}, nil, nil, ""
+	}
+
+	cacheReq := CacheRequest{
+		EngineID: e.ID, EngineVersion: e.Version, Mode: e.CacheMode,
+		DBKey: e.DBKey, Root: p.Root, UnitID: u.Unit.ID, UnitPath: u.Unit.Path,
+		Invocations: invs,
+	}
+	cacheState := ""
+	if opts.Cache != nil && e.CacheMode != "" {
+		switch {
+		case opts.NoCache:
+			cacheState = "disabled"
+		default:
+			if cached, ok := opts.Cache.Lookup(cacheReq); ok {
+				return cached.Status, len(cached.Findings), time.Since(start), nil, nil,
+					cached.Findings, nil, "hit"
+			}
+			cacheState = "miss"
+		}
 	}
 
 	var (
@@ -226,7 +323,11 @@ func runOne(ctx context.Context, p plan.Plan, u plan.UnitPlan, e Engine) (string
 		rawOut   []RawOutput
 	)
 	for _, inv := range invs {
-		res, runErr := e.Runner.Run(ctx, inv)
+		run := e.Runner
+		if inv.Image != "" && e.ContainerRunner != nil {
+			run = e.ContainerRunner
+		}
+		res, runErr := run.Run(ctx, inv)
 		if runErr != nil {
 			errs = append(errs, RunError{
 				Code: "engine_failed", Scope: e.ID + ":" + u.Unit.ID,
@@ -269,7 +370,12 @@ func runOne(ctx context.Context, p plan.Plan, u plan.UnitPlan, e Engine) (string
 	if len(errs) > 0 {
 		status = plan.StatusFailed
 	}
-	return status, len(findings), time.Since(start), diags, errs, findings, rawOut
+	if status == plan.StatusCompleted && opts.Cache != nil && e.CacheMode != "" && !opts.NoCache {
+		_ = opts.Cache.Save(cacheReq, CachedUnit{
+			Status: status, Reason: reasonOf(errs), Findings: findings,
+		})
+	}
+	return status, len(findings), time.Since(start), diags, errs, findings, rawOut, cacheState
 }
 
 func reasonOf(errs []RunError) string {

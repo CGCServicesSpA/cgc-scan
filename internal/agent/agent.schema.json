@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cgcservices.cl/schemas/cgc-scan/agent-1.0.0.json",
+  "title": "CGC Scan agent document",
+  "description": "Documento compacto de una sola pasada para agentes. No incluye descripciones, referencias ni evidencia; se piden con cgc-scan explain.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run",
+    "target",
+    "summary",
+    "remediation_groups",
+    "next_actions",
+    "blocked",
+    "report_path",
+    "errors"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "agent-1.0.0"
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "finished_at", "duration_ms", "cli_version"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "finished_at": {"type": "string"},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "cli_version": {"type": "string", "minLength": 1},
+        "baseline_created": {"type": "boolean"}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "local_id"],
+      "properties": {
+        "root": {"type": "string", "minLength": 1},
+        "local_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "exit_code", "coverage", "counts", "groups_total", "groups_shown", "truncated"],
+      "properties": {
+        "status": {"type": "string", "enum": ["clean", "findings", "blocked", "partial", "failed"]},
+        "exit_code": {"type": "integer", "minimum": 0, "maximum": 3},
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["partial", "units", "errors"],
+          "properties": {
+            "partial": {"type": "boolean"},
+            "units": {"type": "integer", "minimum": 0},
+            "errors": {"type": "integer", "minimum": 0}
+          }
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["findings", "suppressed", "groups", "critical", "high", "medium", "low", "info", "unknown", "new", "persistent", "resolved", "not_evaluated"],
+          "properties": {
+            "findings": {"type": "integer", "minimum": 0},
+            "suppressed": {"type": "integer", "minimum": 0},
+            "groups": {"type": "integer", "minimum": 0},
+            "critical": {"type": "integer", "minimum": 0},
+            "high": {"type": "integer", "minimum": 0},
+            "medium": {"type": "integer", "minimum": 0},
+            "low": {"type": "integer", "minimum": 0},
+            "info": {"type": "integer", "minimum": 0},
+            "unknown": {"type": "integer", "minimum": 0},
+            "new": {"type": "integer", "minimum": 0},
+            "persistent": {"type": "integer", "minimum": 0},
+            "resolved": {"type": "integer", "minimum": 0},
+            "not_evaluated": {"type": "integer", "minimum": 0}
+          }
+        },
+        "groups_total": {"type": "integer", "minimum": 0},
+        "groups_shown": {"type": "integer", "minimum": 0},
+        "groups_filtered": {"type": "integer", "minimum": 0},
+        "truncated": {"type": "boolean"},
+        "filter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min_severity"],
+          "properties": {
+            "min_severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info", "unknown"]}
+          }
+        }
+      }
+    },
+    "remediation_groups": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "delta": {
+      "type": ["object", "null"]
+    },
+    "blocked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "reason"],
+        "properties": {
+          "kind": {"type": "string", "minLength": 1},
+          "unit": {"type": "string"},
+          "engine": {"type": "string"},
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "report_path": {"type": "string"},
+    "errors": {
+      "type": "array",
+      "items": {"type": "object"}
+    }
+  }
+}

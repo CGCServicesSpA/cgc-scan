@@ -26,6 +26,10 @@ import (
 // ID identifica el motor.
 const ID = "govulncheck"
 
+// ContainerDBDir es la ruta donde el runner monta la base local dentro de la
+// imagen de toolchain.
+const ContainerDBDir = "/cgc-vulndb"
+
 // Adapter ejecuta govulncheck en modo fuente.
 type Adapter struct {
 	Version  string
@@ -34,6 +38,9 @@ type Adapter struct {
 	Masker   *masking.Masker
 	GoBinary string
 	GoEnv    map[string]string
+	// ContainerFor resuelve la imagen de toolchain de una unidad. Si es nil o
+	// devuelve nil, el adaptador usa el binario Go del host.
+	ContainerFor func(discovery.Unit) *adapter.Container
 }
 
 // New construye el adaptador y resuelve el entorno de Go.
@@ -50,10 +57,17 @@ func (a *Adapter) Applies(u discovery.Unit) bool {
 	return hasLanguage(u, discovery.Go) && u.Kind != "repository"
 }
 
+// AcceptExit acepta el código 3 con el que el CLI de govulncheck señala
+// vulnerabilidades encontradas. El binario en contenedor no usa el camino de
+// la biblioteca, así que este contrato es necesario.
+func (a *Adapter) AcceptExit(code int) bool {
+	return code == 0 || code == 3
+}
+
 // Requirements comprueba toolchain, módulo y base local.
 func (a *Adapter) Requirements(_ context.Context, u discovery.Unit) []adapter.Requirement {
 	var reqs []adapter.Requirement
-	if a.GoBinary == "" {
+	if a.container(u) == nil && a.GoBinary == "" {
 		reqs = append(reqs, adapter.Requirement{Kind: "toolchain", Name: "go", Detail: "no está en PATH", Missing: true})
 	}
 	if !hasManifest(u, "go.mod") && u.Kind != "directory" {
@@ -65,12 +79,38 @@ func (a *Adapter) Requirements(_ context.Context, u discovery.Unit) []adapter.Re
 	return reqs
 }
 
-// Invocations devuelve una ejecución en proceso con la biblioteca.
+// Invocations devuelve una ejecución en proceso con la biblioteca o, si hay
+// imagen de toolchain, una ejecución dentro del contenedor del lenguaje.
 func (a *Adapter) Invocations(u discovery.Unit, _ plan.Plan) ([]runner.Invocation, error) {
+	unitDir := filepath.Join(a.Root, u.Path)
+	if c := a.container(u); c != nil {
+		return []runner.Invocation{{
+			Engine:       ID,
+			Image:        c.Image,
+			ProjectRO:    a.Root,
+			Dir:          unitDir,
+			Mounts:       c.Mounts,
+			AllowNetwork: !c.Offline,
+			Args: []string{
+				"govulncheck",
+				"-db", "file://" + ContainerDBDir,
+				"-mode=source", "-scan=symbol", "-format=json",
+				"./...",
+			},
+			Env: map[string]string{
+				// El toolchain debe ser el de la imagen: descargar otro
+				// contradiría la versión detectada del proyecto.
+				"GOTOOLCHAIN": "local",
+				"GOPATH":      "/go",
+				"GOMODCACHE":  filepath.ToSlash(c.CacheDir) + "/go-mod",
+				"GOCACHE":     filepath.ToSlash(c.CacheDir) + "/go-build",
+			},
+			Timeout: 15 * time.Minute,
+		}}, nil
+	}
 	if a.GoBinary == "" {
 		return nil, fmt.Errorf("govulncheck: falta el toolchain Go")
 	}
-	unitDir := filepath.Join(a.Root, u.Path)
 	args := []string{
 		"-C", unitDir,
 		"-db", "file://" + a.DBDir,
@@ -86,6 +126,14 @@ func (a *Adapter) Invocations(u discovery.Unit, _ plan.Plan) ([]runner.Invocatio
 		return runLibrary(ctx, args, env)
 	}
 	return []runner.Invocation{inv}, nil
+}
+
+// container resuelve la imagen de toolchain de la unidad, si existe.
+func (a *Adapter) container(u discovery.Unit) *adapter.Container {
+	if a.ContainerFor == nil {
+		return nil
+	}
+	return a.ContainerFor(u)
 }
 
 func runLibrary(ctx context.Context, args, env []string) (runner.Result, error) {
@@ -275,11 +323,7 @@ func (a *Adapter) toFinding(f Finding, osv *OSV) normalize.Finding {
 }
 
 func (a *Adapter) relative(path string) string {
-	rel, err := filepath.Rel(a.Root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return filepath.ToSlash(path)
-	}
-	return filepath.ToSlash(rel)
+	return adapter.RelativePath(a.Root, adapter.ContainerRoot, path)
 }
 
 func (a *Adapter) Redact(raw []byte) []byte {
@@ -352,7 +396,7 @@ func goEnvironment(goBinary string) map[string]string {
 	if goBinary == "" {
 		return nil
 	}
-	env := map[string]string{"GOPROXY": "off", "GOSUMDB": "off", "GOFLAGS": "-mod=readonly"}
+	env := toolchainEnv()
 	for _, key := range []string{"GOMODCACHE", "GOCACHE", "GOPATH"} {
 		out, err := exec.Command(goBinary, "env", key).Output() // #nosec G204 -- ruta de PATH
 		if err == nil {
@@ -363,14 +407,24 @@ func goEnvironment(goBinary string) map[string]string {
 }
 
 func (a *Adapter) env() map[string]string {
-	out := make(map[string]string, len(a.GoEnv)+3)
+	out := make(map[string]string, len(a.GoEnv)+7)
 	for k, v := range a.GoEnv {
 		out[k] = v
 	}
-	out["GOPROXY"] = "off"
-	out["GOSUMDB"] = "off"
-	out["GOFLAGS"] = "-mod=readonly"
+	for k, v := range toolchainEnv() {
+		out[k] = v
+	}
 	return out
+}
+
+// toolchainEnv evita descargas de módulos durante el escaneo. GOSUMDB se
+// mantiene activo para que el envoltorio de Go pueda verificar un toolchain ya
+// cacheado; las conexiones siguen bloqueadas por el proxy inválido del runner.
+func toolchainEnv() map[string]string {
+	return map[string]string{
+		"GOPROXY": "off", "GOSUMDB": "sum.golang.org",
+		"GOFLAGS": "-mod=readonly",
+	}
 }
 
 // RecipeCandidates propone los comandos estándar de Go.

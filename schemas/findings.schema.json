@@ -1,0 +1,322 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cgcservices.cl/schemas/cgc-scan/findings-1.0.0.json",
+  "title": "CGC Scan audit findings",
+  "description": "Hallazgos de auditoría en tres veredictos distintos. La evidencia la aporta el agente llamador; el motor valida estructura y consistencia, no verdad.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "run", "target", "provenance", "summary", "findings"],
+  "properties": {
+    "schema_version": {"const": "findings-1.0.0"},
+    "run": {"$ref": "#/$defs/run"},
+    "target": {"$ref": "#/$defs/target"},
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attested_by", "engine_verified", "engine_role"],
+      "properties": {
+        "attested_by": {"const": "caller"},
+        "engine_verified": {"const": false},
+        "engine_role": {"const": "structure-and-consistency"}
+      }
+    },
+    "summary": {"$ref": "#/$defs/summary"},
+    "findings": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {"$ref": "#/$defs/confirmed"},
+          {"$ref": "#/$defs/needs_validation"},
+          {"$ref": "#/$defs/rejected"}
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "started_at", "cli_version", "source_ref", "dirty"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "started_at": {"type": "string"},
+        "cli_version": {"type": "string", "minLength": 1},
+        "source_ref": {"type": "string", "minLength": 1},
+        "dirty": {"type": "boolean"}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "local_id"],
+      "properties": {
+        "root": {"type": "string", "minLength": 1},
+        "local_id": {"type": "string", "minLength": 1}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["confirmed", "needs_validation", "rejected", "confirmed_by_severity"],
+      "properties": {
+        "confirmed": {"type": "integer", "minimum": 0},
+        "needs_validation": {"type": "integer", "minimum": 0},
+        "rejected": {"type": "integer", "minimum": 0},
+        "confirmed_by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["informational", "low", "medium", "high", "critical"],
+          "properties": {
+            "informational": {"type": "integer", "minimum": 0},
+            "low": {"type": "integer", "minimum": 0},
+            "medium": {"type": "integer", "minimum": 0},
+            "high": {"type": "integer", "minimum": 0},
+            "critical": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "fingerprint": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+    },
+    "trace": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "file", "line", "scope", "description"],
+        "properties": {
+          "kind": {"enum": ["entrypoint", "propagation", "sink"]},
+          "file": {"type": "string", "minLength": 1},
+          "line": {"type": "integer", "minimum": 1},
+          "scope": {"type": "string", "minLength": 1},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "line", "description"],
+        "properties": {
+          "file": {"type": "string", "minLength": 1},
+          "line": {"type": "integer", "minimum": 1},
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "description"],
+        "properties": {
+          "kind": {
+            "enum": [
+              "authentication_level",
+              "authorization_role",
+              "user_interaction",
+              "system_configuration",
+              "network_routing",
+              "environmental_dependency",
+              "data_state",
+              "timing_dependency",
+              "third_party_dependency"
+            ]
+          },
+          "description": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "severity_score": {
+      "enum": ["informational", "low", "medium", "high", "critical"]
+    },
+    "severity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["likelihood", "impact", "overall_severity"],
+      "properties": {
+        "likelihood": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["score", "reason"],
+          "properties": {
+            "score": {"$ref": "#/$defs/severity_score"},
+            "reason": {"type": "string", "minLength": 1}
+          }
+        },
+        "impact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["score", "reason"],
+          "properties": {
+            "score": {"$ref": "#/$defs/severity_score"},
+            "reason": {"type": "string", "minLength": 1}
+          }
+        },
+        "overall_severity": {"$ref": "#/$defs/severity_score"}
+      }
+    },
+    "confidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["score", "reason"],
+      "properties": {
+        "score": {"enum": ["low", "medium", "high"]},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attacker_perspective", "payloads", "instructions", "observed_result"],
+      "properties": {
+        "attacker_perspective": {"type": "string", "minLength": 1},
+        "payloads": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string"}
+        },
+        "instructions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "observed_result": {"type": "string", "minLength": 1}
+      }
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy"],
+      "properties": {
+        "strategy": {"type": "string", "minLength": 1},
+        "code_changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file_name", "fixed_code"],
+            "properties": {
+              "file_name": {"type": "string", "minLength": 1},
+              "fixed_code": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "validation_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "local": {"type": "string", "minLength": 1},
+        "deployment": {"type": "string", "minLength": 1}
+      },
+      "anyOf": [
+        {"required": ["local"]},
+        {"required": ["deployment"]}
+      ]
+    },
+    "confirmed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "fingerprint",
+        "title",
+        "description",
+        "root_cause",
+        "intended_behavior",
+        "trace",
+        "evidence",
+        "conditions",
+        "execution",
+        "remediation",
+        "severity",
+        "confidence"
+      ],
+      "properties": {
+        "verdict": {"const": "confirmed"},
+        "fingerprint": {"$ref": "#/$defs/fingerprint"},
+        "title": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "root_cause": {"type": "string", "minLength": 1},
+        "intended_behavior": {"type": "string", "minLength": 1},
+        "trace": {"$ref": "#/$defs/trace"},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "conditions": {"$ref": "#/$defs/conditions"},
+        "execution": {"$ref": "#/$defs/execution"},
+        "remediation": {"$ref": "#/$defs/remediation"},
+        "severity": {"$ref": "#/$defs/severity"},
+        "confidence": {"$ref": "#/$defs/confidence"}
+      }
+    },
+    "needs_validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "fingerprint",
+        "title",
+        "description",
+        "claimed_root_cause",
+        "trace",
+        "evidence",
+        "blockers",
+        "validation_plan"
+      ],
+      "properties": {
+        "verdict": {"const": "needs_validation"},
+        "fingerprint": {"$ref": "#/$defs/fingerprint"},
+        "title": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "claimed_root_cause": {"type": "string", "minLength": 1},
+        "trace": {"$ref": "#/$defs/trace"},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "blockers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "validation_plan": {"$ref": "#/$defs/validation_plan"}
+      }
+    },
+    "rejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verdict",
+        "fingerprint",
+        "title",
+        "description",
+        "claimed_root_cause",
+        "trace",
+        "evidence",
+        "reason"
+      ],
+      "properties": {
+        "verdict": {"const": "rejected"},
+        "fingerprint": {"$ref": "#/$defs/fingerprint"},
+        "title": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "minLength": 1},
+        "claimed_root_cause": {"type": "string", "minLength": 1},
+        "trace": {"$ref": "#/$defs/trace"},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

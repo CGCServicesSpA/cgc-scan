@@ -24,9 +24,10 @@ const ID = "bandit"
 
 // Adapter ejecuta Bandit sobre unidades Python.
 type Adapter struct {
-	Install provision.AdapterInstall
-	Root    string
-	Masker  *masking.Masker
+	Install      provision.AdapterInstall
+	Root         string
+	Masker       *masking.Masker
+	ContainerFor func(discovery.Unit) *adapter.Container
 }
 
 // New construye el adaptador.
@@ -50,21 +51,46 @@ func (a *Adapter) Applies(u discovery.Unit) bool {
 }
 
 // Requirements comprueba el entorno de Bandit.
-func (a *Adapter) Requirements(context.Context, discovery.Unit) []adapter.Requirement {
-	if a.Install.Dir == "" {
+func (a *Adapter) Requirements(_ context.Context, u discovery.Unit) []adapter.Requirement {
+	if a.container(u) == nil && a.Install.Dir == "" {
 		return []adapter.Requirement{{Kind: "binary", Name: "bandit", Detail: "no aprovisionado", Missing: true}}
 	}
 	return nil
 }
 
+// container resuelve la imagen de toolchain de la unidad, si existe.
+func (a *Adapter) container(u discovery.Unit) *adapter.Container {
+	if a.ContainerFor == nil {
+		return nil
+	}
+	return a.ContainerFor(u)
+}
+
 // Invocations ejecuta Bandit con salida JSON.
 func (a *Adapter) Invocations(u discovery.Unit, _ plan.Plan) ([]runner.Invocation, error) {
+	unitDir := filepath.Join(a.Root, u.Path)
+	if c := a.container(u); c != nil {
+		return []runner.Invocation{{
+			Engine:       ID,
+			Image:        c.Image,
+			ProjectRO:    a.Root,
+			Dir:          unitDir,
+			Mounts:       c.Mounts,
+			AllowNetwork: !c.Offline,
+			Args:         []string{"bandit", "-r", ".", "-f", "json", "-q"},
+			Env: map[string]string{
+				"NO_COLOR":      "1",
+				"PIP_CACHE_DIR": filepath.ToSlash(c.CacheDir) + "/pip",
+			},
+			Timeout: 10 * time.Minute,
+		}}, nil
+	}
 	bin := filepath.Join(a.Install.Dir, "venv", "bin", "bandit")
 	return []runner.Invocation{{
 		Engine:  ID,
 		Binary:  bin,
 		Args:    []string{"-r", ".", "-f", "json", "-q"},
-		Dir:     filepath.Join(a.Root, u.Path),
+		Dir:     unitDir,
 		Timeout: 10 * time.Minute,
 		Env:     map[string]string{"NO_COLOR": "1"},
 	}}, nil
@@ -180,12 +206,8 @@ func reportSecrets(rep Report) []string {
 	return out
 }
 
-func (a *Adapter) relative(path string) string {
-	rel, err := filepath.Rel(a.Root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return filepath.ToSlash(path)
-	}
-	return filepath.ToSlash(rel)
+func (a *Adapter) relative(p string) string {
+	return adapter.RelativePath(a.Root, adapter.ContainerRoot, p)
 }
 
 // Redact enmascara y sanea la salida.

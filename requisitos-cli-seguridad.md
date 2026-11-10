@@ -2,13 +2,15 @@
 
 | | |
 | --- | --- |
-| Versión | 0.10 (borrador para revisión) |
-| Fecha | 27 de octubre de 2026 |
+| Versión | 0.11 (borrador para revisión) |
+| Fecha | 30 de octubre de 2026 |
 | Empresa | CGC Services |
 | Nombre | `cgc-scan` (provisional) |
 | Estado | Especificación. No describe software implementado ni capacidades verificadas con pruebas de integración. |
 
 **Convención de estados.** *Confirmado* = decisión tomada. *Propuesto* = default técnico revisable, no decisión atribuida al usuario. *Pendiente* = sin definir.
+
+**Cambios respecto a 0.10.** Se añade RF-38 (toolchain por lenguaje en contenedor) con CA-70 a CA-72: la CLI detecta la versión que declara el proyecto, construye una imagen derivada de la imagen oficial del lenguaje y ejecuta el adaptador con el proyecto en solo lectura. Se actualizan §6.3, §6.4, §6.6, el riesgo R2 y se declara la excepción de privacidad por resolución de dependencias (nombres y versiones, nunca código).
 
 **Cambios respecto a 0.9.** (1) Selección de rutas: se concreta RF-14 con `--include` y `--exclude` repetibles, se define la parcialidad de la cobertura (`coverage.partial`, `coverage.not_analyzed`) y se distingue entre exclusiones intrínsecas y elegidas (CA-46). (2) Recetas de validación: se resuelve la contradicción entre §6.8 y §10.1 estableciendo que las recetas de confianza viven en la configuración de usuario, fuera del proyecto, y se añaden RF-37 y CA-57. (3) Se añade `validation` al contrato de reporte.
 
@@ -22,7 +24,7 @@ Crear una CLI que analice proyectos localmente, combine motores de seguridad y e
 
 Principios que gobiernan el resto del documento:
 
-1. **Local primero.** Sin suscripciones a plataformas de escaneo; sin subir código, inventarios de dependencias ni resultados durante el análisis. El aislamiento existe para dos fines: que el código y los inventarios no salgan del equipo, y que el escaneo no dependa de terceros (servicios, registros o APIs) en tiempo de ejecución.
+1. **Local primero.** Sin suscripciones a plataformas de escaneo; sin subir código, inventarios de dependencias ni resultados durante el análisis. El aislamiento existe para dos fines: que el código y los inventarios no salgan del equipo, y que el escaneo no dependa de terceros (servicios, registros o APIs) en tiempo de ejecución. **Excepción declarada (RF-38):** un contenedor de toolchain puede resolver dependencias contra el registro público del ecosistema, lo que expone nombres y versiones de paquetes, nunca código ni secretos; el reporte lo declara; `--offline` o `CGC_SCAN_TOOLCHAIN=host` lo evitan.
 2. **Sin IA en v1.** La interpretación corresponde al agente llamador. La CLI solo produce evidencia, cobertura y políticas deterministas.
 3. **El escáner no modifica el proyecto.** Escribe solo en destinos controlados (caché, reportes, temporales).
 4. **Nunca un resultado limpio con cobertura incompleta.** Detectar un lenguaje no equivale a haberlo analizado.
@@ -202,7 +204,9 @@ Guarda `trivy_mode=docker` o `trivy_mode=global`. Una elección global se respet
 
 **Actualización del motor.** El binario o la imagen se actualizan solo según una política explícita de actualización de herramientas, conservando compatibilidad. Es independiente de la actualización de bases (sección 6.4). No resolver `latest` ni reemplazar el motor en cada invocación.
 
-**Alcance.** Este aprovisionamiento aplica a Trivy; no implica instalar toolchains ni dependencias de los proyectos. La decisión D-01 (`docs/decisiones-preparacion.md`) **amplía el aprovisionamiento verificado a las herramientas de los adaptadores** (ESLint, Psalm, Bandit, cargo-audit, govulncheck) con las mismas garantías: versión y hash en el manifiesto, sin scripts de instalación y sin escribir en el proyecto. Los toolchains de los proyectos siguen sin instalarse: si faltan, el adaptador se omite y la ejecución es incompleta.
+**Alcance.** Este aprovisionamiento aplica a Trivy; no implica instalar dependencias de los proyectos. La decisión D-01 (`docs/decisiones-preparacion.md`) **amplía el aprovisionamiento verificado a las herramientas de los adaptadores** (ESLint, Psalm, Bandit, cargo-audit, govulncheck) con las mismas garantías: versión y hash en el manifiesto, sin scripts de instalación y sin escribir en el proyecto.
+
+**Toolchain por lenguaje (RF-38, ADR-18).** Con un daemon local disponible, la CLI lee la versión que declara el proyecto (`go.mod`, `.nvmrc`/`engines.node`, `composer.json`, `Cargo.toml`, `pyproject.toml`) y construye una imagen derivada de la imagen oficial del lenguaje (`golang`, `node`, `php`, `rust`, `python`). La herramienta fijada se instala en esa imagen y el adaptador se ejecuta dentro del contenedor con el proyecto montado en solo lectura. La imagen base se resuelve por digest al construir y se registra en el reporte; no se añade al manifiesto de confianza porque la versión depende del proyecto. Los toolchains del equipo siguen sin instalarse: sin Docker, o si la imagen no se puede preparar, el adaptador cae al toolchain del host y, si tampoco está, se omite con `requirement_missing` y la ejecución es incompleta.
 
 ### 6.4 Bases y almacenamiento persistente
 
@@ -216,6 +220,8 @@ Antes de cada escaneo online, comprobar y actualizar las bases que Trivy necesit
 | Escáner | **Deshabilitada**, con actualizaciones automáticas desactivadas | Reutilizado con los permisos que Trivy necesite | Solo lectura |
 
 No montar el socket Docker en el escáner.
+
+**Persistencia de toolchains (RF-38).** Cada imagen de lenguaje usa un volumen propio del usuario (`cgc-scan-toolchain-<lenguaje>-<versión>-<uid>`) montado en `/cache` para módulos y paquetes. Contiene cachés de dependencias, nunca código del proyecto. Las bases locales que el adaptador necesita (Go, RustSec) y la configuración generada de Psalm se copian a un directorio temporal del usuario y se montan desde ahí: el directorio de datos de la CLI no siempre está compartido con el daemon. Ese staging se elimina al terminar el escaneo y nunca se escribe en el proyecto.
 
 **Persistencia global.** Directorio de caché estable en el equipo del usuario, fuera de los proyectos, indicado explícitamente al motor. No reinstalar el binario ni vaciar la caché en cada ejecución. La CLI puede mantener configuración propia sin reemplazar la configuración personal de Trivy.
 
@@ -233,14 +239,16 @@ Emitir errores estructurados por red, integridad, permisos, plataforma o base no
 
 ### 6.6 Privacidad y ejecución segura
 
-- **Separar preparación y escaneo.** La preparación puede descargar imagen, binario y bases desde fuentes oficiales sin adjuntar datos del proyecto. Durante el escaneo se bloquea el tráfico externo de los motores y se desactivan telemetría y comprobaciones de actualización. Reglas y otros motores siguen su política de preparación específica.
-- **Objetivo y alcance del aislamiento.** El aislamiento existe para que el código, los inventarios de dependencias y los resultados no salgan del equipo, y para que el escaneo no dependa de servicios de terceros mientras se ejecuta. No pretende contener código malicioso del proyecto: es una garantía de privacidad y autonomía (objetivo Confirmado; el mecanismo siguiente es Propuesto).
+- **Separar preparación y escaneo.** La preparación puede descargar imagen, binario y bases desde fuentes oficiales sin adjuntar datos del proyecto. Durante el escaneo se bloquea el tráfico externo de los motores y se desactivan telemetría y comprobaciones de actualización. Reglas y otros motores siguen su política de preparación específica. **Excepción declarada (RF-38):** los contenedores de toolchain por lenguaje necesitan red para resolver las dependencias del proyecto; por eso se declaran `configured` y el reporte lo registra en `coverage.limitations`. `--offline` los ejecuta con red deshabilitada y solo reutiliza imágenes ya construidas.
+- **Imágenes de toolchain.** La imagen base se resuelve por digest al construir y el digest efectivo queda en `tools.engines[].preparation[]`; no está fijada en `manifest/trust.json` porque depende de la versión del proyecto. Una base ausente o un build fallido no se silencia: la unidad cae al host o queda con `requirement_missing`.
+- **Objetivo y alcance del aislamiento.** El aislamiento existe para que el código, los inventarios de dependencias y los resultados no salgan del equipo, y para que el escaneo no dependa de servicios de terceros mientras se ejecuta. No pretende contener código malicioso del proyecto: es una garantía de privacidad y autonomía (objetivo Confirmado; el mecanismo siguiente es Propuesto). **Excepción declarada (RF-38):** un contenedor de toolchain que resuelve dependencias contacta el registro público del ecosistema y expone nombres y versiones de paquetes, nunca código ni secretos; el reporte lo declara; `--offline` o `CGC_SCAN_TOOLCHAIN=host` lo evitan.
 - **Niveles declarados.** El reporte registra `isolation.level` y cómo se verificó:
 
 | Nivel | Cómo se logra | Cuándo aplica | Garantía |
 | --- | --- | --- | --- |
-| `enforced` | El motor corre en un contenedor con red deshabilitada | Runner Docker | El sistema impide la salida de red del motor |
-| `configured` | Cada motor se ejecuta con opciones offline, sin telemetría ni comprobaciones de actualización, con bases y reglas locales. Se verifica en pruebas con el tráfico bloqueado o capturado, por cada versión fijada | Runner global y adaptadores nativos | Ningún motor soportado intenta conectarse. No es un sandbox: un defecto o un cambio de comportamiento del motor podría romper la garantía |
+| `enforced` | El motor corre en un contenedor con red deshabilitada | Runner Docker sin resolución de dependencias | El sistema impide la salida de red del motor |
+| `configured` | Cada motor se ejecuta con opciones offline, sin telemetría ni comprobaciones de actualización, con bases y reglas locales. Se verifica en pruebas con el tráfico bloqueado o capturado, por cada versión fijada | Runner global, adaptadores nativos y toolchains por lenguaje | Ningún motor soportado intenta conectarse por su cuenta. No es un sandbox: un defecto o un cambio de comportamiento del motor podría romper la garantía |
+| `configured` (toolchain) | Imagen oficial del lenguaje en la versión del proyecto, con la herramienta fijada en el manifiesto. El proyecto se monta en solo lectura y la red se habilita solo para resolver dependencias del proyecto | Adaptadores con Docker (RF-38) | Declarado `configured`, nunca `enforced`; el reporte registra la imagen, el digest de la base y la limitación |
 
 - **Política de aislamiento.** El mínimo por defecto es `configured`. `--require-isolation enforced` exige el nivel fuerte y falla antes de leer el proyecto (código 3) si no está disponible. Nunca se declara `enforced` sin haberlo logrado. Si un motor, en la versión instalada, no puede configurarse para operar sin red, se omite y la cobertura queda incompleta; no hay degradación silenciosa. Un runner global `enforced` donde el sistema lo permita es una mejora opcional, no un requisito de v1.
 - **Montajes.** Proyecto en solo lectura; temporales, cachés y salidas separados. No montar credenciales, directorios personales completos ni el socket de Docker. Resolver rutas y symlinks sin escapar del ámbito autorizado.
@@ -347,6 +355,7 @@ La columna "Verificado por" enlaza cada requisito con su criterio de aceptación
 | RF-35 | Reportes, salidas originales, cachés y temporales con permisos restringidos al usuario. | Propuesto | CA-55 |
 | RF-36 | Enriquecer hallazgos con CVSS, versión corregida, EPSS y marca KEV solo cuando la fuente local los provea; nunca inventarlos. Orden estable de hallazgos. | Propuesto | CA-56 |
 | RF-37 | Recetas de validación de tests y build: detectar candidatos por lenguaje, permitir confirmarlos en la configuración de usuario (`recipes --set` o `scan --confirm-recipes`) y publicarlos en el prompt como recetas de confianza; sin receta confirmada, declarar la validación bloqueada. | Propuesto | CA-57 |
+| RF-38 | Ejecutar los adaptadores con la versión de lenguaje que declara el proyecto dentro de un contenedor derivado de la imagen oficial, con el proyecto montado en solo lectura, la herramienta fijada en el manifiesto y la base resuelta por digest y declarada en el reporte; sin Docker o si la imagen falla, usar el toolchain del host y declarar la cobertura. | Propuesto | CA-70, CA-71, CA-72 |
 
 Los filtros de visualización no deben ocultar el estado real de cobertura. Un hallazgo solo pasa a *resuelto* si su ámbito se analizó satisfactoriamente con cobertura comparable; la ausencia en un escaneo parcial significa *no evaluado*.
 
@@ -605,6 +614,9 @@ En v1, la CLI termina su responsabilidad al entregar resultados normalizados, ev
 | **CA-56** *(nuevo, RF-36)* | Con datos de priorización disponibles localmente, los hallazgos los incluyen; sin ellos los campos son nulos u omitidos, nunca inventados. El orden de hallazgos es estable entre ejecuciones. |
 | **CA-57** *(nuevo, RF-37)* | Recetas de validación: los candidatos detectados se ofrecen identificados como tales y solo las recetas confirmadas por el usuario aparecen en la sección de confianza del prompt, con su directorio de trabajo y unidad afectada; el archivo del proyecto no puede establecer recetas de confianza; sin receta confirmada para una unidad, el prompt declara esa validación como bloqueada y no afirma que se ejecutó nada. |
 | **CA-58** *(nuevo, RF-06)* | Severidad normalizada: cada motor se mapea a la escala común, la severidad normalizada de un hallazgo es la mayor entre sus fuentes verificadas y las diferencias quedan visibles; `info` no bloquea por sí sola; `unknown` solo cuenta contra el umbral si la política lo indica. |
+| **CA-70** *(nuevo, RF-38)* | Con Docker disponible y un proyecto Go con `go.mod`, govulncheck se ejecuta dentro de una imagen derivada de la versión Go declarada, con el proyecto montado en solo lectura. El reporte muestra `mode: docker`, la etiqueta en `tools.engines[].image` y una preparación `toolchain:govulncheck` con la base y su digest resuelto. |
+| **CA-71** *(nuevo, RF-38)* | La versión se lee de cada ecosistema (`go.mod`, `.nvmrc`/`engines.node`, `composer.json`, `Cargo.toml`, `pyproject.toml`) y dos unidades con versiones distintas usan imágenes distintas. Sin Docker, el adaptador usa el toolchain del host y, si falta, queda `requirement_missing` con código 3. |
+| **CA-72** *(nuevo, RF-38)* | `--offline` y `--no-auto-install` no descargan ni construyen imágenes; si falta la imagen, el adaptador cae al host o se omite. Un adaptador en contenedor declara `isolation: configured` y el reporte incluye la limitación de red y de base no fijada en el manifiesto; nunca declara `enforced` ni un resultado limpio con la imagen ausente. |
 
 Los criterios relativos al agente validan el contenido del prompt y un flujo de integración controlado; no constituyen garantía de obediencia de cualquier agente externo.
 
@@ -613,7 +625,7 @@ Los criterios relativos al agente validan el contenido del prompt y un flujo de 
 | ID | Riesgo | Impacto | Mitigación sugerida |
 | --- | --- | --- | --- |
 | R1 | **El nivel `configured` del runner global es una garantía más débil que un sandbox**: depende de que cada motor respete sus opciones offline, y una versión nueva podría romperla. | Medio | Declarar el nivel en el reporte; pruebas de aislamiento por versión fijada (CA-03); actualizar motores solo por política explícita; `--require-isolation enforced` para quien necesite la garantía fuerte. |
-| R2 | **Adaptadores que necesitan toolchain, dependencias o bases propias** (govulncheck, Psalm, cargo-audit). Sin red y sin instalar toolchains, muchos proyectos quedarán con cobertura incompleta. | Alto | Tabla de prerrequisitos por adaptador (sección 5), mensajes accionables y `doctor` que lo anticipe. Medir qué porcentaje de proyectos reales se completa. |
+| R2 | **Adaptadores que necesitan toolchain, dependencias o bases propias** (govulncheck, Psalm, cargo-audit). Sin red y sin instalar toolchains, muchos proyectos quedarán con cobertura incompleta. | Medio | Toolchain por contenedor (RF-38): la CLI prepara la imagen del lenguaje en la versión del proyecto y ejecuta el adaptador dentro; sin Docker se mantiene la tabla de prerrequisitos, mensajes accionables y `doctor`. Medir qué porcentaje de proyectos reales se completa. |
 | R3 | **Licencias de motores y reglas.** Las reglas de Semgrep tienen condiciones propias, distintas de las del motor; redistribuirlas puede no estar permitido. | Medio | Semgrep es opcional (5.2) y la CLI no descarga ni distribuye reglas del registro; usar reglas propias o del usuario. Revisar igualmente la licencia de Trivy, los adaptadores y las reglas propias antes de empaquetar. |
 | R4 | **Distribución de bases** (límites de tasa de registros públicos, disponibilidad). | Medio | Permitir un espejo configurable para las bases; reintentos con retroceso; mensajes claros. |
 | R5 | **La protección de tests no es aplicable por la CLI**; depende de que el agente respete el prompt. | Medio | Ya reconocido en 10.1. Complementar con una verificación opcional posterior: el reescaneo y un diff que detecte cambios en rutas de tests (fuera del alcance de v1 si no se prioriza). |
@@ -654,6 +666,66 @@ Los defaults técnicos de este documento son propuestas revisables, no decisione
 6. Empaquetar, documentar y ejecutar la matriz completa de aceptación, incluida la ausencia de inferencia.
 
 Las etapas organizan el desarrollo; no reducen la cobertura de seis lenguajes comprometida para v1.
+
+## 16.1 Modelo agéntico y estado local (v1.1)
+
+Aditivo sobre el contrato 1.0.0. No cambia los códigos de salida ni el
+significado de `scan`.
+
+### 16.1.1 Comandos
+
+| Comando | Coste | Propósito |
+| --- | --- | --- |
+| `agent [ruta]` | alto, una vez | one-shot: escaneo, grupos, prioridad, recetas, delta y próximas acciones |
+| `scan [ruta]` | alto | reporte canónico completo (sin cambios incompatibles) |
+| `status [ruta]` | casi nulo | último resultado guardado, sin escanear |
+| `plan [ruta]` | nulo | plan de remediación desde `latest.json` |
+| `explain <huella\|grupo>` | nulo | descripción, referencias y evidencia completas |
+| `verify <huella\|grupo>` | bajo | reescaneo de la unidad y motores afectados + delta |
+| `baseline set\|show\|clear` | nulo | control explícito de la línea base |
+| `compare --baseline` | nulo | delta contra la línea base sin rutas ni escaneo |
+
+`scan` admite `--only deps,secrets,code,config`, `--engines`, `--changed`,
+`--no-cache` y `--format agent`.
+
+### 16.1.2 Estado local
+
+Se guarda en la caché, fuera del proyecto, con permisos 0600/0700 y escritura
+atómica: `latest.json`, `baseline.json`, `index.json`, `units/` y
+`cache/units/`. La primera ejecución de `agent` crea la línea base; también puede
+fijarse con `baseline set`.
+
+### 16.1.3 Contrato 1.1.0 (aditivo)
+
+- `remediation_groups` con `package.from/to`, `fixes`, `max_severity`,
+  `breaking_risk`, `direct`, `commands` (sugerencias `origin: cgc-scan`) y
+  `verification`;
+- `next_actions` ordenadas (`confirm_recipes`, `apply_group`, `revoke_secret`,
+  `fix_code`, `fix_config`, `install_toolchain`, `update_db`);
+- `priority.score/rank/factors` y `package.direct/relationship/via`;
+- `delta` (`new`, `persistent`, `resolved`, `not_evaluated`);
+- `cache` por motor y unidad (`hit|miss|mixed|disabled`).
+
+`--format agent` usa el contrato separado `agent-1.0.0` y omite descripciones,
+referencias y evidencia para ahorrar tokens; estas se piden con `explain`.
+
+### 16.1.4 Límites de confianza
+
+- La CLI no ejecuta recetas, tests, builds ni comandos de aplicación.
+- `commands.apply` y `commands.override` son sugerencias, no recetas de confianza.
+- Un hallazgo ausente en un escaneo parcial, `--only`, `--engines`, `--changed` o
+  con errores queda como `not_evaluated`, nunca `resolved`.
+- Los secretos exigen revocación y rotación del usuario; el reescaneo solo
+  confirma que el valor ya no aparece en los archivos.
+- `test/`, `fixtures/` y `examples/` bajan la prioridad, no ocultan el hallazgo.
+
+### 16.1.5 Caché y bases
+
+La clave de caché combina versión del motor, base, configuración efectiva y el
+hash de manifiestos/lockfiles o del árbol fuente. `--no-cache` fuerza la
+ejecución. `db.refresh_after` (12 h por defecto) reutiliza bases sin red dentro
+del plazo y `update-db` siempre actualiza. El espejo de Go descarga solo avisos
+con `modified` nuevo. Semgrep usa un contenedor por escaneo, no uno por unidad.
 
 ## 17. Fuentes técnicas
 

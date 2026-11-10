@@ -17,7 +17,10 @@ var (
 )
 
 // SchemaVersion es la versión del contrato del reporte.
-const SchemaVersion = "1.0.0"
+const SchemaVersion = "1.1.0"
+
+// AgentSchemaVersion es la versión del documento compacto para agentes.
+const AgentSchemaVersion = "agent-1.0.0"
 
 // Name es el nombre del binario y del producto.
 const Name = "cgc-scan"

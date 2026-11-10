@@ -380,3 +380,41 @@ Los riesgos de producto están en PRD §14 y los técnicos en design §16; aquí
 - Marca el estado en la columna *Estado* de cada tabla (`[ ]`, `[~]`, `[x]`).
 - Al terminar un hito, anota la fecha real y los días reales junto al subtotal; esa diferencia alimenta la re-estimación de la regla 4.
 - Las tareas nuevas que surjan reciben el siguiente número libre de su hito y se agregan con su dependencia y su referencia de origen.
+
+---
+
+## 8. Plan v1.1 — inteligencia y eficiencia
+
+Tareas del plan «CGC Scan más inteligente y eficiente», ejecutadas sobre la base
+v1.0. Los IDs `V1.1-*` no se reutilizan. Todas incluyen pruebas y documentación
+en el mismo cambio (regla de terminado §1).
+
+| ID | Fase | Tarea | Depende de | Días | Estado |
+| --- | --- | --- | --- | --- | --- |
+| V1.1-A1 | A | Estado local por proyecto (`latest`, `baseline`, `index`, `units`) con escritura privada y atómica | — | 1 | [x] |
+| V1.1-A2 | A | `status`, `explain`, `plan`, `baseline set/show/clear` y `compare --baseline` | A1 | 1.5 | [x] |
+| V1.1-A3 | A | Guardar estado al final de cada `scan` y exponer `delta` canónico | A1 | 0.5 | [x] |
+| V1.1-B1 | B | Semver por ecosistema (Go `/vN`, npm, Cargo, PEP 440, Composer) y `breaking_risk` | — | 1.5 | [x] |
+| V1.1-B2 | B | Grupos de remediación por componente/archivo/credencial y versión objetivo | B1 | 1.5 | [x] |
+| V1.1-B3 | B | Comandos de aplicación por ecosistema como sugerencias `origin: cgc-scan` | B2 | 0.5 | [x] |
+| V1.1-B4 | B | Prioridad determinista con factores visibles y contexto de ruta | B2 | 1 | [x] |
+| V1.1-C1 | C | `next_actions` deterministas y bloqueos | B2 | 1 | [x] |
+| V1.1-C2 | C | `cgc-scan agent` one-shot y `scan --format agent` | C1, A1 | 2 | [x] |
+| V1.1-C3 | C | Contrato `agent-1.0.0`, esquema y golden files | C2 | 1 | [x] |
+| V1.1-D1 | D | `verify <huella\|grupo>` con fusión del resultado focalizado | C2 | 2 | [x] |
+| V1.1-D2 | D | `--only`, `--engines` y declaración de motores omitidos | D1 | 1 | [x] |
+| V1.1-D3 | D | `--changed` con metadatos locales de Git y `not_evaluated` | D1 | 1 | [x] |
+| V1.1-E1 | E | Caché incremental por unidad y motor con invalidación por tipo | D1 | 2 | [x] |
+| V1.1-E2 | E | `db.refresh_after` (12 h) y reutilización sin red | E1 | 1 | [x] |
+| V1.1-F1 | F | Relación directa/transitiva con el grafo de Trivy y `via` | B2 | 1 | [x] |
+| V1.1-F2 | F | Overrides sugeridos para dependencias transitivas | F1 | 0.5 | [x] |
+| V1.1-G1 | G | Semgrep en un contenedor por escaneo | — | 0.5 | [x] |
+| V1.1-G2 | G | Espejo incremental de la base de Go (`modified`) | E2 | 1 | [x] |
+| V1.1-H1 | H | Skill 1.1, PRD, design, uso e integración de agentes | C3 | 1.5 | [x] |
+| V1.1-H2 | H | Benchmarks antes/después y golden del flujo real | H1 | 1 | [x] |
+
+**Pruebas de cierre:** tablas semver, caso real `golang.org/x/text` → un grupo
+`v0.41.0` con 5 huellas, invalidación de caché por contenido, comparación contra
+línea base, golden `agent-1.0.0` y flujo de integración real con Trivy
+(`TestAgentFlowIntegration`). El benchmark de repetición con caché quedó medido y
+registrado en `docs/benchmarks.md`; la matriz multi-máquina sigue en H7-01.

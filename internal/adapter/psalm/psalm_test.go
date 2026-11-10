@@ -75,7 +75,7 @@ func TestPsalmConfigEscapesPaths(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "docs"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cfg := string(psalmConfig(dir, []discovery.Exclusion{{Pattern: "docs/**"}}))
+	cfg := string(psalmConfig(dir, dir, []discovery.Exclusion{{Pattern: "docs/**"}}))
 	if strings.Contains(cfg, `name="`+dir+`"`) {
 		t.Fatal("no se escapó el XML")
 	}

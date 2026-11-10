@@ -41,6 +41,7 @@ type Cache struct {
 type DB struct {
 	WarnAfter         string `toml:"warn_after,omitempty"`
 	BlockAfterOffline string `toml:"block_after_offline,omitempty"`
+	RefreshAfter      string `toml:"refresh_after,omitempty"`
 }
 
 // Recipe es una receta de validación confirmada por el usuario.
@@ -63,6 +64,7 @@ func Default() Config {
 		DB: DB{
 			WarnAfter:         "72h",
 			BlockAfterOffline: "168h",
+			RefreshAfter:      "12h",
 		},
 	}
 }
@@ -105,11 +107,17 @@ func (c *Config) Validate() error {
 	if c.DB.BlockAfterOffline == "" {
 		c.DB.BlockAfterOffline = "168h"
 	}
+	if c.DB.RefreshAfter == "" {
+		c.DB.RefreshAfter = "12h"
+	}
 	if _, err := time.ParseDuration(c.DB.WarnAfter); err != nil {
 		return fmt.Errorf("db.warn_after inválido: %w", err)
 	}
 	if _, err := time.ParseDuration(c.DB.BlockAfterOffline); err != nil {
 		return fmt.Errorf("db.block_after_offline inválido: %w", err)
+	}
+	if _, err := time.ParseDuration(c.DB.RefreshAfter); err != nil {
+		return fmt.Errorf("db.refresh_after inválido: %w", err)
 	}
 	for i := range c.Recipes {
 		r := &c.Recipes[i]
@@ -158,6 +166,15 @@ func (c Config) WarnAfter() time.Duration {
 // BlockAfterOffline devuelve el umbral de bloqueo offline.
 func (c Config) BlockAfterOffline() time.Duration {
 	d, _ := time.ParseDuration(c.DB.BlockAfterOffline)
+	return d
+}
+
+// RefreshAfter devuelve cuánto tiempo se reutiliza una base sin consultar la red.
+func (c Config) RefreshAfter() time.Duration {
+	d, _ := time.ParseDuration(c.DB.RefreshAfter)
+	if d <= 0 {
+		return 12 * time.Hour
+	}
 	return d
 }
 

@@ -6,9 +6,12 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/CGCServicesSpA/cgc-scan/internal/adapter"
 	"github.com/CGCServicesSpA/cgc-scan/internal/discovery"
 	"github.com/CGCServicesSpA/cgc-scan/internal/masking"
 	"github.com/CGCServicesSpA/cgc-scan/internal/normalize"
+	"github.com/CGCServicesSpA/cgc-scan/internal/plan"
+	"github.com/CGCServicesSpA/cgc-scan/internal/runner"
 )
 
 func testAdapter(t *testing.T) *Adapter {
@@ -69,6 +72,60 @@ func TestParseEmptyAndTruncated(t *testing.T) {
 	}
 }
 
+func TestContainerInvocation(t *testing.T) {
+	a := testAdapter(t)
+	a.ContainerFor = func(discovery.Unit) *adapter.Container {
+		return &adapter.Container{
+			Image: "cgc-scan/toolchain:go-1.22-govulncheck-1.9.0",
+			Root:  adapter.ContainerRoot, CacheDir: "/cache",
+			Mounts: []runner.Mount{{Source: "/stage/vulndb", Target: ContainerDBDir, ReadOnly: true}},
+		}
+	}
+	u := discovery.Unit{
+		ID: "svc", Path: "svc", Kind: "module",
+		Languages: []discovery.Language{discovery.Go},
+		Manifests: []string{"svc/go.mod"},
+	}
+	if reqs := a.Requirements(context.Background(), u); len(reqs) != 0 {
+		t.Fatalf("requisitos inesperados: %+v", reqs)
+	}
+	invs, err := a.Invocations(u, plan.Plan{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(invs) != 1 {
+		t.Fatalf("invocaciones = %d", len(invs))
+	}
+	inv := invs[0]
+	if inv.Image == "" || inv.Local != nil {
+		t.Fatalf("la invocación debería ser de contenedor: %+v", inv)
+	}
+	if inv.ProjectRO != "/proyecto" || inv.Dir != filepath.Join("/proyecto", "svc") {
+		t.Fatalf("montaje = %q / %q", inv.ProjectRO, inv.Dir)
+	}
+	if !inv.AllowNetwork || !contains(inv.Args, "file://"+ContainerDBDir) {
+		t.Fatalf("args = %v", inv.Args)
+	}
+	if inv.Env["GOTOOLCHAIN"] != "local" || inv.Env["GOCACHE"] != "/cache/go-build" {
+		t.Fatalf("env = %v", inv.Env)
+	}
+
+	a.ContainerFor = nil
+	invs, err = a.Invocations(u, plan.Plan{})
+	if err != nil || len(invs) != 1 || invs[0].Local == nil {
+		t.Fatalf("sin contenedor debe usar la biblioteca: %+v %v", invs, err)
+	}
+}
+
+func contains(list []string, want string) bool {
+	for _, x := range list {
+		if x == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestAppliesOnlyGoUnits(t *testing.T) {
 	a := testAdapter(t)
 	if !a.Applies(discovery.Unit{Kind: "module", Languages: []discovery.Language{discovery.Go}}) {
@@ -110,4 +167,15 @@ func FuzzParse(f *testing.F) {
 			}
 		}
 	})
+}
+
+func TestGoEnvironmentDisablesToolchainDownloads(t *testing.T) {
+	a := &Adapter{GoEnv: map[string]string{"GOMODCACHE": "/cache"}}
+	env := a.env()
+	if env["GOPROXY"] != "off" || env["GOSUMDB"] != "sum.golang.org" {
+		t.Fatalf("entorno = %v", env)
+	}
+	if env["GOMODCACHE"] != "/cache" {
+		t.Fatalf("se perdió la caché: %v", env)
+	}
 }

@@ -1,0 +1,475 @@
+{
+  "schema_version": "audit-catalog-1.0.0",
+  "description": "Catálogo de dominios, fronteras y clases de ataque que el motor usa para construir el ledger de cobertura. Los textos son datos versionados; el motor no interpreta el código, solo reparte el trabajo y valida el contrato.",
+  "limits": {
+    "max_files_scanned": 2000,
+    "max_starting_paths": 8,
+    "max_units_per_assignment": 4
+  },
+  "ignore_dirs": [
+    ".git",
+    "node_modules",
+    "vendor",
+    ".venv",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    "coverage"
+  ],
+  "languages": {
+    "go": {
+      "extensions": [
+        ".go"
+      ]
+    },
+    "javascript": {
+      "extensions": [
+        ".js",
+        ".jsx",
+        ".mjs",
+        ".cjs"
+      ]
+    },
+    "typescript": {
+      "extensions": [
+        ".ts",
+        ".tsx",
+        ".mts",
+        ".cts"
+      ]
+    },
+    "php": {
+      "extensions": [
+        ".php"
+      ]
+    },
+    "rust": {
+      "extensions": [
+        ".rs"
+      ]
+    },
+    "python": {
+      "extensions": [
+        ".py"
+      ]
+    }
+  },
+  "signals": {
+    "manifest": {
+      "file_names": [
+        "go.mod",
+        "package.json",
+        "composer.json",
+        "Cargo.toml",
+        "pyproject.toml",
+        "requirements.txt",
+        "Pipfile",
+        "setup.py"
+      ]
+    },
+    "lockfile": {
+      "file_names": [
+        "go.sum",
+        "package-lock.json",
+        "yarn.lock",
+        "pnpm-lock.yaml",
+        "composer.lock",
+        "Cargo.lock",
+        "poetry.lock",
+        "Pipfile.lock",
+        "uv.lock"
+      ]
+    },
+    "ci": {
+      "path_patterns": [
+        ".github/workflows/*.yml",
+        ".github/workflows/*.yaml",
+        ".gitlab-ci.yml",
+        ".circleci/config.yml",
+        "Jenkinsfile",
+        "azure-pipelines.yml"
+      ]
+    },
+    "container": {
+      "file_patterns": [
+        "Dockerfile",
+        "Dockerfile.*",
+        "docker-compose.yml",
+        "docker-compose.yaml",
+        "compose.yml",
+        "compose.yaml"
+      ]
+    },
+    "config": {
+      "extensions": [
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".json",
+        ".ini",
+        ".conf",
+        ".env"
+      ]
+    }
+  },
+  "classes": [
+    {
+      "id": "dependency-known-vulnerable",
+      "domain": "dependencies",
+      "boundary": "supply-chain",
+      "title": "Dependencia con vulnerabilidad conocida",
+      "priority": 10,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "manifest"
+      ],
+      "invariant": "Ninguna dependencia declarada puede tener un advisory aplicable a la versión en uso.",
+      "checks": [
+        "Compara los manifiestos y lockfiles con la base local de avisos.",
+        "Verifica si la versión vulnerable es alcanzable desde el código de la aplicación.",
+        "Confirma la versión corregida más pequeña dentro del major actual."
+      ],
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#dependency"
+    },
+    {
+      "id": "dependency-unpinned",
+      "domain": "dependencies",
+      "boundary": "build-integrity",
+      "title": "Dependencia sin versión fijada ni integridad",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "manifest"
+      ],
+      "invariant": "Toda dependencia que se resuelve en build o release tiene versión e integridad fijadas.",
+      "checks": [
+        "Busca rangos abiertos o comodines en manifiestos de producción.",
+        "Verifica que el lockfile exista y cubra la dependencia.",
+        "Comprueba que la instalación no ejecute scripts del paquete."
+      ],
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#release"
+    },
+    {
+      "id": "secret-in-tree",
+      "domain": "secrets",
+      "boundary": "credential-exposure",
+      "title": "Credencial en el árbol de trabajo",
+      "priority": 5,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source",
+        "config"
+      ],
+      "invariant": "Ningún valor con capacidad de autenticación vive en archivos versionados del proyecto.",
+      "checks": [
+        "Recorre el árbol buscando credenciales, tokens y claves privadas.",
+        "Distingue un valor real de un marcador o fixture.",
+        "Comprueba si el archivo está versionado y si el valor sigue vigente."
+      ],
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#secret"
+    },
+    {
+      "id": "secret-default-in-config",
+      "domain": "secrets",
+      "boundary": "secret-lifecycle",
+      "title": "Secreto por defecto en configuración",
+      "priority": 30,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "config"
+      ],
+      "invariant": "La configuración no incorpora un secreto por defecto utilizable en despliegue.",
+      "checks": [
+        "Busca valores por defecto con forma de credencial.",
+        "Verifica si el despliegue sobrescribe el valor.",
+        "Determina si el valor permite rotación sin tocar el código."
+      ],
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#secret"
+    },
+    {
+      "id": "sql-injection",
+      "domain": "code",
+      "boundary": "input-to-sink",
+      "title": "Inyección de SQL desde entrada no confiable",
+      "priority": 12,
+      "languages": [
+        "go",
+        "php",
+        "python",
+        "javascript",
+        "typescript",
+        "rust"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Toda consulta construida con entrada no confiable usa parámetros vinculados o una lista cerrada.",
+      "checks": [
+        "Sigue la entrada desde el punto de entrada hasta la construcción de la consulta.",
+        "Verifica el escape y la vinculación de parámetros en el sink real.",
+        "Comprueba rutas hermanas, reintentos y consultas dinámicas."
+      ],
+      "source": "ATTACK-CLASSES.md#injection"
+    },
+    {
+      "id": "command-injection",
+      "domain": "code",
+      "boundary": "process-execution",
+      "title": "Inyección de comandos en ejecución de procesos",
+      "priority": 12,
+      "languages": [
+        "go",
+        "php",
+        "python",
+        "javascript",
+        "typescript",
+        "rust"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Ningún argumento controlado por un actor de menor confianza llega a un shell o a una línea de comandos.",
+      "checks": [
+        "Traza el valor hasta exec, system, subprocess o equivalente.",
+        "Verifica si el proceso se invoca con shell o con argumentos separados.",
+        "Comprueba validación, normalización y allowlist en el punto de decisión."
+      ],
+      "source": "ATTACK-CLASSES.md#injection"
+    },
+    {
+      "id": "path-traversal",
+      "domain": "code",
+      "boundary": "file-system",
+      "title": "Travesía de rutas desde entrada no confiable",
+      "priority": 20,
+      "languages": [
+        "go",
+        "php",
+        "python",
+        "javascript",
+        "typescript",
+        "rust"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Toda ruta influida por entrada no confiable queda confinada a la raíz autorizada.",
+      "checks": [
+        "Traza la ruta hasta abrir, leer o escribir.",
+        "Verifica canonicalización y comprobación de prefijo en el último punto de decisión.",
+        "Prueba rutas absolutas, `..` y enlaces simbólicos con datos ficticios."
+      ],
+      "source": "ATTACK-CLASSES.md#path"
+    },
+    {
+      "id": "template-injection",
+      "domain": "code",
+      "boundary": "input-to-sink",
+      "title": "Inyección de plantillas",
+      "priority": 25,
+      "languages": [
+        "go",
+        "php",
+        "python",
+        "javascript",
+        "typescript"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "La entrada no confiable nunca se compila como plantilla ni se evalúa como expresión.",
+      "checks": [
+        "Distingue datos de plantilla y fuente de plantilla.",
+        "Verifica el motor de plantillas y sus escapes automáticos.",
+        "Comprueba rutas de renderizado alternativas."
+      ],
+      "source": "CLIENT-SIDE.md#dom-injection"
+    },
+    {
+      "id": "unsafe-deserialization",
+      "domain": "code",
+      "boundary": "deserialization",
+      "title": "Deserialización de datos no confiables",
+      "priority": 28,
+      "languages": [
+        "go",
+        "php",
+        "python",
+        "rust",
+        "javascript",
+        "typescript"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Solo se deserializa en formatos y tipos que no permiten instanciar objetos arbitrarios.",
+      "checks": [
+        "Localiza los puntos de deserialización de entrada externa.",
+        "Verifica si el formato admite tipos dinámicos o constructores.",
+        "Comprueba límites de tamaño y profundidad."
+      ],
+      "source": "PROTOCOLS-RPC-AND-MESSAGING.md#serialization"
+    },
+    {
+      "id": "unsafe-file-write",
+      "domain": "code",
+      "boundary": "file-system",
+      "title": "Escritura de archivos con ruta o contenido no confiable",
+      "priority": 35,
+      "languages": [
+        "go",
+        "php",
+        "python",
+        "javascript",
+        "typescript",
+        "rust"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "El contenido escrito no puede alterar la integridad de código, configuración o secretos fuera del ámbito previsto.",
+      "checks": [
+        "Traza la ruta y el contenido hasta la escritura.",
+        "Verifica permisos y confinamiento del destino.",
+        "Comprueba si el destino se ejecuta o se carga después."
+      ],
+      "source": "ATTACK-CLASSES.md#file"
+    },
+    {
+      "id": "weak-crypto",
+      "domain": "code",
+      "boundary": "cryptography",
+      "title": "Criptografía débil o mal usada",
+      "priority": 45,
+      "languages": [
+        "go",
+        "php",
+        "python",
+        "javascript",
+        "typescript",
+        "rust"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Los primitivos y modos usados resisten el atacante declarado y no reutilizan nonces.",
+      "checks": [
+        "Localiza hash, cifrado, firma y generación aleatoria.",
+        "Verifica modos, tamaños de clave y fuentes de entropía.",
+        "Comprueba comparaciones de secretos en tiempo no constante."
+      ],
+      "source": "ATTACK-CLASSES.md#crypto"
+    },
+    {
+      "id": "php-object-injection",
+      "domain": "code",
+      "boundary": "deserialization",
+      "title": "Inyección de objetos en PHP",
+      "priority": 50,
+      "languages": [
+        "php"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "La entrada no confiable no llega a `unserialize` ni a funciones equivalentes.",
+      "checks": [
+        "Busca `unserialize`, `eval` y llamadas dinámicas sobre datos externos.",
+        "Verifica si las clases cargadas tienen métodos mágicos peligrosos.",
+        "Comprueba el confinamiento de la sesión y de la caché."
+      ],
+      "source": "CLIENT-SIDE.md#prototype-pollution"
+    },
+    {
+      "id": "file-permissions",
+      "domain": "configuration",
+      "boundary": "permissions",
+      "title": "Permisos de archivos o directorios excesivos",
+      "priority": 55,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "config",
+        "container"
+      ],
+      "invariant": "Ningún archivo con secretos o estado es legible o escribible por actores fuera del ámbito previsto.",
+      "checks": [
+        "Revisa la creación de archivos y directorios con secretos o estado.",
+        "Verifica la umask y los permisos efectivos en despliegue.",
+        "Comprueba si el reporte se escribe con permisos restrictivos."
+      ],
+      "source": "CLOUD-AND-DEPLOYMENT.md#iam"
+    },
+    {
+      "id": "network-exposure",
+      "domain": "configuration",
+      "boundary": "network-exposure",
+      "title": "Exposición de red no prevista",
+      "priority": 22,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "config",
+        "container"
+      ],
+      "invariant": "Solo los servicios previstos quedan alcanzables desde la red declarada.",
+      "checks": [
+        "Enumera puertos, bindings y rutas de entrada declaradas.",
+        "Verifica autenticación en la superficie expuesta.",
+        "Comprueba valores por defecto de desarrollo en producción."
+      ],
+      "source": "CLOUD-AND-DEPLOYMENT.md#ingress"
+    },
+    {
+      "id": "ci-untrusted-input",
+      "domain": "configuration",
+      "boundary": "ci-trust",
+      "title": "Entrada no confiable en la cadena de CI",
+      "priority": 15,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "ci"
+      ],
+      "invariant": "Un cambio de fork o un título de PR no ejecuta código con secretos ni permisos de escritura.",
+      "checks": [
+        "Revisa disparadores, permisos y uso de eventos no confiables.",
+        "Verifica la exposición de secretos y tokens en los pasos afectados.",
+        "Comprueba la publicación y la firma de artefactos."
+      ],
+      "source": "SUPPLY-CHAIN-AND-RELEASE.md#ci"
+    },
+    {
+      "id": "container-privileged",
+      "domain": "configuration",
+      "boundary": "container-runtime",
+      "title": "Contenedor con privilegios o montajes peligrosos",
+      "priority": 18,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "container"
+      ],
+      "invariant": "El contenedor no obtiene capacidades, montajes ni identidad fuera de lo declarado.",
+      "checks": [
+        "Revisa usuario, capacidades, modo privilegiado y montajes.",
+        "Verifica límites de recursos y política de reinicio.",
+        "Comprueba el socket de Docker y la red del host."
+      ],
+      "source": "CLOUD-AND-DEPLOYMENT.md#container"
+    }
+  ]
+}

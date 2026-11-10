@@ -58,6 +58,56 @@ func TestDockerUpdaterHasNetworkAndNoProject(t *testing.T) {
 	}
 }
 
+func TestDockerInvocationImageAndMounts(t *testing.T) {
+	d := &Docker{DockerBin: "docker", Network: true}
+	args, err := d.buildArgs(Invocation{
+		Engine:    "govulncheck",
+		Image:     "cgc-scan/toolchain:go-1.22-govulncheck-1.9.0",
+		ProjectRO: "/repo", Dir: "/repo/svc",
+		Mounts: []Mount{
+			{Source: "/stage/vulndb", Target: "/cgc-vulndb", ReadOnly: true},
+			{Source: "cgc-scan-toolchain-go-1.22-501", Target: "/cache"},
+		},
+		Env:          map[string]string{"GOTOOLCHAIN": "local", "GOCACHE": "/cache/go-build"},
+		AllowNetwork: true,
+		Args:         []string{"govulncheck", "-format=json", "./..."},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(args, " ")
+	for _, want := range []string{
+		"-v /repo:/src:ro", "-w /src/svc",
+		"-v /stage/vulndb:/cgc-vulndb:ro",
+		"-v cgc-scan-toolchain-go-1.22-501:/cache",
+		"--env GOCACHE=/cache/go-build", "--env GOTOOLCHAIN=local",
+		"cgc-scan/toolchain:go-1.22-govulncheck-1.9.0 govulncheck -format=json ./...",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("faltan %q en: %s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "--network none") {
+		t.Error("la invocación pidió red y se cerró")
+	}
+}
+
+func TestDockerRejectsEnvOutsideAllowList(t *testing.T) {
+	d := &Docker{Image: "img@sha256:abc", Volume: "vol"}
+	if _, err := d.buildArgs(Invocation{Env: map[string]string{"LD_PRELOAD": "/evil.so"}}); err == nil {
+		t.Fatal("se aceptó una variable de entorno no permitida")
+	}
+}
+
+func TestDockerIsolationReflectsNetwork(t *testing.T) {
+	if lvl, _ := (&Docker{}).Isolation(t.Context()); lvl != IsolationEnforced {
+		t.Fatalf("sin red = %q", lvl)
+	}
+	if lvl, _ := (&Docker{Network: true}).Isolation(t.Context()); lvl != IsolationConfigured {
+		t.Fatalf("con red = %q", lvl)
+	}
+}
+
 func TestDockerRejectsWorkdirOutsideProject(t *testing.T) {
 	d := &Docker{Image: "img@sha256:abc", Volume: "vol"}
 	if _, err := d.buildArgs(Invocation{ProjectRO: "/repo", Dir: "/otro"}); err == nil {

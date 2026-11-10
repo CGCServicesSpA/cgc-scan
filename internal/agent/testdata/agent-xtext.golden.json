@@ -1,0 +1,104 @@
+{
+  "blocked": [],
+  "delta": {
+    "baseline_run": "base",
+    "coverage_comparable": true,
+    "current_run": "cur",
+    "new": [
+      {
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "kind": "vulnerability",
+        "severity": "high",
+        "title": "x"
+      }
+    ],
+    "not_evaluated": [],
+    "persistent": [],
+    "resolved": []
+  },
+  "errors": [],
+  "next_actions": [
+    {
+      "action": "apply_group",
+      "command": "go get golang.org/x/text@v0.41.0 \u0026\u0026 go mod tidy",
+      "fixes": 1,
+      "group": "rg-go-golang.org/x/text",
+      "reason": "actualizar golang.org/x/text a v0.41.0"
+    }
+  ],
+  "remediation_groups": [
+    {
+      "breaking_risk": "minor",
+      "commands": {
+        "apply": "go get golang.org/x/text@v0.41.0 \u0026\u0026 go mod tidy",
+        "origin": "cgc-scan"
+      },
+      "direct": true,
+      "fixes": [
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "id": "rg-go-golang.org/x/text",
+      "kind": "dependency_upgrade",
+      "max_severity": "high",
+      "package": {
+        "ecosystem": "Go",
+        "from": "v0.3.0",
+        "name": "golang.org/x/text",
+        "to": "v0.41.0"
+      },
+      "priority_score": 87,
+      "unit": "project",
+      "verification": {
+        "missing": [],
+        "recipes": [
+          {
+            "command": "go test ./...",
+            "kind": "test",
+            "origin": "user",
+            "unit": "project",
+            "workdir": "."
+          }
+        ],
+        "status": "ready",
+        "verify": "cgc-scan verify rg-go-golang.org/x/text"
+      }
+    }
+  ],
+  "report_path": "/cache/latest.json",
+  "run": {
+    "baseline_created": true,
+    "cli_version": "0.1.0"
+  },
+  "schema_version": "agent-1.0.0",
+  "summary": {
+    "counts": {
+      "critical": 0,
+      "findings": 1,
+      "groups": 1,
+      "high": 1,
+      "info": 0,
+      "low": 0,
+      "medium": 0,
+      "new": 1,
+      "not_evaluated": 0,
+      "persistent": 0,
+      "resolved": 0,
+      "suppressed": 0,
+      "unknown": 0
+    },
+    "coverage": {
+      "errors": 0,
+      "partial": false,
+      "units": 1
+    },
+    "exit_code": 1,
+    "groups_shown": 1,
+    "groups_total": 1,
+    "status": "findings",
+    "truncated": false
+  },
+  "target": {
+    "local_id": "local:p",
+    "root": "/p"
+  }
+}

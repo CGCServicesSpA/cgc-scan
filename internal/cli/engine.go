@@ -108,19 +108,33 @@ func (a *App) setupEngine(ctx context.Context, opts scanOptions, cfg config.Conf
 			setup.DB = info
 			setup.Preparations = append(setup.Preparations, report.Preparation{Action: "db", Status: "ok", Detail: "offline: base del volumen validada"})
 		} else {
-			info, err := provision.UpdateDBDocker(ctx, setup.Docker, 20*time.Minute)
-			if err != nil {
-				return nil, err
+			refresh := cfg.RefreshAfter()
+			reused := false
+			if info, err := provision.DockerDBMetadata(ctx, setup.Docker); err == nil && dbFresh(info, refresh) {
+				info.Status = "reused"
+				info.Detail = "base vigente reutilizada sin actualizar"
+				setup.DB = info
+				reused = true
+				setup.Preparations = append(setup.Preparations, report.Preparation{
+					Action: "db", Status: "ok",
+					Detail: "base reutilizada: " + info.UpdatedAt.UTC().Format(time.RFC3339),
+				})
 			}
-			if err := provision.UpdateChecks(ctx, setup.Docker, "", "/cache", 10*time.Minute); err != nil {
-				// Un fallo de checks no invalida la base, pero la ejecución
-				// queda limitada y se registra.
-				setup.Preparations = append(setup.Preparations, report.Preparation{Action: "checks", Status: "failed", Detail: err.Error()})
-			} else {
-				setup.Preparations = append(setup.Preparations, report.Preparation{Action: "checks", Status: "ok", Detail: "bundle de checks actualizado"})
+			if !reused {
+				info, err := provision.UpdateDBDocker(ctx, setup.Docker, 20*time.Minute)
+				if err != nil {
+					return nil, err
+				}
+				if err := provision.UpdateChecks(ctx, setup.Docker, "", "/cache", 10*time.Minute); err != nil {
+					// Un fallo de checks no invalida la base, pero la ejecución
+					// queda limitada y se registra.
+					setup.Preparations = append(setup.Preparations, report.Preparation{Action: "checks", Status: "failed", Detail: err.Error()})
+				} else {
+					setup.Preparations = append(setup.Preparations, report.Preparation{Action: "checks", Status: "ok", Detail: "bundle de checks actualizado"})
+				}
+				setup.DB = info
+				setup.Preparations = append(setup.Preparations, report.Preparation{Action: "db", Status: "ok", Detail: "base actualizada"})
 			}
-			setup.DB = info
-			setup.Preparations = append(setup.Preparations, report.Preparation{Action: "db", Status: "ok", Detail: "base actualizada"})
 		}
 
 	case "global":
@@ -156,17 +170,31 @@ func (a *App) setupEngine(ctx context.Context, opts scanOptions, cfg config.Conf
 			setup.DB = info
 			setup.Preparations = append(setup.Preparations, report.Preparation{Action: "db", Status: "ok", Detail: "offline: base local validada"})
 		} else {
-			info, err := provision.UpdateDB(ctx, setup.Global, setup.Binary, setup.CacheDir, 20*time.Minute)
-			if err != nil {
-				return nil, err
+			refresh := cfg.RefreshAfter()
+			reused := false
+			if info, err := provision.ReadDBInfo(setup.CacheDir); err == nil && dbFresh(info, refresh) {
+				info.Status = "reused"
+				info.Detail = "base vigente reutilizada sin actualizar"
+				setup.DB = info
+				reused = true
+				setup.Preparations = append(setup.Preparations, report.Preparation{
+					Action: "db", Status: "ok",
+					Detail: "base reutilizada: " + info.UpdatedAt.UTC().Format(time.RFC3339),
+				})
 			}
-			if err := provision.UpdateChecks(ctx, setup.Global, setup.Binary, setup.CacheDir, 10*time.Minute); err != nil {
-				setup.Preparations = append(setup.Preparations, report.Preparation{Action: "checks", Status: "failed", Detail: err.Error()})
-			} else {
-				setup.Preparations = append(setup.Preparations, report.Preparation{Action: "checks", Status: "ok", Detail: "bundle de checks actualizado"})
+			if !reused {
+				info, err := provision.UpdateDB(ctx, setup.Global, setup.Binary, setup.CacheDir, 20*time.Minute)
+				if err != nil {
+					return nil, err
+				}
+				if err := provision.UpdateChecks(ctx, setup.Global, setup.Binary, setup.CacheDir, 10*time.Minute); err != nil {
+					setup.Preparations = append(setup.Preparations, report.Preparation{Action: "checks", Status: "failed", Detail: err.Error()})
+				} else {
+					setup.Preparations = append(setup.Preparations, report.Preparation{Action: "checks", Status: "ok", Detail: "bundle de checks actualizado"})
+				}
+				setup.DB = info
+				setup.Preparations = append(setup.Preparations, report.Preparation{Action: "db", Status: "ok", Detail: "base actualizada"})
 			}
-			setup.DB = info
-			setup.Preparations = append(setup.Preparations, report.Preparation{Action: "db", Status: "ok", Detail: "base actualizada"})
 		}
 
 	default:
@@ -184,4 +212,12 @@ func (a *App) setupEngine(ctx context.Context, opts scanOptions, cfg config.Conf
 	}
 	setup.Shared = shared
 	return setup, nil
+}
+
+// dbFresh indica si una base puede reutilizarse sin consultar la red.
+func dbFresh(info provision.DBInfo, refresh time.Duration) bool {
+	if refresh <= 0 || info.UpdatedAt.IsZero() {
+		return false
+	}
+	return time.Since(info.UpdatedAt) < refresh
 }

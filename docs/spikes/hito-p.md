@@ -2,6 +2,12 @@
 
 > **Fecha:** 27 de octubre de 2026 · **Plataforma de ejecución:** macOS 27 (Darwin/arm64), Docker 29.9.2, Go 1.26.4, PHP 8.5.7, Node 24.14.1, Python 3.14.3.
 > Cada resultado se obtuvo ejecutando las herramientas reales; los comandos y salidas relevantes quedan transcritos para que sean reproducibles.
+>
+> **Nota (30-10-2026):** los spikes que asumen toolchains instalados en el host
+> siguen siendo válidos para el modo host. La ejecución de adaptadores en
+> imágenes de lenguaje (RF-38, ADR-18) amplía la decisión O-2 sin invalidar los
+> resultados: govulncheck se sigue enlazando como biblioteca cuando no hay
+> Docker.
 
 ---
 

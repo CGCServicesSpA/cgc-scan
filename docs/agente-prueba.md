@@ -1,5 +1,9 @@
 # Prueba con un agente consumidor
 
+> **Nota v1.1:** el flujo recomendado ahora es `cgc-scan agent` → `explain` →
+> `verify` → `status`; el prompt sigue disponible y este registro se conserva
+> como evidencia del ciclo anterior.
+>
 > Ciclo controlado ejecutado el 27-10-2026 sobre una copia del fixture Go
 > vulnerable. El consumidor fue un agente de desarrollo que siguió únicamente el
 > prompt generado y el JSON canónico. No es una garantía de obediencia de

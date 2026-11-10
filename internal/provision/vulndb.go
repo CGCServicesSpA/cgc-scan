@@ -15,43 +15,58 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 )
 
-const goVulnBase = "https://vuln.go.dev"
+var goVulnBase = "https://vuln.go.dev"
 
 var goIDRe = regexp.MustCompile(`^GO-[0-9]{4}-[0-9]{4,}$`)
 
-// EnsureGoVulnDB prepara un espejo local de la base de Go. Si existe, la
-// reutiliza; si no, la descarga completa en un directorio temporal y publica
-// el espejo con un rename (H4-09).
+// goVulnIndexEntry es una entrada del índice de avisos de Go.
+type goVulnIndexEntry struct {
+	ID       string `json:"id"`
+	Modified string `json:"modified"`
+}
+
+// goVulnSyncState registra la versión de cada aviso descargado.
+type goVulnSyncState struct {
+	Schema  int               `json:"schema"`
+	Updated string            `json:"updated"`
+	IDs     map[string]string `json:"ids"`
+}
+
+// EnsureGoVulnDB prepara un espejo local de la base de Go. Reutiliza el
+// espejo existente sin consultar la red; para actualizarlo usa
+// EnsureGoVulnDBWithRefresh o update-db.
 func EnsureGoVulnDB(ctx context.Context, client *http.Client, dir string, offline bool) (DBInfo, error) {
+	return EnsureGoVulnDBWithRefresh(ctx, client, dir, offline, 0)
+}
+
+// EnsureGoVulnDBWithRefresh reutiliza el espejo si es más reciente que
+// refresh y, si no, descarga solo los avisos nuevos o modificados.
+func EnsureGoVulnDBWithRefresh(ctx context.Context, client *http.Client, dir string, offline bool, refresh time.Duration) (DBInfo, error) {
 	if client == nil {
 		client = &http.Client{Timeout: 60 * time.Second}
 	}
 	if info, ok := goVulnState(dir); ok {
-		return info, nil
+		if offline || (refresh > 0 && time.Since(info.UpdatedAt) < refresh) {
+			return info, nil
+		}
+		return syncGoVulnDB(ctx, client, dir, false)
 	}
 	if offline {
 		return DBInfo{}, ErrDBAbsent
 	}
-	parent := filepath.Dir(dir)
-	if err := os.MkdirAll(parent, 0o700); err != nil {
-		return DBInfo{}, err
-	}
-	tmp, err := os.MkdirTemp(parent, ".go-vulndb-*")
-	if err != nil {
-		return DBInfo{}, err
-	}
-	defer func() { _ = os.RemoveAll(tmp) }()
+	return syncGoVulnDB(ctx, client, dir, true)
+}
 
-	if err := os.MkdirAll(filepath.Join(tmp, "index"), 0o700); err != nil {
+// syncGoVulnDB descarga el índice y solo los avisos que cambiaron. Con force
+// descarga todos, como en la primera ejecución.
+func syncGoVulnDB(ctx context.Context, client *http.Client, dir string, force bool) (DBInfo, error) {
+	if err := os.MkdirAll(filepath.Join(dir, "index"), 0o700); err != nil {
 		return DBInfo{}, err
 	}
-	var vulns []struct {
-		ID string `json:"id"`
-	}
+	var vulns []goVulnIndexEntry
 	for _, name := range []string{"modules.json", "vulns.json"} {
 		body, err := fetchBytes(ctx, client, goVulnBase+"/index/"+name, 64<<20)
 		if err != nil {
@@ -62,75 +77,98 @@ func EnsureGoVulnDB(ctx context.Context, client *http.Client, dir string, offlin
 				return DBInfo{}, fmt.Errorf("índice de vulnerabilidades de Go inválido: %w", err)
 			}
 		}
-		if err := os.WriteFile(filepath.Join(tmp, "index", name), body, 0o600); err != nil {
+		if err := writeAtomic(filepath.Join(dir, "index", name), body); err != nil {
 			return DBInfo{}, err
 		}
 	}
-	if err := os.MkdirAll(filepath.Join(tmp, "ID"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(dir, "ID"), 0o700); err != nil {
 		return DBInfo{}, err
 	}
-
-	ids := make(chan string)
-	errs := make(chan error, 1)
-	var wg sync.WaitGroup
-	workers := 8
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for id := range ids {
-				if !goIDRe.MatchString(id) {
-					continue
-				}
-				body, err := fetchBytes(ctx, client, goVulnBase+"/ID/"+id+".json", 8<<20)
-				if err != nil {
-					select {
-					case errs <- err:
-					default:
-					}
-					continue
-				}
-				if err := os.WriteFile(filepath.Join(tmp, "ID", id+".json"), body, 0o600); err != nil {
-					select {
-					case errs <- err:
-					default:
-					}
-				}
-			}
-		}()
+	state := goVulnSyncState{Schema: 1, IDs: map[string]string{}}
+	if !force {
+		state = loadGoVulnState(dir)
 	}
+	wanted := map[string]bool{}
+	downloaded := 0
 	for _, v := range vulns {
-		select {
-		case <-ctx.Done():
-			close(ids)
-			wg.Wait()
-			return DBInfo{}, ctx.Err()
-		case ids <- v.ID:
+		if !goIDRe.MatchString(v.ID) {
+			continue
 		}
-	}
-	close(ids)
-	wg.Wait()
-	select {
-	case err := <-errs:
-		return DBInfo{}, fmt.Errorf("descargar base de Go: %w", err)
-	default:
-	}
-
-	// Publicación atómica: se aparta la base anterior y se publica la nueva.
-	old := dir + ".old"
-	_ = os.RemoveAll(old)
-	if _, err := os.Stat(dir); err == nil {
-		if err := os.Rename(dir, old); err != nil {
+		wanted[v.ID] = true
+		path := filepath.Join(dir, "ID", v.ID+".json")
+		if !force && state.IDs[v.ID] == v.Modified {
+			if _, err := os.Stat(path); err == nil {
+				continue
+			}
+		}
+		body, err := fetchBytes(ctx, client, goVulnBase+"/ID/"+v.ID+".json", 8<<20)
+		if err != nil {
+			return DBInfo{}, fmt.Errorf("descargar aviso %s: %w", v.ID, err)
+		}
+		if err := writeAtomic(path, body); err != nil {
 			return DBInfo{}, err
 		}
+		state.IDs[v.ID] = v.Modified
+		downloaded++
 	}
-	if err := os.Rename(tmp, dir); err != nil {
-		_ = os.Rename(old, dir)
+	// Retirar avisos que ya no están en el índice.
+	entries, _ := os.ReadDir(filepath.Join(dir, "ID"))
+	for _, e := range entries {
+		id := strings.TrimSuffix(e.Name(), ".json")
+		if !wanted[id] {
+			_ = os.Remove(filepath.Join(dir, "ID", e.Name()))
+			delete(state.IDs, id)
+		}
+	}
+	state.Schema = 1
+	state.Updated = time.Now().UTC().Format(time.RFC3339)
+	if err := writeGoVulnState(dir, state); err != nil {
 		return DBInfo{}, err
 	}
-	_ = os.RemoveAll(old)
 	return DBInfo{Source: "go-vulndb", Status: "updated", UpdatedAt: time.Now().UTC(),
-		Detail: fmt.Sprintf("%d avisos", len(vulns))}, nil
+		Detail: fmt.Sprintf("%d avisos (%d descargados)", len(wanted), downloaded)}, nil
+}
+
+func loadGoVulnState(dir string) goVulnSyncState {
+	st := goVulnSyncState{Schema: 1, IDs: map[string]string{}}
+	data, err := os.ReadFile(filepath.Join(dir, "index", "state.json"))
+	if err != nil {
+		return st
+	}
+	if json.Unmarshal(data, &st) != nil || st.IDs == nil {
+		return goVulnSyncState{Schema: 1, IDs: map[string]string{}}
+	}
+	return st
+}
+
+func writeGoVulnState(dir string, st goVulnSyncState) error {
+	data, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeAtomic(filepath.Join(dir, "index", "state.json"), append(data, '\n'))
+}
+
+func writeAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	if err := os.Chmod(name, 0o600); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Rename(name, path)
 }
 
 func goVulnState(dir string) (DBInfo, bool) {

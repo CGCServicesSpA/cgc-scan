@@ -16,6 +16,9 @@ func TestLoadMissingReturnsDefaults(t *testing.T) {
 	if cfg.WarnAfter() != 72*time.Hour || cfg.BlockAfterOffline() != 168*time.Hour {
 		t.Fatalf("defaults = %+v", cfg)
 	}
+	if cfg.RefreshAfter() != 12*time.Hour {
+		t.Fatalf("refresh_after por defecto = %s", cfg.RefreshAfter())
+	}
 	if cfg.SemgrepEnabled {
 		t.Fatal("Semgrep debe estar desactivado por defecto")
 	}
@@ -72,6 +75,7 @@ func TestValidateRejectsBadValues(t *testing.T) {
 		{Cache: Cache{Dir: "relativa"}},
 		{DB: DB{WarnAfter: "mucho", BlockAfterOffline: "168h"}},
 		{DB: DB{WarnAfter: "72h", BlockAfterOffline: "siempre"}},
+		{DB: DB{WarnAfter: "72h", BlockAfterOffline: "168h", RefreshAfter: "nunca"}},
 		{Recipes: []Recipe{{Project: "relativo", Unit: "x"}}},
 		{Recipes: []Recipe{{Project: "/tmp/x", Unit: ""}}},
 		{Recipes: []Recipe{{Project: "/tmp/x", Unit: "u", Test: &Command{Command: " "}}}},

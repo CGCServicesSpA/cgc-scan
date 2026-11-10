@@ -22,12 +22,17 @@ import (
 // ID identifica el motor.
 const ID = "cargo-audit"
 
+// ContainerDB es la ruta donde el runner monta la base RustSec dentro de la
+// imagen de toolchain.
+const ContainerDB = "/cargo-audit-db"
+
 // Adapter ejecuta cargo-audit.
 type Adapter struct {
-	Install provision.AdapterInstall
-	Root    string
-	DBDir   string
-	Masker  *masking.Masker
+	Install      provision.AdapterInstall
+	Root         string
+	DBDir        string
+	Masker       *masking.Masker
+	ContainerFor func(discovery.Unit) *adapter.Container
 }
 
 // New construye el adaptador.
@@ -51,9 +56,9 @@ func (a *Adapter) Applies(u discovery.Unit) bool {
 }
 
 // Requirements comprueba el binario y la base RustSec local.
-func (a *Adapter) Requirements(context.Context, discovery.Unit) []adapter.Requirement {
+func (a *Adapter) Requirements(_ context.Context, u discovery.Unit) []adapter.Requirement {
 	var reqs []adapter.Requirement
-	if a.Install.Dir == "" {
+	if c := a.container(u); c == nil && a.Install.Dir == "" {
 		reqs = append(reqs, adapter.Requirement{Kind: "binary", Name: "cargo-audit", Detail: "no aprovisionado", Missing: true})
 	}
 	if a.DBDir == "" {
@@ -62,15 +67,40 @@ func (a *Adapter) Requirements(context.Context, discovery.Unit) []adapter.Requir
 	return reqs
 }
 
+// container resuelve la imagen de toolchain de la unidad, si existe.
+func (a *Adapter) container(u discovery.Unit) *adapter.Container {
+	if a.ContainerFor == nil {
+		return nil
+	}
+	return a.ContainerFor(u)
+}
+
 // Invocations ejecuta cargo-audit contra Cargo.lock.
 func (a *Adapter) Invocations(u discovery.Unit, _ plan.Plan) ([]runner.Invocation, error) {
+	unitDir := filepath.Join(a.Root, u.Path)
+	if c := a.container(u); c != nil {
+		return []runner.Invocation{{
+			Engine:       ID,
+			Image:        c.Image,
+			ProjectRO:    a.Root,
+			Dir:          unitDir,
+			Mounts:       c.Mounts,
+			AllowNetwork: !c.Offline,
+			Args:         []string{"cargo-audit", "audit", "--db", ContainerDB, "--no-fetch", "--stale", "--json", "-f", "Cargo.lock"},
+			Env: map[string]string{
+				"NO_COLOR":   "1",
+				"CARGO_HOME": filepath.ToSlash(c.CacheDir) + "/cargo",
+			},
+			Timeout: 10 * time.Minute,
+		}}, nil
+	}
 	bin := filepath.Join(a.Install.Dir, "cargo-audit")
 	args := []string{"audit", "--db", a.DBDir, "--no-fetch", "--stale", "--json", "-f", "Cargo.lock"}
 	return []runner.Invocation{{
 		Engine:  ID,
 		Binary:  bin,
 		Args:    args,
-		Dir:     filepath.Join(a.Root, u.Path),
+		Dir:     unitDir,
 		Timeout: 10 * time.Minute,
 		Env:     map[string]string{"NO_COLOR": "1"},
 	}}, nil

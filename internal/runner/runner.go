@@ -36,14 +36,23 @@ type Invocation struct {
 	// ProjectRO es la raíz del proyecto que el runner Docker monta en /src en
 	// solo lectura. El runner global no la usa.
 	ProjectRO string
+	// Image sustituye la imagen del runner solo para esta invocación. Se usa
+	// para las imágenes de toolchain por lenguaje, que no están fijadas por
+	// digest en el manifiesto (el digest de la base se resuelve al construir).
+	Image string
+	// Mounts son montajes adicionales de esta invocación, además de los del
+	// runner. Permiten montar bases locales y volúmenes de caché por lenguaje.
+	Mounts []Mount
 	// Entrypoint sustituye el entrypoint de la imagen (solo runner Docker).
 	Entrypoint string
 	// Local ejecuta el motor en el proceso actual (bibliotecas, p. ej.
 	// govulncheck). Recibe el entorno ya saneado por el runner.
 	Local func(ctx context.Context, env []string) (Result, error)
 	Env   map[string]string // se suma a la lista permitida base
-	// AllowNetwork solo se usa en la fase de preparación (descarga de bases).
-	// Durante el escaneo debe ser falso: el proxy apunta a un destino cerrado.
+	// AllowNetwork habilita la red de la invocación. La preparación (descarga
+	// de bases) lo usa, y también las imágenes de toolchain por lenguaje, que
+	// resuelven dependencias del proyecto; en ese caso el motor declara
+	// aislamiento configured, nunca enforced.
 	AllowNetwork bool
 	Timeout      time.Duration
 	MaxOutput    int64 // tope de bytes de stdout

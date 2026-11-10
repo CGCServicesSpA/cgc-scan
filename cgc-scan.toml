@@ -1,0 +1,8 @@
+# Política del proyecto para los escaneos de CGC Scan sobre su propio código.
+#
+# `testdata/fixtures` contiene proyectos deliberadamente vulnerables que son
+# entradas de las pruebas de integración (ver testdata/fixtures/README.md).
+# No forman parte del binario ni se despliegan; escanearlos como producción
+# produciría hallazgos esperados y ruido. La exclusión es visible en
+# coverage.partial y coverage.not_analyzed, nunca silenciosa.
+exclude = ["testdata/**"]

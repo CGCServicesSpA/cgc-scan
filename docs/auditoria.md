@@ -1,0 +1,147 @@
+# Auditoría asistida
+
+`cgc-scan audit` implementa el **protocolo determinista** de una auditoría
+asistida por un agente externo: cobertura declarada, asignaciones, verificación
+independiente y reportes con tres veredictos.
+
+No es un motor de IA. La CLI **no llama a un modelo, no ejecuta código del
+proyecto y no contacta servicios externos**. El agente que invoca la CLI aporta
+la evidencia; el motor valida estructura y consistencia, reparte trabajo,
+contabiliza el presupuesto y deja constancia de lo que no se cubrió.
+
+## Por qué existe
+
+Un escaneo (`scan`/`agent`) responde «qué dicen los motores». Una auditoría
+responde «qué falla de frontera se demostró y qué quedó sin probar». Son
+preguntas distintas y no deben mezclarse: un candidato sin veredicto final no
+hereda la severidad de una regla de Trivy.
+
+## Flujo
+
+```bash
+cgc-scan audit init . --profile standard --budget 12
+cgc-scan audit next . --agent hunter-a            # asignación de caza
+# el agente caza y guarda su entrega en entrega.json
+cgc-scan audit submit . --file entrega.json
+cgc-scan audit next . --agent verifier-a          # verificación independiente
+cgc-scan audit submit . --file verificacion.json
+cgc-scan audit report .                           # findings.json + reportes
+cgc-scan audit status .                           # resumen sin escribir
+```
+
+`--out DIR` fija el directorio de la corrida. Por defecto vive en el estado del
+proyecto (`<cache>/cgc-scan/projects/<id>/audit`), nunca dentro del proyecto.
+
+## Contratos
+
+| Documento | Versión | Qué es |
+| --- | --- | --- |
+| `ledger.json` | `audit-ledger-1.0.0` | Cobertura: unidades, estados, dueños, intentos y presupuesto |
+| `findings.json` | `findings-1.0.0` | Registros con veredicto final, sin mezclar veredictos |
+| `candidates.json` | interno | Estado de verificación (pendiente, escalación, decidido) |
+| `audit next` | `audit-task-1.0.0` | Asignación que el agente debe cumplir |
+| entrega | `audit-submission-1.0.0` | Resultado del agente para `audit submit` |
+
+Los esquemas públicos viven en [`schemas/`](../schemas/):
+`audit-ledger.schema.json` y `findings.schema.json`.
+
+## Veredictos
+
+| Veredicto | Qué significa | Severidad |
+| --- | --- | --- |
+| `confirmed` | Traza completa y resultado local acotado | Sí, acotada al impacto demostrado |
+| `needs_validation` | Hipótesis de frontera con un hecho decisivo fuera de la fuente | **No** |
+| `rejected` | El candidato fue refutado; queda para no repetirlo | No |
+
+Reglas que el validador impone:
+
+- un `needs_validation` no puede llevar `severity`, `execution` ni `remediation`;
+- un `confirmed` exige `execution.observed_result` no vacío y
+  `overall_severity ≤ impact`;
+- una traza empieza en `entrypoint` y termina en `sink`; los pasos intermedios
+  son `propagation`;
+- todas las rutas son relativas al repositorio, sin `..` ni absolutas;
+- un fingerprint no se repite y no cambia entre veredictos.
+
+`findings.json` declara su procedencia:
+
+```json
+"provenance": {
+  "attested_by": "caller",
+  "engine_verified": false,
+  "engine_role": "structure-and-consistency"
+}
+```
+
+El motor **no** afirma que un hallazgo sea cierto: afirma que el registro cumple
+el contrato. El reporte lo repite.
+
+## Independencia y presupuesto
+
+- Un agente no puede verificar un candidato que cazó.
+- Un agente no puede repetir una verificación ya emitida.
+- Una **promoción** de veredicto (`needs_validation` → `confirmed`) exige un
+  segundo verificador distinto; mientras tanto el candidato queda en
+  `escalation` y no entra a `findings.json`.
+- `--budget N` cuenta invocaciones de agente. Si se agota con unidades
+  pendientes, la corrida queda `incomplete` con razón `budget_exhausted` y esas
+  unidades pasan a `deferred`. Nunca se excede el presupuesto en silencio.
+
+## Cobertura honesta
+
+El ledger nunca declara completa una corrida con unidades `planned` o
+`in_progress`, ni con candidatos sin veredicto final. En esos casos
+`audit report`:
+
+1. escribe solo los registros decididos en `findings.json`;
+2. marca `run_status: incomplete` con su razón;
+3. devuelve código de salida 3;
+4. encabeza `REPORT.md` con la advertencia de corrida parcial.
+
+`deferred`, `blocked` y `out_of_scope` se listan siempre; no cuentan como
+cubiertos.
+
+## Corridas anteriores
+
+`audit init --prior DIR` expone como contexto lo que dejó otra corrida:
+
+- unidades cubiertas con la misma revisión y ambos árboles limpios;
+- fingerprints rechazados y pendientes de validación.
+
+Es **contexto, no supresión**: todas las unidades de la corrida nueva siguen
+planificadas. Una referencia de fuente por sí sola no prueba que el código no
+cambió.
+
+## Códigos de salida
+
+| Código | Significado |
+| --- | --- |
+| 0 | Corrida completa (con o sin hallazgos) |
+| 2 | Argumentos o entrega inválidos |
+| 3 | Corrida incompleta, presupuesto agotado o agente no elegible |
+| 130 | Cancelada |
+
+`audit report` devuelve 0 solo si `run_status: complete`.
+
+## Límites declarados
+
+- En esta versión el perfil es **declarativo**: queda registrado en el ledger y
+  en el informe, pero no altera el reparto ni el listón de evidencia.
+- Una corrida por defecto usa semántica `quick`: la verificación de candidato y
+  la revisión final del registro ocurren en el mismo verificador. La promoción
+  de veredicto sigue exigiendo un segundo verificador.
+- El reconocimiento de señales tiene un tope de archivos por unidad; si se
+  alcanza, el ledger lo declara en `limitations` y `REPORT.md` lo lista. Nunca
+  se omite en silencio.
+- El catálogo de clases (`internal/audit/catalog.json`) es un conjunto acotado y
+  versionado. Una superficie que no esté en el catálogo se puede declarar en
+  `uncovered` y se convierte en unidad planificada.
+- El motor no ejecuta el objetivo. Un hallazgo que exige ejecución queda en
+  `needs_validation` con su plan local acotado.
+- Una asignación abandonada no se reasigna automáticamente (no hay olas de
+  crítica en esta versión). Para recuperar el contexto, inicia una corrida nueva
+  con `--prior <dir-de-la-anterior>`; la anterior queda como evidencia de lo
+  intentado.
+- El catálogo de clases y parte de la estructura del protocolo derivan de
+  [`cloudflare/security-audit-skill`](https://github.com/cloudflare/security-audit-skill)
+  (MIT); ver [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).

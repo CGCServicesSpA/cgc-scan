@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ type Adapter struct {
 	Root    string
 	RunDir  string
 	Masker  *masking.Masker
+	// ContainerFor resuelve la imagen de toolchain de una unidad. Si es nil o
+	// devuelve nil, el adaptador usa PHP del host.
+	ContainerFor func(discovery.Unit) *adapter.Container
 }
 
 // New construye el adaptador.
@@ -55,11 +59,13 @@ func (a *Adapter) Applies(u discovery.Unit) bool {
 // Requirements comprueba PHP, el phar y las dependencias de Composer.
 func (a *Adapter) Requirements(_ context.Context, u discovery.Unit) []adapter.Requirement {
 	var reqs []adapter.Requirement
-	if _, err := exec.LookPath("php"); err != nil {
-		reqs = append(reqs, adapter.Requirement{Kind: "toolchain", Name: "php", Detail: "no está en PATH", Missing: true})
-	}
-	if a.Install.Dir == "" {
-		reqs = append(reqs, adapter.Requirement{Kind: "binary", Name: "psalm", Detail: "no aprovisionado", Missing: true})
+	if a.container(u) == nil {
+		if _, err := exec.LookPath("php"); err != nil {
+			reqs = append(reqs, adapter.Requirement{Kind: "toolchain", Name: "php", Detail: "no está en PATH", Missing: true})
+		}
+		if a.Install.Dir == "" {
+			reqs = append(reqs, adapter.Requirement{Kind: "binary", Name: "psalm", Detail: "no aprovisionado", Missing: true})
+		}
 	}
 	unitDir := filepath.Join(a.Root, u.Path)
 	if _, err := os.Stat(filepath.Join(unitDir, "composer.json")); err == nil {
@@ -73,18 +79,50 @@ func (a *Adapter) Requirements(_ context.Context, u discovery.Unit) []adapter.Re
 	return reqs
 }
 
+// container resuelve la imagen de toolchain de la unidad, si existe.
+func (a *Adapter) container(u discovery.Unit) *adapter.Container {
+	if a.ContainerFor == nil {
+		return nil
+	}
+	return a.ContainerFor(u)
+}
+
 // Invocations genera la configuración y ejecuta Psalm con taint analysis.
 func (a *Adapter) Invocations(u discovery.Unit, p plan.Plan) ([]runner.Invocation, error) {
-	php, err := exec.LookPath("php")
-	if err != nil {
-		return nil, fmt.Errorf("psalm: php no está en PATH")
-	}
 	if err := os.MkdirAll(a.RunDir, 0o700); err != nil {
 		return nil, err
 	}
 	unitDir := filepath.Join(a.Root, u.Path)
 	cfg := filepath.Join(a.RunDir, "psalm-"+safeName(u.ID)+".xml")
-	if err := os.WriteFile(cfg, psalmConfig(unitDir, p.Exclusions), 0o600); err != nil {
+	if c := a.container(u); c != nil {
+		projectDir := c.UnitDir(u.Path)
+		if err := os.WriteFile(cfg, psalmConfig(projectDir, unitDir, p.Exclusions), 0o600); err != nil {
+			return nil, err
+		}
+		return []runner.Invocation{{
+			Engine:       ID,
+			Image:        c.Image,
+			ProjectRO:    a.Root,
+			Dir:          unitDir,
+			Mounts:       append(append([]runner.Mount{}, c.Mounts...), runner.Mount{Source: cfg, Target: "/opt/cgc/psalm.xml", ReadOnly: true}),
+			AllowNetwork: !c.Offline,
+			Args: []string{
+				"php", "/opt/cgc/psalm.phar",
+				"--config=/opt/cgc/psalm.xml", "--no-cache", "--taint-analysis",
+				"--output-format=json", "--no-progress",
+			},
+			Env: map[string]string{
+				"NO_COLOR":      "1",
+				"COMPOSER_HOME": filepath.ToSlash(c.CacheDir) + "/composer",
+			},
+			Timeout: 15 * time.Minute,
+		}}, nil
+	}
+	php, err := exec.LookPath("php")
+	if err != nil {
+		return nil, fmt.Errorf("psalm: php no está en PATH")
+	}
+	if err := os.WriteFile(cfg, psalmConfig(unitDir, unitDir, p.Exclusions), 0o600); err != nil {
 		return nil, err
 	}
 	args := []string{
@@ -103,14 +141,16 @@ func (a *Adapter) Invocations(u discovery.Unit, p plan.Plan) ([]runner.Invocatio
 }
 
 // psalmConfig genera un XML con el directorio de la unidad y las exclusiones
-// expresables. Un patrón que Psalm no puede expresar no se silencia: la CLI lo
-// declara en la cobertura y el adaptador no promete cobertura completa.
-func psalmConfig(unitDir string, exclusions []discovery.Exclusion) []byte {
+// expresables. projectDir es la ruta que se escribe en el XML (la del host o
+// la del contenedor) y hostDir es la ruta real para comprobar directorios. Un
+// patrón que Psalm no puede expresar no se silencia: la CLI lo declara en la
+// cobertura y el adaptador no promete cobertura completa.
+func psalmConfig(projectDir, hostDir string, exclusions []discovery.Exclusion) []byte {
 	var b strings.Builder
 	b.WriteString(`<?xml version="1.0"?>` + "\n")
 	b.WriteString(`<psalm errorLevel="1" resolveFromConfigFile="true" findUnusedBaselineEntry="false" findUnusedCode="false">` + "\n")
 	b.WriteString("  <projectFiles>\n")
-	b.WriteString(`    <directory name="` + xmlEscape(unitDir) + `"/>` + "\n")
+	b.WriteString(`    <directory name="` + xmlEscape(projectDir) + `"/>` + "\n")
 	var ignored []string
 	for _, e := range exclusions {
 		pat := strings.TrimPrefix(e.Pattern, "**/")
@@ -118,9 +158,8 @@ func psalmConfig(unitDir string, exclusions []discovery.Exclusion) []byte {
 		if pat == "" || strings.Contains(pat, "*") {
 			continue
 		}
-		p := filepath.Join(unitDir, filepath.FromSlash(pat))
-		if info, err := os.Stat(p); err == nil && info.IsDir() {
-			ignored = append(ignored, p)
+		if info, err := os.Stat(filepath.Join(hostDir, filepath.FromSlash(pat))); err == nil && info.IsDir() {
+			ignored = append(ignored, path.Join(projectDir, pat))
 		}
 	}
 	if len(ignored) > 0 {
@@ -237,18 +276,14 @@ func (a *Adapter) toFinding(is Issue) normalize.Finding {
 	return f
 }
 
-func (a *Adapter) relative(path string) string {
-	if path == "" {
+func (a *Adapter) relative(p string) string {
+	if p == "" {
 		return "."
 	}
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(a.Root, path)
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(a.Root, p)
 	}
-	rel, err := filepath.Rel(a.Root, path)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return filepath.ToSlash(path)
-	}
-	return filepath.ToSlash(rel)
+	return adapter.RelativePath(a.Root, adapter.ContainerRoot, p)
 }
 
 // Redact sanea la salida antes de persistirla.

@@ -7,9 +7,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CGCServicesSpA/cgc-scan/internal/adapter"
 	"github.com/CGCServicesSpA/cgc-scan/internal/discovery"
 	"github.com/CGCServicesSpA/cgc-scan/internal/masking"
 	"github.com/CGCServicesSpA/cgc-scan/internal/normalize"
+	"github.com/CGCServicesSpA/cgc-scan/internal/plan"
 	"github.com/CGCServicesSpA/cgc-scan/internal/provision"
 )
 
@@ -61,6 +63,40 @@ func TestParseRealOutput(t *testing.T) {
 	}
 	if len(byRule["security/detect-eval-with-expression"].IDs) == 0 {
 		t.Error("falta el identificador de regla")
+	}
+}
+
+func TestContainerInvocationUsesBakedTree(t *testing.T) {
+	a := testAdapter(t)
+	a.ContainerFor = func(discovery.Unit) *adapter.Container {
+		return &adapter.Container{
+			Image: "cgc-scan/toolchain:node-20-eslint-10.13.0",
+			Root:  adapter.ContainerRoot, CacheDir: "/cache",
+		}
+	}
+	u := discovery.Unit{
+		ID: "web", Path: "web", Kind: "package",
+		Languages: []discovery.Language{discovery.JavaScript},
+	}
+	if reqs := a.Requirements(t.Context(), u); len(reqs) != 0 {
+		t.Fatalf("requisitos inesperados: %+v", reqs)
+	}
+	invs, err := a.Invocations(u, plan.Plan{Exclusions: []discovery.Exclusion{{Pattern: "**/dist/**"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(invs) != 1 || invs[0].Image == "" {
+		t.Fatalf("invocaciones = %+v", invs)
+	}
+	args := strings.Join(invs[0].Args, " ")
+	if !strings.Contains(args, "/opt/cgc/eslint/node_modules/eslint/bin/eslint.js") {
+		t.Fatalf("args = %s", args)
+	}
+	if !strings.Contains(args, "--ignore-pattern dist/**") {
+		t.Fatalf("no se propagaron las exclusiones: %s", args)
+	}
+	if invs[0].Env["npm_config_cache"] != "/cache/npm" {
+		t.Fatalf("env = %v", invs[0].Env)
 	}
 }
 

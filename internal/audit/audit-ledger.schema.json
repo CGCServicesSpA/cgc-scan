@@ -1,0 +1,503 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cgcservices.cl/schemas/cgc-scan/audit-ledger-1.0.0.json",
+  "title": "CGC Scan audit coverage ledger",
+  "description": "Cobertura declarada de una corrida de auditoría asistida por un agente externo. El motor reparte asignaciones y valida el estado; no caza ni verifica.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run",
+    "target",
+    "profile",
+    "budget",
+    "run_status",
+    "summary",
+    "units"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "audit-ledger-1.0.0"
+    },
+    "run": {
+      "$ref": "#/$defs/run"
+    },
+    "target": {
+      "$ref": "#/$defs/target"
+    },
+    "profile": {
+      "enum": [
+        "quick",
+        "standard",
+        "deep"
+      ]
+    },
+    "budget": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_agent_invocations",
+            "used"
+          ],
+          "properties": {
+            "max_agent_invocations": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "used": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      ]
+    },
+    "run_status": {
+      "enum": [
+        "in_progress",
+        "complete",
+        "incomplete"
+      ]
+    },
+    "incomplete_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "units": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unit"
+      }
+    },
+    "prior": {
+      "$ref": "#/$defs/prior"
+    },
+    "limitations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "run_status": {
+            "const": "incomplete"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "incomplete_reason"
+        ]
+      }
+    }
+  ],
+  "$defs": {
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "started_at",
+        "cli_version",
+        "source_ref",
+        "dirty"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "cli_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "local_id"
+      ],
+      "properties": {
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "local_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units_total",
+        "planned",
+        "in_progress",
+        "covered",
+        "candidate",
+        "blocked",
+        "deferred",
+        "out_of_scope"
+      ],
+      "properties": {
+        "units_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "in_progress": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "covered": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "candidate": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deferred": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "out_of_scope": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "agent_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_id",
+        "reviewed_paths",
+        "invariant",
+        "method",
+        "result",
+        "artifact"
+      ],
+      "properties": {
+        "agent_id": {
+          "$ref": "#/$defs/agent_id"
+        },
+        "reviewed_paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "invariant": {
+          "type": "string",
+          "minLength": 1
+        },
+        "method": {
+          "enum": [
+            "source",
+            "local"
+          ]
+        },
+        "result": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        }
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wave",
+        "agent_id",
+        "state",
+        "reviewed_paths",
+        "checks",
+        "candidate_fingerprints",
+        "unresolved",
+        "reason"
+      ],
+      "properties": {
+        "wave": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "agent_id": {
+          "$ref": "#/$defs/agent_id"
+        },
+        "state": {
+          "enum": [
+            "covered",
+            "candidate",
+            "blocked"
+          ]
+        },
+        "reviewed_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        },
+        "candidate_fingerprints": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fingerprint"
+          }
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "fingerprint": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+    },
+    "unit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "coverage_id",
+        "subsystem",
+        "domain",
+        "boundary",
+        "attack_class",
+        "starting_paths",
+        "state",
+        "wave",
+        "reviewed_paths",
+        "checks",
+        "candidate_fingerprints",
+        "unresolved",
+        "attempts"
+      ],
+      "properties": {
+        "coverage_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)*$"
+        },
+        "subsystem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "boundary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attack_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "starting_paths": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "state": {
+          "enum": [
+            "planned",
+            "in_progress",
+            "candidate",
+            "covered",
+            "blocked",
+            "deferred",
+            "out_of_scope"
+          ]
+        },
+        "wave": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "owner": {
+          "$ref": "#/$defs/agent_id"
+        },
+        "reviewed_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "checks": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/check"
+          }
+        },
+        "candidate_fingerprints": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fingerprint"
+          }
+        },
+        "unresolved": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/attempt"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "hardening": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": [
+                  "deferred",
+                  "out_of_scope"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          }
+        }
+      ]
+    },
+    "prior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "source_ref",
+        "same_revision_clean",
+        "covered_same_source",
+        "rejected_fingerprints",
+        "needs_validation_fingerprints"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "same_revision_clean": {
+          "type": "boolean"
+        },
+        "covered_same_source": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "rejected_fingerprints": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fingerprint"
+          }
+        },
+        "needs_validation_fingerprints": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fingerprint"
+          }
+        }
+      }
+    }
+  }
+}

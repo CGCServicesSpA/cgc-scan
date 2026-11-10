@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://cgcservices.cl/schemas/cgc-scan/report-1.0.0.json",
+  "$id": "https://cgcservices.cl/schemas/cgc-scan/report-1.1.0.json",
   "title": "CGC Scan report",
-  "description": "Contrato público del reporte de CGC Scan v1.0.0. Los campos que una fuente no entrega son nulos u omitidos; nunca se inventan.",
+  "description": "Contrato público del reporte de CGC Scan v1.1.0. Los campos que una fuente no entrega son nulos u omitidos; nunca se inventan. v1.1.0 es aditivo sobre v1.0.0.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -45,6 +45,21 @@
       "items": {
         "$ref": "#/$defs/finding"
       }
+    },
+    "remediation_groups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/remediationGroup"
+      }
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nextAction"
+      }
+    },
+    "delta": {
+      "$ref": "#/$defs/delta"
     },
     "policy": {
       "$ref": "#/$defs/policy"
@@ -477,6 +492,16 @@
         "findings": {
           "type": "integer",
           "minimum": 0
+        },
+        "cache": {
+          "type": "string",
+          "enum": [
+            "hit",
+            "miss",
+            "mixed",
+            "disabled"
+          ],
+          "description": "Origen del resultado por unidad y motor."
         }
       }
     },
@@ -547,6 +572,15 @@
         },
         "image": {
           "type": "string"
+        },
+        "cache": {
+          "type": "string",
+          "enum": [
+            "hit",
+            "miss",
+            "mixed",
+            "disabled"
+          ]
         },
         "db": {
           "$ref": "#/$defs/dbState"
@@ -907,6 +941,25 @@
                 "string",
                 "null"
               ]
+            },
+            "direct": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "relationship": {
+              "type": "string",
+              "enum": [
+                "direct",
+                "transitive",
+                "root",
+                "unknown"
+              ]
+            },
+            "via": {
+              "type": "string",
+              "description": "Dependencia directa por la que llega una transitiva."
             }
           }
         },
@@ -998,6 +1051,28 @@
                 "boolean",
                 "null"
               ]
+            },
+            "score": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 100
+            },
+            "rank": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "factors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Factores visibles de la prioridad calculada, en orden estable."
             }
           }
         },
@@ -1340,6 +1415,330 @@
             "user",
             "candidate"
           ]
+        }
+      }
+    },
+    "remediationGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "unit",
+        "fixes",
+        "max_severity",
+        "priority_score",
+        "breaking_risk",
+        "commands",
+        "verification"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "dependency_upgrade",
+            "code_fix",
+            "secret_rotation",
+            "config_fix"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "package": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "ecosystem",
+            "name",
+            "from",
+            "to"
+          ],
+          "properties": {
+            "ecosystem": {
+              "type": "string",
+              "minLength": 1
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "from": {
+              "type": "string"
+            },
+            "to": {
+              "type": "string"
+            }
+          }
+        },
+        "file": {
+          "type": "string"
+        },
+        "rule": {
+          "type": "string"
+        },
+        "fixes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$"
+          }
+        },
+        "locations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_severity": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info",
+            "unknown"
+          ]
+        },
+        "priority_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "breaking_risk": {
+          "type": "string",
+          "enum": [
+            "patch",
+            "minor",
+            "major",
+            "unknown"
+          ]
+        },
+        "direct": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "commands": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "origin"
+          ],
+          "properties": {
+            "apply": {
+              "type": "string"
+            },
+            "override": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string",
+              "enum": [
+                "cgc-scan"
+              ]
+            }
+          }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "recipes",
+            "missing",
+            "verify"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "blocked"
+              ]
+            },
+            "recipes": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/verificationRecipe"
+              }
+            },
+            "missing": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "verify": {
+              "type": "string",
+              "minLength": 1
+            },
+            "note": {
+              "type": "string"
+            }
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "nextAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "confirm_recipes",
+            "apply_group",
+            "revoke_secret",
+            "install_toolchain",
+            "update_db",
+            "fix_code",
+            "fix_config",
+            "review_baseline"
+          ]
+        },
+        "unit": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "fixes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "user_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "delta": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "coverage_comparable",
+        "new",
+        "persistent",
+        "resolved",
+        "not_evaluated"
+      ],
+      "properties": {
+        "baseline_run": {
+          "type": "string"
+        },
+        "current_run": {
+          "type": "string"
+        },
+        "coverage_comparable": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "new": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deltaEntry"
+          }
+        },
+        "persistent": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deltaEntry"
+          }
+        },
+        "resolved": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deltaEntry"
+          }
+        },
+        "not_evaluated": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/deltaEntry"
+          }
+        }
+      }
+    },
+    "deltaEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fingerprint",
+        "kind",
+        "title",
+        "severity"
+      ],
+      "properties": {
+        "fingerprint": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "vulnerability",
+            "secret",
+            "misconfig",
+            "code"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "info",
+            "unknown"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "engine": {
+          "type": "string"
+        },
+        "package": {
+          "type": "string"
+        },
+        "fixed_version": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
         }
       }
     }

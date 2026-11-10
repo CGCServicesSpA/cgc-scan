@@ -19,6 +19,7 @@ type Entry struct {
 	Engine       string             `json:"engine,omitempty"`
 	Package      string             `json:"package,omitempty"`
 	FixedVersion string             `json:"fixed_version,omitempty"`
+	Group        string             `json:"group,omitempty"`
 }
 
 // Result es el contrato de `compare`.

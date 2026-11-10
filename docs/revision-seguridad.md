@@ -36,19 +36,48 @@
 - Manifiesto de confianza, SHA-256, extracción segura y bloqueo de instalación.
 - Prompt con nonce, saneado de control/ANSI/bidi y datos no confiables delimitados.
 
+## Ejecución en contenedores de toolchain (v1.2)
+
+Revisión específica de RF-38 / ADR-18:
+
+- La versión se acepta solo si es numérica y con puntos (`versionish`); nunca se
+  interpola texto del proyecto en una referencia de imagen.
+- La imagen base se resuelve por digest y se registra; la etiqueta derivada es
+  determinista. La herramienta sigue fijada por versión y hash en el manifiesto.
+- El build no ejecuta scripts del proyecto: `npm ci --ignore-scripts`, pip con
+  hashes, artefactos con SHA-256 y `GOTOOLCHAIN=auto` para compilar govulncheck.
+- El proyecto se monta en solo lectura; las bases y la configuración de Psalm se
+  montan desde un staging temporal que se elimina al terminar. La CLI no escribe
+  en el proyecto.
+- Cada lenguaje usa un volumen `cgc-scan-toolchain-*` propio del uid; la caché
+  incremental incluye imagen, entorno y destino de los montajes.
+- La red del contenedor de toolchain es intencional y declarada `configured`;
+  `--offline` usa `--network none`. Un fallo de build no produce un resultado
+  limpio: cae al host o queda `requirement_missing`.
+- Riesgo residual: la resolución de dependencias revela nombres y versiones al
+  registro público del ecosistema, nunca código ni secretos. Se documenta en
+  `docs/privacidad.md` y en la limitación del reporte.
+
 ## Riesgos residuales aceptados
 
 | Riesgo | Mitigación | Estado |
 | --- | --- | --- |
 | `configured` no es un sandbox | Reporte declara el nivel; `--require-isolation enforced` para el nivel fuerte | Aceptado |
 | Contenedor Trivy como root | Volumen propio del uid, sin código, `--read-only`, sin red | Aceptado (ADR-13) |
+| Contenedor de toolchain como root y con red | Proyecto en solo lectura, caché en volumen propio del uid, red solo para resolver dependencias, aislamiento declarado `configured` | Aceptado (ADR-18) |
+| Dependencias del proyecto visibles al registro público | El contenedor de toolchain resuelve dependencias contra el registro del ecosistema; se exponen nombres y versiones, nunca código ni secretos. `--offline` y `CGC_SCAN_TOOLCHAIN=host` lo evitan; el reporte lo declara | Aceptado y documentado |
+| Imagen base de toolchain no fijada en el manifiesto | Se resuelve por digest al construir y el digest queda en `tools.engines[].preparation[]`; la herramienta sí está fijada por versión y hash | Aceptado (ADR-18) |
 | Pertenecer a `docker` equivale a root en el host | Fuera del modelo: es una decisión del usuario | Documentado |
 | Base de Trivy ~1,6 GB | Timeout de preparación y volumen persistente | Aceptado |
-| Toolchains del proyecto no se instalan | `requirement_missing` y código 3 | Aceptado |
+| Toolchains del proyecto en el host | Con Docker se evita; sin Docker, `requirement_missing` y código 3 | Aceptado |
 | Firma/SBOM sin release real | Flujo configurado; pendiente CA-54 | Abierto |
 | Marca INAPI | Búsqueda manual pendiente (H7-06) | Abierto |
 
 ## Conclusión
 
 No quedan hallazgos críticos o altos abiertos en el código de la CLI. Los puntos
-abiertos son de proceso de release y legales, no de implementación.
+abiertos son de proceso de release y legales, no de implementación. La
+ejecución en contenedores de toolchain (RF-38) deja un riesgo residual acotado y
+declarado: la resolución de dependencias revela nombres y versiones al registro
+público, nunca código ni secretos; `--offline` y `CGC_SCAN_TOOLCHAIN=host` son
+las salidas documentadas.

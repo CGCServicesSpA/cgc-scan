@@ -7,9 +7,13 @@
 #   ./install.sh --package       # crea el tar.gz de prueba local y lo instala
 #   ./install.sh --from FILE     # instala un tar.gz ya generado
 #   ./install.sh --uninstall     # elimina el binario instalado
+#   ./install.sh --no-skill      # no instala ni actualiza la skill global
 #
 # También funciona desde un paquete ya extraído: si hay un binario cgc-scan
 # junto al script, lo instala sin compilar.
+#
+# Tras instalar el binario, actualiza la skill global con scripts/install-skill.sh
+# (incluido en el paquete) para que los agentes usen la versión de la CLI.
 
 set -eu
 
@@ -31,6 +35,10 @@ BACKUP=1
 FROM=""
 BINARY=""
 FORCE_BUILD=0
+SKILL=1
+SKILL_TARGET=auto
+SKILL_SOURCE=""
+SKILL_SCRIPT=""
 
 usage() {
     cat <<'EOF'
@@ -46,6 +54,10 @@ Opciones:
   --binary ARCHIVO   Instala un binario ya compilado
   --build            Fuerza la compilación desde el código fuente
   --no-backup        No conserva el binario anterior como .bak
+  --no-skill         No instala ni actualiza la skill global
+  --skill-target MODE
+                     Destino de la skill (auto|all|agents|opencode|devpass|
+                     claude|codex|kiro|mcode|pi|DIR); por defecto auto
   --uninstall        Elimina el binario instalado (no toca la configuración)
   -h, --help         Muestra esta ayuda
 
@@ -135,6 +147,19 @@ while [ $# -gt 0 ]; do
             BACKUP=0
             shift
             ;;
+        --no-skill)
+            SKILL=0
+            shift
+            ;;
+        --skill-target)
+            [ $# -ge 2 ] || die "--skill-target requiere un valor"
+            SKILL_TARGET=$2
+            shift 2
+            ;;
+        --skill-target=*)
+            SKILL_TARGET=${1#--skill-target=}
+            shift
+            ;;
         --uninstall)
             ACTION=uninstall
             shift
@@ -161,6 +186,7 @@ if [ "$ACTION" = uninstall ]; then
         printf 'No hay binario instalado en %s\n' "$TARGET"
     fi
     printf 'La configuración y las cachés de usuario no se han tocado.\n'
+    printf 'La skill global no se elimina; usa scripts/install-skill.sh --uninstall si quieres quitarla.\n'
     exit 0
 fi
 
@@ -206,6 +232,20 @@ extract_from_archive() {
     [ -n "$FOUND" ] || die "el archivo no contiene un binario cgc-scan"
     cp "$FOUND" "$TMP_BIN"
     chmod 0755 "$TMP_BIN"
+    # El paquete incluye la skill y su instalador; se usan desde la extracción.
+    SKILL_SOURCE=$(find "$TMP_DIR" -type d -path '*/skills/cgc-scan' | head -n 1)
+    SKILL_SCRIPT=$(find "$TMP_DIR" -type f -path '*/scripts/install-skill.sh' | head -n 1)
+}
+
+# locate_skill resuelve la skill y su instalador en el repositorio o en un
+# paquete extraído. No falla si no están: se avisa y el binario ya quedó.
+locate_skill() {
+    if [ -z "$SKILL_SOURCE" ] && [ -f "$SCRIPT_DIR/skills/cgc-scan/SKILL.md" ]; then
+        SKILL_SOURCE="$SCRIPT_DIR/skills/cgc-scan"
+    fi
+    if [ -z "$SKILL_SCRIPT" ] && [ -f "$SCRIPT_DIR/scripts/install-skill.sh" ]; then
+        SKILL_SCRIPT="$SCRIPT_DIR/scripts/install-skill.sh"
+    fi
 }
 
 if [ -n "$FROM" ]; then
@@ -222,6 +262,8 @@ else
     build_from_source
 fi
 
+locate_skill
+
 # Verificación mínima: la versión pedida y el esquema del reporte deben
 # responder antes de tocar la instalación actual.
 ACTUAL=$("$TMP_BIN" --version 2>/dev/null || true)
@@ -229,10 +271,18 @@ case "$ACTUAL" in
     *"$VERSION"*) ;;
     *) die "el binario no responde con la versión $VERSION: ${ACTUAL:-sin salida}" ;;
 esac
-case "$ACTUAL" in
-    *"esquema 1.0.0"*) ;;
-    *) die "el binario no declara el esquema 1.0.0: $ACTUAL" ;;
-esac
+# El esquema no se fija a mano: se acepta cualquier versión semántica y, si el
+# repositorio trae el esquema, se exige la que declara ese archivo.
+if ! printf '%s\n' "$ACTUAL" | grep -Eq 'esquema [0-9]+\.[0-9]+\.[0-9]+'; then
+    die "el binario no declara el esquema del reporte: $ACTUAL"
+fi
+SCHEMA_FILE="$SCRIPT_DIR/schemas/report.schema.json"
+if [ -f "$SCHEMA_FILE" ]; then
+    SCHEMA=$(sed -n 's/.*report-\([0-9][0-9.]*\)\.json.*/\1/p' "$SCHEMA_FILE" | head -n 1)
+    if [ -n "$SCHEMA" ] && ! printf '%s\n' "$ACTUAL" | grep -Fq "esquema $SCHEMA"; then
+        die "el binario no declara el esquema $SCHEMA: $ACTUAL"
+    fi
+fi
 
 if [ "$PACKAGE" -eq 1 ]; then
     OS=$(detect_os)
@@ -249,6 +299,17 @@ if [ "$PACKAGE" -eq 1 ]; then
     for f in install.sh VERSION LICENSE README.md SECURITY.md THIRD_PARTY_NOTICES.md; do
         [ -f "$SCRIPT_DIR/$f" ] && cp "$SCRIPT_DIR/$f" "$STAGE/$NAME/$f"
     done
+    # La skill y su instalador viajan con el paquete para que install.sh pueda
+    # actualizarla sin depender del repositorio.
+    if [ -f "$SCRIPT_DIR/scripts/install-skill.sh" ]; then
+        mkdir -p "$STAGE/$NAME/scripts"
+        cp "$SCRIPT_DIR/scripts/install-skill.sh" "$STAGE/$NAME/scripts/install-skill.sh"
+        chmod 0755 "$STAGE/$NAME/scripts/install-skill.sh"
+    fi
+    if [ -d "$SCRIPT_DIR/skills/cgc-scan" ]; then
+        mkdir -p "$STAGE/$NAME/skills"
+        cp -R "$SCRIPT_DIR/skills/cgc-scan" "$STAGE/$NAME/skills/cgc-scan"
+    fi
     cat > "$STAGE/$NAME/INSTALL.txt" <<EOF
 CGC Scan $VERSION — paquete local
 
@@ -257,6 +318,9 @@ Instalar en el usuario actual (sin sudo):
 
 Instalar en otro prefijo:
   ./install.sh --prefix /ruta/bin
+
+El instalador actualiza también la skill global de agentes. Para omitirla:
+  ./install.sh --no-skill
 
 Verificar:
   cgc-scan --version
@@ -285,4 +349,18 @@ case ":$PATH:" in
     *":$PREFIX:"*) ;;
     *) printf 'Aviso: %s no está en PATH; añádelo a tu perfil de shell.\n' "$PREFIX" ;;
 esac
+
+if [ "$SKILL" -eq 1 ]; then
+    if [ -n "$SKILL_SOURCE" ] && [ -n "$SKILL_SCRIPT" ] && [ -f "$SKILL_SOURCE/SKILL.md" ]; then
+        printf '\nActualizando la skill global (destino: %s)...\n' "$SKILL_TARGET"
+        if ! sh "$SKILL_SCRIPT" --source "$SKILL_SOURCE" --target "$SKILL_TARGET"; then
+            printf 'Aviso: no se pudo actualizar la skill; ejecuta scripts/install-skill.sh.\n' >&2
+        fi
+    else
+        printf '\nAviso: no se encontró la skill en este paquete; instálala con scripts/install-skill.sh.\n' >&2
+    fi
+else
+    printf '\nSkill: omitida por --no-skill.\n'
+fi
+
 printf '\nSiguiente paso: cgc-scan setup\n'

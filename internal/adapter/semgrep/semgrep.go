@@ -41,8 +41,9 @@ func New(version, root, rulesDir, binary, mode string, ruleCount int, m *masking
 
 func (a *Adapter) ID() string { return ID }
 
-// Applies cubre todas las unidades de código, nunca la unidad de proyecto.
-func (a *Adapter) Applies(u discovery.Unit) bool { return u.Kind != "repository" }
+// Applies cubre el repositorio completo en una sola invocación: un contenedor
+// por escaneo, no uno por unidad (Fase G).
+func (a *Adapter) Applies(u discovery.Unit) bool { return u.Kind == "repository" }
 
 // Requirements comprueba el motor, las reglas locales y el modo.
 func (a *Adapter) Requirements(context.Context, discovery.Unit) []adapter.Requirement {

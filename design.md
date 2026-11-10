@@ -1,6 +1,6 @@
-# CGC Scan — Design Doc v1.0
+# CGC Scan — Design Doc v1.1
 
-> **Versión:** 1.1 (borrador para revisión) · **Fecha:** 27 de octubre de 2026
+> **Versión:** 1.1 (implementado) · **Fecha:** 30 de octubre de 2026
 > **Complementa:** `requisitos-cli-seguridad.md` v0.10 (en adelante, **PRD**; se cita como "PRD §x")
 > **Stack:** Go (binario estático, `CGO_ENABLED=0`) · Trivy (Docker o binario global) · adaptadores por lenguaje · Semgrep CE opcional
 > **Convención de estados:** *Confirmado* = decisión del PRD o del usuario. *Propuesto* = decisión de este diseño, revisable.
@@ -43,7 +43,7 @@ Principios de diseño derivados del PRD §1:
 | 2 | Preparación | Resolver runner según la matriz de PRD §6.2 | `runner`, `provision` |
 | 3 | Preparación | Tomar el bloqueo exclusivo de caché, provisionar motor y actualizar bases (omitido con `--offline`), pasar a bloqueo compartido y leer los metadatos de la base | `provision` |
 | 4 | Preparación | Verificar aislamiento exigido (`--require-isolation`) y requisitos globales de los adaptadores; los que dependen del proyecto se comprueban tras el descubrimiento | `runner`, `adapter` |
-| 5 | Escaneo | Descubrir unidades de proyecto y construir el plan de cobertura (sin ejecutar nada) | `discovery`, `plan` |
+| 5 | Escaneo | Descubrir unidades de proyecto y construir el plan de cobertura; detectar la versión del lenguaje de cada unidad y preparar su imagen de toolchain si hay Docker (sin ejecutar nada del proyecto) | `discovery`, `plan`, `toolchain`, `provision` |
 | 6 | Escaneo | Ejecutar invocaciones con concurrencia, timeouts y cancelación | `orchestrator` |
 | 7 | Posproceso | Parsear, redactar, normalizar y correlacionar hallazgos | `adapter`, `normalize` |
 | 8 | Posproceso | Aplicar política y excepciones; decidir el código de salida | `policy` |
@@ -93,7 +93,8 @@ cgc-scan/
 │   ├── recipes/                  # candidatos detectados, confirmación, recetas de confianza
 │   ├── platform/                 # rutas, perfil de shell, grupos de procesos, flock
 │   ├── manifest/                 # carga del manifiesto de confianza (el dato vive en manifest/trust.json)
-│   ├── provision/                # instalación verificada de motores y bases
+│   ├── provision/                # instalación verificada de motores, bases e imágenes de toolchain
+│   ├── toolchain/                # detección de versión del lenguaje y Dockerfiles por adaptador
 │   ├── runner/                   # docker, global; niveles de aislamiento
 │   ├── discovery/                # unidades de proyecto, exclusiones, os.Root
 │   ├── plan/                     # plan de cobertura
@@ -323,6 +324,7 @@ Decisiones de diseño:
 - **Contenedor actualizador separado**: con red y el volumen de caché en lectura/escritura, sin el proyecto montado (PRD §6.4). Usa `--download-db-only` y `--download-java-db-only`.
 - Se ejecuta `docker context inspect` antes de usar Docker: un contexto remoto no es elegible (PRD §6.3). La CLI nunca cambia el contexto global.
 - **El volumen de caché lleva el identificador de usuario en el nombre:** `cgc-scan-trivy-cache-<uid>`, y su nombre exacto se registra en `state.json`. Dos personas que comparten un daemon no comparten volumen, que es lo que hace efectiva la mitigación de envenenamiento de caché de la sección 13. Pertenecer al grupo `docker` equivale a root en el host; la mitigación real es el aislamiento de red y no compartir volumen.
+- **Invocaciones de toolchain por lenguaje (ADR-18).** El runner acepta `Image`, `Mounts` y `Env` por invocación, de modo que la misma maquinaria ejecuta la imagen de Trivy (fijada por digest) y las imágenes derivadas del lenguaje (etiqueta local con base fijada por digest). Esas invocaciones habilitan red para resolver dependencias y declaran `configured`; `--offline` las ejecuta con `--network none`. El proyecto sigue en `/src:ro` y el caché del lenguaje va en un volumen propio del usuario.
 
 ### 6.2 Runner global (`configured`)
 
@@ -384,7 +386,9 @@ Archivo `manifest/trust.json` embebido con `go:embed`. Se actualiza únicamente 
 
 **Versiones fijadas al iniciar H1** (verificadas en los spikes P-07 a P-11): Trivy 0.76.1, govulncheck v1.9.0, ESLint 10.13.0 con eslint-plugin-security 4.2.0 y @typescript-eslint/parser 8.72.1, Psalm 6.20.3, cargo-audit 0.22.2, Bandit 1.9.4. La versión de Semgrep se fija en H6.
 
-**Política de actualización del motor.** El binario o la imagen se actualizan solo cuando la versión fijada en el manifiesto difiere de la instalada, y nunca durante un escaneo: la actualización es una tarea explícita, independiente de la actualización de bases (PRD §6.3). El estado de lo instalado vive en `state.json`, así que la comparación es directa. Un cambio de versión del motor exige repetir la validación de flags y la prueba de aislamiento por versión (sección 15.2).
+**Imágenes base de lenguaje.** No están en el manifiesto porque su versión la declara cada proyecto. Se resuelven por el digest del momento y el digest efectivo queda en `tools.engines[].preparation[]`; la herramienta que se instala dentro sí está fijada por versión y hash en el manifiesto o en los lockfiles/requisitos embebidos (ADR-18, sección 8.4).
+
+**Política de actualización del motor.** El binario o la imagen se actualizan solo cuando la versión fijada en el manifiesto difiere de la instalada, y nunca durante un escaneo: la actualización es una tarea explícita, independiente de la actualización de bases (PRD §6.3). El estado de lo instalado vive en `state.json`, así que la comparación es directa. Las imágenes de toolchain llevan la versión del motor en la etiqueta, de modo que un cambio de versión produce una imagen nueva sin sobrescribir la anterior. Un cambio de versión del motor exige repetir la validación de flags y la prueba de aislamiento por versión (sección 15.2).
 
 ### 7.2 Instalación del binario global
 
@@ -459,9 +463,9 @@ PRD §6.3 limita el aprovisionamiento automático a Trivy. La decisión **D-01**
 
 - Binarios publicados (cargo-audit, Psalm en `.phar`): descarga y verificación contra el manifiesto, igual que Trivy.
 - Paquetes de ecosistema (ESLint y plugins, Bandit): instalación en `engines/<herramienta>/<versión>/` con el instalador del ecosistema **sin ejecutar scripts de instalación** (`--ignore-scripts` en npm; hashes requeridos en pip) y desde archivos de bloqueo con integridad.
-- govulncheck: se enlaza como biblioteca (`golang.org/x/vuln/scan`), validado en P-10. Sigue necesitando el toolchain Go del usuario en modo fuente.
-- Si falta el toolchain del ecosistema (Node, PHP, Python, Go, Rust), el adaptador se omite con `requirement_missing` y la ejecución es incompleta (PRD §5, regla común).
-- Toda versión y hash se fijan en `manifest/trust.json`; nunca se resuelve `latest` y nunca se instala nada en el proyecto.
+- govulncheck: se enlaza como biblioteca (`golang.org/x/vuln/scan`) en modo host, validado en P-10. Con Docker se instala el binario del mismo módulo en la imagen del lenguaje (ADR-18) y ya no requiere el toolchain Go del equipo.
+- Si falta el toolchain del ecosistema (Node, PHP, Python, Go, Rust) y no hay imagen de toolchain disponible, el adaptador se omite con `requirement_missing` y la ejecución es incompleta (PRD §5, regla común).
+- Toda versión y hash se fijan en `manifest/trust.json`; nunca se resuelve `latest` y nunca se instala nada en el proyecto. Las imágenes base de lenguaje no se fijan en el manifiesto: se resuelven por digest al construir y el digest queda en el reporte (sección 8.4).
 
 ### 8.2 Normalización de severidad (Propuesto)
 
@@ -498,6 +502,19 @@ Tres reglas que fijan el comportamiento:
 - **La normalizada es la mayor entre las fuentes verificadas** (PRD §9). Una misma regla detectada por dos motores con severidades distintas se reporta con la mayor y conserva las diferencias.
 
 `info` queda por debajo de `low` y no bloquea por sí sola; `unknown` no se descarta en silencio y su conteo contra el umbral lo decide la política, que deja la decisión registrada en `policy` (sección 9.3).
+
+### 8.4 Ejecución de adaptadores en contenedores de toolchain (RF-38, ADR-18)
+
+Cuando el daemon local responde, la CLI ejecuta los adaptadores dentro de una imagen derivada de la imagen oficial del lenguaje, en la versión que declara el proyecto. El flujo es:
+
+1. **Detección por unidad.** `internal/toolchain` lee `go.mod` (`go` y `toolchain`), `.nvmrc`/`.node-version`/`engines.node`/`volta.node`, `composer.json` (`config.platform.php`, `require.php`), `Cargo.toml` (`rust-version`, `edition`) o `pyproject.toml`/`.python-version`/`runtime.txt`/`Pipfile`. La detección se restringe al lenguaje del adaptador para que una unidad mixta no entregue una versión ajena.
+2. **Plan de imagen.** Se generan candidatas de la más precisa a la más general (`golang:1.22.3` → `golang:1.22` → `golang:1`). La primera base disponible se fija por el digest resuelto en el momento; la etiqueta derivada es determinista: `cgc-scan/toolchain:<lenguaje>-<versión>-<motor>-<versión-del-motor>`.
+3. **Construcción.** El Dockerfile parte de la base fijada, instala la herramienta de la versión del manifiesto sin scripts y anula el entrypoint (`ENTRYPOINT []`) para que los argumentos sean el comando. Los artefactos con hash (Psalm, cargo-audit) se descargan y verifican en el host y se copian al contexto; ESLint y Bandit usan los lockfiles/requisitos embebidos; govulncheck se compila en una etapa con `GOTOOLCHAIN=auto`.
+4. **Ejecución.** `runner.Invocation` acepta `Image`, `Mounts` y `Env` por invocación. El proyecto se monta en `/src:ro`, el caché del lenguaje en `/cache` y las bases locales o la configuración de Psalm desde un staging temporal. La red se habilita solo para resolver dependencias: el motor declara `configured`.
+5. **Reutilización y caché.** La imagen se reutiliza por etiqueta; la caché incremental por unidad incluye imagen, entorno y destino de los montajes (no la ruta temporal del staging).
+6. **Degradación.** Sin Docker, sin imagen construible o con `--offline`/`--no-auto-install` sin imagen local, la unidad cae al toolchain del host. Si tampoco existe, queda `requirement_missing` y la ejecución es incompleta.
+
+Límites declarados: la base no está en `manifest/trust.json` (depende de la versión del proyecto) y el contenedor de toolchain puede contactar el registro público del ecosistema, lo que revela nombres y versiones de dependencias, nunca código ni secretos. Ambos hechos quedan en `tools.engines[].preparation[]` y `coverage.limitations`.
 
 ---
 
@@ -585,7 +602,7 @@ El contrato de campos está en PRD §9. Estructura de nivel superior:
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "run": {},
   "target": {},
   "coverage": { "partial": false, "exclusions": [], "not_analyzed": [] },
@@ -601,7 +618,7 @@ El contrato de campos está en PRD §9. Estructura de nivel superior:
 **Forma mínima de las secciones.** El esquema se escribe a mano y es un contrato público (ADR-06), así que fija estas formas mínimas y ninguna sección puede omitirlas:
 
 - `coverage`: `partial` (booleano, siempre presente), `exclusions` (cada exclusión con su origen), `not_analyzed` (unidades no analizadas; vacío cuando `partial` es falso) y el estado por unidad —solicitado, completado, omitido, fallido— (RF-02).
-- `tools.engines`: una entrada por motor con su estado por unidad, de modo que se vea qué se pidió, qué se completó, qué se omitió y qué falló.
+- `tools.engines`: una entrada por motor con su estado por unidad, de modo que se vea qué se pidió, qué se completó, qué se omitió y qué falló. Incluye `mode` (`docker|global|library`), `image`, `isolation`, `db`, `rules`, `cache` y `preparation[]`; un adaptador en imagen de toolchain se identifica por `mode: docker`, su etiqueta en `image` y una acción `toolchain:<motor>` en `preparation` (ADR-18).
 - `target`: identificador local, unidades detectadas, revisión Git si está disponible y el registro de cambios sin commit.
 - `isolation`: `level` y `verified_by`; nunca se declara `enforced` sin haberlo logrado.
 - `validation`: las recetas efectivas y las unidades que quedaron sin receta.
@@ -648,6 +665,7 @@ El contrato de comandos, flags y códigos de salida está en PRD §8. Detalles d
 | `NO_COLOR` | Desactiva color |
 | `CGC_SCAN_CONFIG_DIR`, `CGC_SCAN_DATA_DIR`, `CGC_SCAN_CACHE_DIR` | Sobrescriben ubicaciones |
 | `CGC_SCAN_LOG_LEVEL` | `debug`, `info`, `warn`, `error` |
+| `CGC_SCAN_TOOLCHAIN` | `host` fuerza los toolchains del equipo en lugar de las imágenes de lenguaje; el resto de valores usa el modo automático |
 | `DOCKER_HOST`, `DOCKER_CONTEXT` | Solo se **leen para detectar contexto remoto** y rechazarlo; la CLI no los modifica |
 
 La CLI **no** pasa su propio entorno a los motores (sección 6.2).
@@ -678,7 +696,10 @@ La CLI **no** pasa su propio entorno a los motores (sección 6.2).
 | Cadena de suministro del motor | Descarga manipulada | SHA-256 contra manifiesto firmado, extracción segura, instalación atómica | CA-29 |
 | Cadena de suministro de la CLI | Dependencia comprometida | Lockfile, `go mod verify`, escaneo propio, firmas y SBOM | CA-54 |
 | Fuga de credenciales al motor | Variables de entorno, archivos de configuración del usuario | Entorno por lista permitida, HOME aislado | CA-03 |
-| Fuga por red | Motor intenta conectarse | Docker sin red, o `configured` con verificación por `strace` | CA-03, CA-41 |
+| Fuga por red | Motor intenta conectarse | Docker sin red, o `configured` con verificación por `strace`; los contenedores de toolchain declaran su red como limitación | CA-03, CA-41, CA-72 |
+| Resolución de dependencias en contenedor de toolchain | El motor contacta el registro público del ecosistema | Red declarada `configured`, limitación en `coverage.limitations`, `--offline` con caché y `CGC_SCAN_TOOLCHAIN=host` como salidas | CA-72 |
+| Imagen de toolchain no fijada en el manifiesto | Tag de base mutable o sustituido | Se resuelve por digest al construir y el digest efectivo queda en `tools.engines[].preparation[]`; la herramienta sí está fijada por versión y hash en el manifiesto | CA-70 |
+| Build de imagen de toolchain | Instalación de paquetes durante el build | Sin scripts del proyecto; `npm ci --ignore-scripts`, pip con hashes, artefactos con SHA-256; red solo durante la construcción | CA-70, CA-72 |
 | Envenenamiento de caché | Otro usuario local modifica las bases | Directorios 0700 y volumen de nombre propio del usuario (`cgc-scan-trivy-cache-<uid>`), para que dos usuarios de un mismo daemon no lo compartan | CA-55 |
 | Fuga por reportes | Reportes con código y secretos | Enmascarado, permisos 0600, huella con sal | CA-13, CA-55 |
 | Inyección en el prompt | Evidencia con instrucciones | Bloques con nonce, saneado, plantilla fija | CA-20 |
@@ -690,9 +711,9 @@ La CLI **no** pasa su propio entorno a los motores (sección 6.2).
 
 El cumplimiento desde el negocio está en el PRD. La arquitectura aquí descrita aplica privacidad por diseño:
 
-- **CGC no recibe datos.** No hay telemetría, cuentas ni servicios propios en v1; el código, los inventarios y los reportes no salen del equipo (PRD §1, principio 1).
+- **CGC no recibe datos.** No hay telemetría, cuentas ni servicios propios en v1; el código y los reportes no salen del equipo (PRD §1, principio 1). Excepción declarada (RF-38): un contenedor de toolchain resuelve dependencias contra el registro público del ecosistema, lo que expone nombres y versiones de paquetes, nunca código ni secretos; `--offline` y `CGC_SCAN_TOOLCHAIN=host` lo evitan.
 - **Datos tratados localmente.** Los reportes pueden contener fragmentos de código, rutas y, eventualmente, datos personales presentes en el proyecto. Quedan en el equipo del usuario con permisos restrictivos, y los secretos se enmascaran.
-- **Transferencias:** durante la **preparación** se descargan imágenes, binarios y bases desde fuentes públicas sin adjuntar datos del proyecto. No hay transferencia de datos personales hacia CGC.
+- **Transferencias:** durante la **preparación** se descargan imágenes, binarios y bases desde fuentes públicas sin adjuntar datos del proyecto. No hay transferencia de datos personales hacia CGC. Con Docker, la resolución de dependencias del contenedor de toolchain transfiere nombres y versiones de paquetes al registro correspondiente.
 - **Si se agrega más adelante** telemetría, licenciamiento en línea, cuentas o un servicio de reportes, se debe repetir el análisis de la Ley 21.719 (vigencia plena el 1 de diciembre de 2026) antes de implementarlo; esa funcionalidad cambiaría el rol de CGC frente a los datos.
 
 > Este apartado describe decisiones técnicas, no es asesoría legal. Conviene revisarlo con un profesional si el producto cambia de alcance.
@@ -710,7 +731,7 @@ El cumplimiento desde el negocio está en el PRD. La arquitectura aquí descrita
 | CLI de extremo a extremo | `setup`, `scan`, `compare`, códigos de salida | `testscript` |
 | Fuzzing | Parsers de salida de cada motor, TOML de política, saneado | `go test -fuzz` |
 | Integración | Motores reales sobre `testdata/fixtures` | Etiqueta `//go:build integration` |
-| Aislamiento | Cero conexiones externas por versión fijada | Docker `--network none` y `strace` |
+| Aislamiento | Cero conexiones externas por versión fijada (runner de motores sin resolución de dependencias) | Docker `--network none` y `strace` |
 
 ### 15.2 Prueba de aislamiento por versión de motor
 
@@ -719,6 +740,12 @@ Se ejecuta en CI al cambiar cualquier versión del manifiesto y antes de cada re
 1. Correr el escaneo del fixture con el runner global bajo `strace -f -e trace=connect`.
 2. Fallar si aparece un `connect` a una dirección que no sea de bucle local.
 3. Repetir con el runner Docker verificando `--network none` en la configuración efectiva del contenedor.
+
+La prueba cubre los motores que no resuelven dependencias. Los contenedores de
+toolchain (ADR-18) tienen red intencional para resolverlas: su verificación
+comprueba que el proyecto está en solo lectura, que `--offline` usa
+`--network none`, que las variables de entorno están en lista permitida y que el
+reporte declara `configured` y la limitación. No se presentan como `enforced`.
 
 ### 15.3 Calidad estática
 
@@ -768,7 +795,8 @@ Los riesgos de producto y regulatorios están en PRD §14 y no se repiten.
 | ADR-11 | Enlace global de Trivy | Enlace simbólico al motor versionado | Copiar el binario sobre `PATH` | Actualización atómica y sin pisar instalaciones ajenas | Propuesto |
 | ADR-12 | Comprobación de versión de Trivy durante el escaneo | `--skip-version-check` obligatorio | Confiar en `--offline-scan` | P-09: sin el flag, Trivy contacta `check.trivy.dev` y `configured` sería falso | Confirmado |
 | ADR-13 | Usuario del contenedor Trivy | root dentro del contenedor (sin `--user`) | uid del host | P-08: el volumen del daemon no es escribible por otro uid y no se pide elevación | Confirmado |
-| ADR-14 | govulncheck | Biblioteca `golang.org/x/vuln/scan` | Binario externo | P-10: elimina un artefacto y reutiliza el parser; el toolchain Go sigue siendo requisito | Confirmado |
+| ADR-14 | govulncheck | Biblioteca `golang.org/x/vuln/scan` | Binario externo | P-10: elimina un artefacto y reutiliza el parser; el toolchain Go sigue siendo requisito en modo host. Ampliado por ADR-18 para ejecución en contenedor | Confirmado |
+| ADR-18 | Toolchain de adaptadores | Imagen derivada de la imagen oficial del lenguaje en la versión del proyecto, base fijada por digest resuelto y declarado | Instalar toolchains en el host; usar solo el toolchain del host | Elimina el requisito de instalar Go/Node/PHP/Rust/Python y respeta la versión del proyecto; el coste es una imagen derivada y red para resolver dependencias, declarada como `configured` (RF-38) | Confirmado |
 | ADR-15 | Repositorio y CI | GitHub público + GitHub Actions | Repositorio privado + claves propias | Habilita cosign sin clave y SLSA; el producto debe ser verificable por terceros | Confirmado (D-02) |
 | ADR-16 | Nombre y licencia de la CLI | `cgc-scan`, Apache-2.0 | Nombre alternativo | Paquetes, dominios y repositorio libres; licencia compatible con todo el stack (D-03, D-06) | Confirmado; INAPI se verifica en H7-06 |
 | ADR-17 | Herramientas de adaptadores | Aprovisionamiento verificado extendido (D-01) | Instalación manual o con los gestores del proyecto | Cobertura reproducible sin ejecutar scripts ni tocar el proyecto | Confirmado |
@@ -797,7 +825,207 @@ Complementa la secuencia de PRD §16 con el orden técnico. El desglose de tarea
 | ID | Pregunta | Estado |
 | --- | --- | --- |
 | O-1 | ¿Cómo se obtienen las herramientas de los adaptadores? | **Cerrada (D-01):** aprovisionamiento verificado extendido, sin scripts de instalación (ADR-17) |
-| O-2 | ¿Se enlaza govulncheck como biblioteca? | **Cerrada (P-10):** sí, `golang.org/x/vuln/scan` (ADR-14) |
+| O-2 | ¿Se enlaza govulncheck como biblioteca? | **Cerrada (P-10):** sí, `golang.org/x/vuln/scan` en modo host (ADR-14); con Docker se usa el binario del mismo módulo dentro de la imagen del lenguaje (ADR-18) |
 | O-3 | Usuario del contenedor y propiedad del volumen (T-02) | **Cerrada (P-08):** root dentro del contenedor, sin `--user`, volumen por uid (ADR-13) |
 | O-4 | Nombre y ubicación definitivos del archivo de política del proyecto | **Cerrada (D-04):** `cgc-scan.toml` en la raíz detectada |
 | O-5 | ¿Se publica la CLI con repositorio público o privado? Define el uso de SLSA y de firmas sin clave | **Cerrada (D-02):** repositorio público + GitHub Actions (ADR-15) |
+
+---
+
+## 19. Estado por proyecto, remediación y agente (v1.1)
+
+Esta sección registra el diseño implementado para el plan «CGC Scan más
+inteligente y eficiente». Es aditivo: el escaneo canónico y sus códigos de
+salida no cambian.
+
+### 19.1 Estado local por proyecto
+
+`internal/projectstate` guarda, bajo la caché y nunca dentro del proyecto:
+
+```text
+<cache>/cgc-scan/projects/<local_id>/
+  latest.json      report-1.1.0 más reciente
+  baseline.json    línea base
+  index.json       fingerprint -> {group, unit, engines, kind}
+  units/           resultado por unidad y motor
+  cache/units/     caché incremental con su clave
+```
+
+La unidad se infiere por la ruta más específica de `target.units`; ante empate,
+la unidad de módulo prevalece sobre la de repositorio. `scan` y `agent` guardan
+el estado; `status`, `plan`, `explain`, `verify` y `compare --baseline` lo leen.
+
+### 19.2 Grupos de remediación
+
+`internal/remediation` agrupa por unidad y componente:
+
+- dependencias: ecosistema + nombre; la versión objetivo es la mayor corregida
+  dentro del major actual si existe alternativa;
+- código: unidad + archivo + regla, con el recuento de ubicaciones;
+- secretos: una huella (credencial/ubicación) por grupo, porque la evidencia se
+  guarda enmascarada y no permite correlacionar valores iguales entre archivos;
+- configuración: unidad + archivo + regla.
+
+`breaking_risk` se calcula con un parser semver por ecosistema (Go con `/vN`,
+npm, Cargo, PEP 440 y Composer). `commands.apply` y `commands.override` son
+sugerencias `origin: cgc-scan`; la CLI **no las ejecuta**. Si la dependencia es
+transitiva, el reporte conserva `via` y propone un override o subir el padre.
+
+### 19.3 Prioridad explicable
+
+La puntuación es determinista (0–100) y sus factores se publican en
+`priority.factors`: severidad, KEV, bandas EPSS, alcanzabilidad, corrección
+disponible, dependencia directa y contexto de ruta. Los hallazgos en `test/`,
+`fixtures/` y `examples/` bajan 10 puntos; nunca se ocultan.
+
+### 19.4 Próximas acciones y one-shot
+
+`next_actions` ordena: recetas faltantes, grupos por prioridad, secretos que
+exigen al usuario y herramientas/bases ausentes (`install_toolchain`,
+`update_db`). `cgc-scan agent` ejecuta el pipeline completo una vez, crea la
+línea base si no existe y emite `agent-1.0.0` con `report_path`. `scan
+--format agent` emite el mismo documento sin crear línea base.
+
+### 19.5 Verify focalizado
+
+`verify <fingerprint|grupo>` resuelve unidad y motores desde `index.json` (con
+respaldo en `baseline.json` si el grupo ya se resolvió), reescanea solo ese
+alcance y fusiona el resultado en `latest.json` sin borrar los hallazgos de
+otras unidades. El resultado declara `resolved|persistent|partial` por huella y
+el delta. Un error del motor verificado deja de marcar la cobertura como
+parcial si ya no ocurre; un alcance restringido original se conserva.
+
+### 19.6 Caché incremental
+
+`internal/unitcache` calcula una clave con versión del motor, base, argumentos
+efectivos y el hash de:
+- manifiestos y lockfiles para motores de dependencias (`deps`);
+- árbol fuente para motores de código (`source`);
+- ambos más la base para Trivy (`full`).
+
+Los directorios intrínsecos no participan. El orquestador consulta la caché
+antes de invocar el motor y declara `hit|miss|mixed|disabled` en el reporte.
+`--no-cache` desactiva la consulta y la escritura.
+
+### 19.7 Bases y costes fijos
+
+`db.refresh_after` (12 h por defecto) reutiliza Trivy y el espejo de Go dentro
+del plazo sin red; `update-db` siempre actualiza. El espejo de Go compara el
+índice `modified` y descarga solo avisos nuevos o cambiados. Semgrep se ejecuta
+una vez sobre la unidad de repositorio, no una vez por módulo.
+
+govulncheck usa el `go` del `GOROOT` de la CLI y fija `GOPROXY=off`,
+`GOFLAGS=-mod=readonly` y `GOSUMDB=sum.golang.org`. El sumdb solo se consulta a
+través del proxy inválido del runner, de modo que un toolchain ya cacheado se
+verifica sin red y uno ausente falla de forma explícita. El repositorio de
+CGC Scan excluye `testdata/**` en su propio `cgc-scan.toml`: son fixtures
+deliberadamente vulnerables, la exclusión queda visible como cobertura parcial
+y las pruebas de integración los escanean directamente.
+
+### 19.8 Decisiones cerradas
+
+| ID | Decisión |
+| --- | --- |
+| D-19 | El one-shot se llama `cgc-scan agent`; `scan --format agent` existe para consumidores que ya escanearon. |
+| D-20 | La CLI no ejecuta recetas ni comandos de aplicación; `verify` reescanea y muestra comandos. |
+| D-21 | Los comandos de aplicación son sugerencias `origin: cgc-scan`. |
+| D-22 | `agent` crea la línea base en su primera ejecución; `baseline set|clear` permite control explícito. |
+| D-23 | `db.refresh_after` por defecto es 12 h. |
+| D-24 | `test/`, `fixtures/` y `examples/` bajan la prioridad, nunca ocultan el hallazgo. |
+
+## 20. Auditoría asistida (v1.2, aditivo)
+
+Esta sección registra el protocolo implementado en `internal/audit` y
+`cgc-scan audit`. Es aditivo: no cambia `scan`, `agent`, los adaptadores, los
+códigos de salida existentes ni el contrato `report-1.1.0`.
+
+### 20.1 Frontera del producto
+
+El motor **no caza ni verifica**. No llama a un modelo, no ejecuta código del
+proyecto y no contacta servicios externos. Su función es la del coordinador de un
+protocolo (el rol «parent» de una auditoría multiagente), no la de un agente:
+
+- construye un ledger de cobertura determinista desde `discovery` y `plan`;
+- reparte asignaciones de a una invocación y las contabiliza;
+- valida estructura, consistencia e independencia de lo que el agente entrega;
+- deriva `findings.json` y tres reportes Markdown solo de registros decididos.
+
+La evidencia y el juicio siguen siendo del agente llamador. `findings.json`
+declara `provenance.attested_by: caller` y `engine_verified: false`; el
+validador rechaza cualquier otro valor. Sin esa declaración el motor se
+arrogaría una autoridad que no tiene (riesgo E-02 de la evaluación).
+
+Esto respeta PRD §2.2, RF-11, CA-04, CA-05 y §6.6: no hay runtime de IA ni
+ejecución del objetivo. Un hallazgo que exige ejecución queda en
+`needs_validation` con un plan local acotado.
+
+### 20.2 Contratos
+
+| Contrato | Versión | Archivo |
+| --- | --- | --- |
+| Ledger de cobertura | `audit-ledger-1.0.0` | `schemas/audit-ledger.schema.json` |
+| Hallazgos | `findings-1.0.0` | `schemas/findings.schema.json` |
+| Asignación | `audit-task-1.0.0` | salida de `audit next` |
+| Entrega | `audit-submission-1.0.0` | entrada de `audit submit` |
+| Estado de verificación | interno | `candidates.json` |
+
+`report-1.1.0` y `agent-1.0.0` no se tocan. Los hallazgos del motor («el motor X
+dijo esto») y los de auditoría («un agente demostró esta falla de frontera») son
+universos distintos; mezclarlos obligaría a inventar severidad para lo que no la
+tiene.
+
+### 20.3 Máquina de estados
+
+```text
+unidad:    planned ──next──▶ in_progress ──submit──▶ covered
+                                             ├──▶ candidate ──(veredicto final)──▶ candidate
+                                             └──▶ blocked
+           planned ──presupuesto agotado──▶ deferred
+           selección de rutas ──▶ out_of_scope
+
+candidato: pending ──verify──▶ decided
+                    └──promoción──▶ escalation ──verified──▶ decided
+```
+
+Invariantes que el motor impone y prueba con tablas:
+
+1. `covered` exige dueño, rutas y checks; `candidate` exige además un
+   fingerprint; `blocked` exige un hecho no resuelto y ningún fingerprint.
+2. `unit.reviewed_paths` es exactamente la unión de los `reviewed_paths` de sus
+   checks; un check `local` exige artefacto y uno `source` no puede tenerlo.
+3. Un agente no verifica un candidato que cazó ni repite una verificación.
+4. Una promoción de veredicto exige un segundo verificador distinto; el registro
+   queda en `escalation` hasta que otro agente lo confirme.
+5. El presupuesto cuenta invocaciones; agotarlo difiere las unidades pendientes y
+   marca la corrida incompleta. Nunca se excede en silencio.
+6. `run_status: complete` exige que no queden unidades `planned` ni `in_progress`
+   y que todo candidato tenga disposición final.
+7. `findings.json` solo contiene registros `confirmed`, `needs_validation` o
+   `rejected` con su rama exacta; un `needs_validation` no lleva severidad.
+
+### 20.4 Catálogo de clases
+
+`internal/audit/catalog.json` es dato versionado, no lógica: lenguajes y
+extensiones, señales (`manifest`, `lockfile`, `ci`, `container`, `config`,
+`source`), límites de reconocimiento y clases con dominio, frontera, prioridad,
+invariante y checks. `audit init` recorre cada unidad con un tope de archivos,
+reconoce señales y crea una unidad de cobertura por clase aplicable. Una
+superficie fuera del catálogo se declara en `uncovered` y se convierte en unidad
+planificada.
+
+### 20.5 Reportes
+
+`audit report` deriva `REPORT.md`, `FINDINGS-DETAIL.md` y
+`NEEDS-VALIDATION.md` del ledger y de los registros decididos. La prosa nunca
+cambia un veredicto, una severidad ni un bloqueo. Una corrida incompleta se
+declara parcial en la primera sección y lista lo diferido o fuera de alcance.
+
+### 20.6 Decisiones cerradas
+
+| ID | Decisión |
+| --- | --- |
+| D-25 | La auditoría es un protocolo determinista; el motor no incorpora inferencia ni ejecuta el objetivo. |
+| D-26 | Los hallazgos de auditoría usan un contrato propio (`findings-1.0.0`); no se mezclan con `report-1.1.0`. |
+| D-27 | La procedencia se declara (`attested_by: caller`, `engine_verified: false`) y el validador la exige. |
+| D-28 | La verificación por defecto es de una pasada (semántica `quick`); solo la promoción de veredicto exige un segundo verificador. |
+| D-29 | `--prior` expone contexto entre corridas y nunca suprime unidades: una referencia de fuente no prueba que el código no cambió. |

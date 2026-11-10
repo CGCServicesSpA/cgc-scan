@@ -152,14 +152,28 @@ type Result struct {
 	Target            string             `json:"Target"`
 	Class             string             `json:"Class"`
 	Type              string             `json:"Type"`
+	Packages          []Package          `json:"Packages"`
 	Vulnerabilities   []Vulnerability    `json:"Vulnerabilities"`
 	Secrets           []Secret           `json:"Secrets"`
 	Misconfigurations []Misconfiguration `json:"Misconfigurations"`
 }
 
+// Package es un componente del grafo de dependencias que entrega Trivy.
+type Package struct {
+	ID           string   `json:"ID"`
+	Name         string   `json:"Name"`
+	Version      string   `json:"Version"`
+	Relationship string   `json:"Relationship"`
+	DependsOn    []string `json:"DependsOn"`
+	Identifier   struct {
+		PURL string `json:"PURL"`
+	} `json:"Identifier"`
+}
+
 // Vulnerability es una vulnerabilidad de dependencia.
 type Vulnerability struct {
 	VulnerabilityID  string          `json:"VulnerabilityID"`
+	PkgID            string          `json:"PkgID"`
 	PkgName          string          `json:"PkgName"`
 	InstalledVersion string          `json:"InstalledVersion"`
 	FixedVersion     string          `json:"FixedVersion"`
@@ -290,6 +304,18 @@ func (a *Adapter) vulnerability(r Result, path string, v Vulnerability) normaliz
 		Name:         v.PkgName,
 		Version:      v.InstalledVersion,
 		FixedVersion: stringPtr(v.FixedVersion),
+	}
+	if rel, via := packageRelationship(r.Packages, v); rel != "" {
+		f.Package.Relationship = rel
+		f.Package.Via = via
+		switch rel {
+		case "direct":
+			direct := true
+			f.Package.Direct = &direct
+		case "transitive":
+			direct := false
+			f.Package.Direct = &direct
+		}
 	}
 	f.AddLocation(normalize.Location{Path: path})
 	if v.PrimaryURL != "" {
@@ -513,3 +539,87 @@ func stringPtr(s string) *string {
 }
 
 func intPtr(i int) *int { return &i }
+
+// packageRelationship deduce si el paquete vulnerable es directo o transitivo
+// usando el grafo Packages de Trivy. Si la fuente no lo declara, devuelve
+// vacío: el reporte no inventa la relación.
+func packageRelationship(pkgs []Package, v Vulnerability) (relationship, via string) {
+	id := v.PkgID
+	if id == "" {
+		id = v.PkgName + "@" + v.InstalledVersion
+	}
+	var target *Package
+	byID := map[string]Package{}
+	var roots []Package
+	for i := range pkgs {
+		p := pkgs[i]
+		byID[p.ID] = p
+		if p.Name == "" {
+			p.Name = strings.SplitN(p.ID, "@", 2)[0]
+		}
+		if p.ID == id || (p.Name == v.PkgName && p.Version == v.InstalledVersion) {
+			cp := p
+			target = &cp
+		}
+		if p.Relationship == "root" {
+			roots = append(roots, p)
+		}
+	}
+	if target == nil {
+		return "", ""
+	}
+	switch target.Relationship {
+	case "direct":
+		return "direct", ""
+	case "root":
+		return "root", ""
+	case "transitive":
+		return "transitive", directAncestor(byID, roots, target.ID)
+	}
+	return "", ""
+}
+
+// directAncestor busca, desde las raíces, la primera dependencia directa que
+// alcanza el paquete objetivo.
+func directAncestor(byID map[string]Package, roots []Package, target string) string {
+	if len(roots) == 0 {
+		return ""
+	}
+	for _, root := range roots {
+		visited := map[string]bool{}
+		for _, childID := range root.DependsOn {
+			child := byID[childID]
+			childName := child.Name
+			if childName == "" {
+				childName = strings.SplitN(childID, "@", 2)[0]
+			}
+			if child.ID == "" {
+				child.ID = childID
+			}
+			if reaches(byID, childID, target, visited) {
+				return childName
+			}
+		}
+	}
+	return ""
+}
+
+func reaches(byID map[string]Package, from, target string, visited map[string]bool) bool {
+	if from == target {
+		return true
+	}
+	if visited[from] {
+		return false
+	}
+	visited[from] = true
+	p, ok := byID[from]
+	if !ok {
+		return false
+	}
+	for _, next := range p.DependsOn {
+		if reaches(byID, next, target, visited) {
+			return true
+		}
+	}
+	return false
+}

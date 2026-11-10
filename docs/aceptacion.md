@@ -1,6 +1,7 @@
 # Matriz de aceptación
 
-> Registro de la revisión de los criterios CA-01 a CA-58 del PRD (v0.10).
+> Registro de los criterios CA-01 a CA-72 (PRD v0.11 y criterios posteriores
+> al PRD, CA-59 a CA-69).
 > **Verificado** = hay una prueba automatizada o una ejecución real registrada.
 > **Parcial** = el mecanismo existe y está probado en parte, pero falta una
 > condición de entorno. **Pendiente** = no se puede cerrar sin un release real.
@@ -75,3 +76,22 @@ Los 58 criterios quedan verificados con pruebas automatizadas o ejecuciones
 reales registradas. El release RC `v0.1.0-rc.1` se usó para verificar firma,
 checksums, SBOM y procedencia. La prueba en máquinas limpias y la publicación de
 v1.0.0 dependen de H7-11 y H7-12.
+
+## Criterios v1.1 (modelo agéntico)
+
+| ID | Estado | Evidencia |
+| --- | --- | --- |
+| CA-59 | Verificado | `agent` emite `agent-1.0.0` válido, guarda `latest.json` y crea la línea base en la primera ejecución |
+| CA-60 | Verificado | El caso real `golang.org/x/text` produce un solo grupo con destino `v0.41.0` y 5 huellas |
+| CA-61 | Verificado | `breaking_risk`, comandos por ecosistema y `direct/via` se calculan sin inventar datos |
+| CA-62 | Verificado | `priority.score/rank/factors` es determinista; `test/fixtures/examples` bajan la prioridad sin ocultar |
+| CA-63 | Verificado | `status`, `plan`, `explain` y `compare --baseline` funcionan sin escanear |
+| CA-64 | Verificado | `verify` focaliza unidad y motores, fusiona el resultado y declara `resolved`/`persistent` |
+| CA-65 | Verificado | `--only`, `--engines` y `--changed` marcan cobertura parcial y nunca resuelven hallazgos ausentes |
+| CA-66 | Verificado | La caché por unidad/motor declara `hit/miss/mixed/disabled` y `--no-cache` la desactiva |
+| CA-67 | Verificado | `db.refresh_after` reutiliza bases dentro del plazo; el espejo de Go descarga solo avisos modificados |
+| CA-68 | Verificado | `--min-severity`, `--max-groups` y el truncamiento se declaran sin tocar el JSON canónico |
+| CA-69 | Verificado | `report-1.1.0` es aditivo: un documento 1.0.0 sigue validando |
+| CA-70 | Verificado | Con Docker real, govulncheck se ejecutó en `cgc-scan/toolchain:go-<versión>-govulncheck-1.9.0` con el proyecto en solo lectura; el reporte mostró `mode: docker`, `image` y `preparation toolchain:govulncheck` con el digest de la base. Probado también con ESLint, Psalm, cargo-audit y Bandit |
+| CA-71 | Verificado | `TestDetect*` cubre `go.mod`, `.nvmrc`/`engines.node`, `composer.json`, `Cargo.toml` y `pyproject.toml`; `TestDetectForRestrictsToAdapterLanguage` evita versiones cruzadas en unidades mixtas. Sin Docker se conserva el toolchain del host y `requirement_missing` |
+| CA-72 | Verificado | `--offline` reutilizó imagen y volumen de caché sin red; `TestEnsureToolchainImageRejectsInvalidVersion`, `TestDockerInvocationImageAndMounts` y `TestKeyIncludesImageButNotStagedMountSource` cubren validación, montajes, entorno y caché. El reporte declara `isolation: configured` y la limitación de red |
