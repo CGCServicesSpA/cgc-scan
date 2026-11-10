@@ -77,6 +77,8 @@ type auditStatusDocument struct {
 	Coverage      audit.Summary        `json:"coverage"`
 	Candidates    auditCandidateCounts `json:"candidates"`
 	Dir           string               `json:"dir"`
+	BlockedUnits  []string             `json:"blocked_units,omitempty"`
+	DeferredUnits []string             `json:"deferred_units,omitempty"`
 }
 
 type auditReportSummary struct {
@@ -114,8 +116,156 @@ presupuesto y deriva los reportes. La evidencia la aporta el agente.`,
 		a.newAuditResetUnitCommand(&out),
 		a.newAuditCompareCommand(&out),
 		a.newAuditImportCommand(&out),
+		a.newAuditExplainCommand(&out),
 	)
 	return cmd
+}
+
+func (a *App) newAuditExplainCommand(out *string) *cobra.Command {
+	var (
+		format      string
+		coverageID  string
+		fingerprint string
+	)
+	cmd := &cobra.Command{
+		Use:   "explain [ruta]",
+		Short: "Explica una unidad o un fingerprint: estado, historial y próximos requisitos",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := oneOf("format", format, "json", "text"); err != nil {
+				return err
+			}
+			if (coverageID == "") == (fingerprint == "") {
+				return UsageErrorf("--coverage-id o --fingerprint son obligatorios (uno de los dos)")
+			}
+			target := ""
+			if len(args) == 1 {
+				target = args[0]
+			}
+			return a.runAuditExplain(cmd.Context(), auditTarget(target), *out, format, coverageID, fingerprint)
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text")
+	cmd.Flags().StringVar(&coverageID, "coverage-id", "", "identificador de la unidad a explicar")
+	cmd.Flags().StringVar(&fingerprint, "fingerprint", "", "fingerprint del candidato a explicar (acepta prefijo si es inequívoco)")
+	return cmd
+}
+
+// runAuditExplain explica el estado persistido sin reescribir artefactos.
+func (a *App) runAuditExplain(ctx context.Context, target, out, format, coverageID, fingerprint string) error {
+	store, err := a.auditStore(target, out)
+	if err != nil {
+		return err
+	}
+	var st *audit.RunState
+	if err := store.WithSharedRunLock(ctx, auditLockWait, func() error {
+		st, err = store.LoadState()
+		return err
+	}); err != nil {
+		return IncompleteErrorf("%v", err)
+	}
+
+	var doc *auditExplainDocument
+	if coverageID != "" {
+		doc, err = explainUnit(st, coverageID)
+	} else {
+		doc, err = explainFingerprint(st, fingerprint)
+	}
+	if err != nil {
+		return UsageErrorf("%v", err)
+	}
+	if format == "json" {
+		payload, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		return report.EmitRaw(a.Stdout, append(payload, '\n'))
+	}
+	_, err = fmt.Fprint(a.Stdout, renderAuditExplain(doc))
+	return err
+}
+
+type auditExplainDocument struct {
+	SchemaVersion string           `json:"schema_version"`
+	Unit          *audit.Unit      `json:"unit,omitempty"`
+	Candidate     *audit.Candidate `json:"candidate,omitempty"`
+	NextSteps     []string         `json:"next_steps"`
+}
+
+func explainUnit(st *audit.RunState, coverageID string) (*auditExplainDocument, error) {
+	unit := st.Ledger.UnitByID(coverageID)
+	if unit == nil {
+		return nil, fmt.Errorf("coverage_id desconocido: %s", coverageID)
+	}
+	doc := &auditExplainDocument{SchemaVersion: "audit-explain-1.0.0", Unit: unit, NextSteps: []string{}}
+	switch unit.State {
+	case audit.StatePlanned:
+		doc.NextSteps = append(doc.NextSteps, "cgc-scan audit next asignará la unidad a un agente")
+	case audit.StateInProgress:
+		doc.NextSteps = append(doc.NextSteps, "el dueño entrega con audit submit; si abandonó, recupera la unidad con audit reset-unit")
+	case audit.StateCandidate:
+		doc.NextSteps = append(doc.NextSteps, "los candidatos declarados esperan verificación independiente")
+	case audit.StateCovered:
+		doc.NextSteps = append(doc.NextSteps, "cubierta; los candidatos decididos entran al informe al sellar")
+	case audit.StateBlocked:
+		doc.NextSteps = append(doc.NextSteps, "bloqueada por unresolved; la crítica de cobertura puede reasignarla")
+	case audit.StateDeferred:
+		doc.NextSteps = append(doc.NextSteps, "diferida: "+unit.Reason)
+	case audit.StateOutOfScope:
+		doc.NextSteps = append(doc.NextSteps, "fuera de alcance: "+unit.Reason)
+	}
+	return doc, nil
+}
+
+func explainFingerprint(st *audit.RunState, prefix string) (*auditExplainDocument, error) {
+	// El prefijo debe ser inequívoco: ambigüedades producen un error útil.
+	var matches []audit.Candidate
+	for _, cand := range st.Candidates.Items {
+		if cand.Fingerprint == prefix {
+			matches = []audit.Candidate{cand}
+			break
+		}
+		if strings.HasPrefix(cand.Fingerprint, prefix) {
+			matches = append(matches, cand)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("fingerprint desconocido: %s", prefix)
+	case 1:
+		return &auditExplainDocument{
+			SchemaVersion: "audit-explain-1.0.0",
+			Candidate:     &matches[0],
+			NextSteps:     explainCandidateSteps(&matches[0]),
+		}, nil
+	default:
+		var fps []string
+		for _, cand := range matches {
+			fps = append(fps, cand.Fingerprint)
+		}
+		return nil, fmt.Errorf("el prefijo %s es ambiguo: coincide con %s", prefix, strings.Join(fps, ", "))
+	}
+}
+
+func explainCandidateSteps(cand *audit.Candidate) []string {
+	steps := []string{}
+	switch cand.State {
+	case audit.CandidatePending:
+		if cand.AssignedTo != "" {
+			steps = append(steps, "asignada a "+cand.AssignedTo+": espera su verificación con audit submit")
+		} else {
+			steps = append(steps, "cgc-scan audit next asignará la verificación a un agente independiente")
+		}
+	case audit.CandidateEscalation:
+		steps = append(steps, "en escalación: el registro escalado exige un segundo verificador independiente")
+	case audit.CandidateReviewPending:
+		steps = append(steps, "el registro final espera la revisión independiente (segunda pasada)")
+	case audit.CandidateDecided:
+		steps = append(steps, "decidido; entra al informe al sellar con audit report")
+	case audit.CandidateDropped:
+		steps = append(steps, "descartado")
+	}
+	return steps
 }
 
 func (a *App) newAuditImportCommand(out *string) *cobra.Command {
@@ -964,6 +1114,14 @@ func (a *App) runAuditStatus(ctx context.Context, target, out, format string) er
 		d.Candidates.Escalation = escalation
 		d.Candidates.Decided = decided
 		d.Candidates.Review = review
+		for _, u := range ledger.Units {
+			switch u.State {
+			case audit.StateBlocked:
+				d.BlockedUnits = append(d.BlockedUnits, u.CoverageID)
+			case audit.StateDeferred:
+				d.DeferredUnits = append(d.DeferredUnits, u.CoverageID)
+			}
+		}
 		doc = &d
 		return nil
 	}); err != nil {
@@ -1055,11 +1213,26 @@ func renderAuditTask(t *audit.Task) string {
 			if u.Class.Invariant != "" {
 				fmt.Fprintf(&b, "    invariante: %s\n", u.Class.Invariant)
 			}
+			if len(u.Class.Checks) > 0 {
+				fmt.Fprintf(&b, "    checks de la clase:\n")
+				for _, c := range u.Class.Checks {
+					fmt.Fprintf(&b, "      - %s\n", c)
+				}
+			}
 		}
+		b.WriteString("  Contrato de respuesta: audit-submission-1.0.0 con units, checks y, si cazaste superficies fuera de tu asignación, uncovered (usa --format prompt para la plantilla completa).\n")
+	case "critique":
+		fmt.Fprintf(&b, "Crítica de cobertura para %s\n", t.AgentID)
+		b.WriteString("  Contrato de respuesta: audit-submission-1.0.0 con critique (missing_units, reassign_ids, resolved_prior_leads, stop, reason).\n")
 	default:
 		if t.Candidate != nil {
 			fmt.Fprintf(&b, "Verificación %s para %s: candidato %s\n", t.Kind, t.AgentID, t.Candidate.Fingerprint)
-			fmt.Fprintf(&b, "  unidad: %s\n  título: %s\n", t.Candidate.Unit, t.Candidate.Proposed.Title)
+			fmt.Fprintf(&b, "  unidad: %s\n  título: %s\n  propuesta: %s\n",
+				t.Candidate.Unit, t.Candidate.Proposed.Title, t.Candidate.Proposed.Verdict)
+			if t.Candidate.Final != nil {
+				fmt.Fprintf(&b, "  registro final a revisar: %s\n", t.Candidate.Final.Verdict)
+			}
+			b.WriteString("  Contrato de respuesta: audit-submission-1.0.0 con verification {fingerprint, decision, record}.\n")
 		}
 	}
 	if t.Budget != nil {
@@ -1090,6 +1263,63 @@ func renderSubmitOutcome(o *audit.SubmitOutcome) string {
 	return b.String()
 }
 
+// renderAuditExplain muestra el estado persistido de una unidad o candidato.
+func renderAuditExplain(doc *auditExplainDocument) string {
+	var b strings.Builder
+	if doc.Unit != nil {
+		u := doc.Unit
+		fmt.Fprintf(&b, "Unidad %s [%s] estado %s\n", u.CoverageID, u.AttackClass, u.State)
+		fmt.Fprintf(&b, "  dueño: %s · ola: %d · rutas: %s\n", orDash(u.Owner), u.Wave, strings.Join(u.StartingPaths, ", "))
+		if len(u.Checks) > 0 {
+			fmt.Fprintf(&b, "  checks:\n")
+			for _, c := range u.Checks {
+				fmt.Fprintf(&b, "    [%s] %s → %s\n", c.AgentID, c.Invariant, c.Result)
+			}
+		}
+		if len(u.Candidates) > 0 {
+			fmt.Fprintf(&b, "  candidatos: %s\n", strings.Join(u.Candidates, ", "))
+		}
+		for _, a := range u.Attempts {
+			fmt.Fprintf(&b, "  intento archivado: ola %d [%s] %s — %s\n", a.Wave, a.AgentID, a.State, a.Reason)
+		}
+	}
+	if doc.Candidate != nil {
+		c := doc.Candidate
+		fmt.Fprintf(&b, "Candidato %s (unidad %s) estado %s\n", c.Fingerprint, c.Unit, c.State)
+		fmt.Fprintf(&b, "  cazador: %s · propuesta: %s\n", c.HunterAgent, c.Proposed.Verdict)
+		if c.AssignedTo != "" {
+			fmt.Fprintf(&b, "  asignado a: %s\n", c.AssignedTo)
+		}
+		for _, a := range c.Attempts {
+			at := fmt.Sprintf("  verificación [%s] %s: %s", a.AgentID, a.Mode, a.Decision)
+			if a.Record != nil {
+				at += " (" + a.Record.Verdict + ")"
+			}
+			b.WriteString(at + "\n")
+		}
+		if c.Escalated != nil {
+			fmt.Fprintf(&b, "  escalado: %s\n", c.Escalated.Verdict)
+		}
+		if c.Final != nil {
+			fmt.Fprintf(&b, "  final: %s\n", c.Final.Verdict)
+		}
+	}
+	fmt.Fprintf(&b, "Próximos pasos:\n")
+	for _, s := range doc.NextSteps {
+		fmt.Fprintf(&b, "  - %s\n", s)
+	}
+	return b.String()
+}
+
+func orDash(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "-"
+	}
+	return s
+}
+
+// renderAuditStatus muestra el estado persistido de la corrida con las listas
+// de unidades bloqueadas y diferidas.
 func renderAuditStatus(doc auditStatusDocument) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Auditoría %s: %s (%s)\n", doc.Run.ID, doc.Status, doc.Profile)
@@ -1099,6 +1329,12 @@ func renderAuditStatus(doc auditStatusDocument) string {
 	fmt.Fprintf(&b, "Unidades: %d; cubiertas %d, con candidato %d, bloqueadas %d, diferidas %d, fuera de alcance %d\n",
 		doc.Coverage.UnitsTotal, doc.Coverage.Covered, doc.Coverage.Candidate,
 		doc.Coverage.Blocked, doc.Coverage.Deferred, doc.Coverage.OutOfScope)
+	if len(doc.BlockedUnits) > 0 {
+		fmt.Fprintf(&b, "Bloqueadas: %s\n", strings.Join(doc.BlockedUnits, ", "))
+	}
+	if len(doc.DeferredUnits) > 0 {
+		fmt.Fprintf(&b, "Diferidas: %s\n", strings.Join(doc.DeferredUnits, ", "))
+	}
 	fmt.Fprintf(&b, "Candidatos: %d pendientes, %d en escalación, %d decididos, %d en revisión final\n",
 		doc.Candidates.Pending, doc.Candidates.Escalation, doc.Candidates.Decided, doc.Candidates.Review)
 	if doc.Budget != nil {
