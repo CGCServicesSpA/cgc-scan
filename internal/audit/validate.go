@@ -130,6 +130,11 @@ func ValidateLedgerSemantics(l *Ledger) error {
 			if u.State == StateOutOfScope && p == "." {
 				continue
 			}
+			// Los leads importados del motor pueden partir de todo el árbol:
+			// el hallazgo no está anclado a una ruta concreta.
+			if p == "." && u.Domain == "import" {
+				continue
+			}
 			if !ValidRepoPath(p) {
 				is.addf("%s: starting_paths contiene una ruta no relativa al repositorio: %q", where, p)
 			}

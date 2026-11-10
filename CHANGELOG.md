@@ -2,6 +2,14 @@
 
 ## Sin publicar
 
+- Nuevo `audit import --file <reporte.json>`: importa los hallazgos de un
+  escaneo (`scan`/`agent`, contrato 1.1.0) como leads pendientes de caza.
+  Ningún hallazgo importado aparece automáticamente como confirmado: el
+  veredicto `needs_validation` se emite únicamente cuando su contrato se
+  satisface (bloqueos y plan del motor), la severidad del motor nunca se
+  convierte en severidad auditada y los datos originales se archivan
+  separados del veredicto. Importar dos veces produce el mismo trabajo
+  pendiente.
 - **Integridad verificable del informe**: `audit report --verify` verifica el
   HMAC-SHA256 del ledger y los hallazgos sellados sin reescribir nada, con una
   clave local dedicada de almacenamiento privado (0600) que nunca aparece en

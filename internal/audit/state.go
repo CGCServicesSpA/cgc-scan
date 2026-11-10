@@ -34,6 +34,9 @@ type RunState struct {
 	// Integrity es el HMAC sellado del informe; excluido del contenido
 	// autenticado.
 	Integrity *ReportIntegrity `json:"integrity,omitempty"`
+	// ImportedLeads archiva los hallazgos originales de los motores
+	// importados, separados del veredicto de auditoría.
+	ImportedLeads []ImportedLead `json:"imported_leads,omitempty"`
 }
 
 // Normalize completa el estado: versiones, slices, resúmenes derivados y, si

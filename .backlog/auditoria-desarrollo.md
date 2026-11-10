@@ -401,15 +401,13 @@ Aceptación y pruebas:
 
 ## P2-1 — Importación de leads desde `scan` y `agent`
 
-**Estado:** pendiente. **Dependencias:** P1-6 y P1-7. **Estimación:** 4 días.
+**Estado:** completada. **Dependencias:** P1-6 y P1-7. **Estimación:** 4 días.
 
-Trabajo:
-
-- Definir contrato de importación y procedencia.
-- Mapear hallazgos a unidades como leads pendientes de caza.
-- Deduplicar importaciones repetidas.
-- Conservar datos originales separados del veredicto de auditoría.
-- Emitir `needs_validation` únicamente cuando se satisfaga su contrato.
+**Decisión tomada:** cada hallazgo no suprimido se convierte en unidad lead
+planificada (`import/<unidad-del-motor>/<fingerprint>`); el veredicto
+`needs_validation` se emite solo cuando el motor aporta bloqueos
+(`verification.missing`) y plan (`verification.rescan`). Los datos originales
+se archivan en `state.json` (`imported_leads`), separados del veredicto.
 
 Aceptación y pruebas:
 

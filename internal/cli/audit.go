@@ -113,8 +113,87 @@ presupuesto y deriva los reportes. La evidencia la aporta el agente.`,
 		a.newAuditStatusCommand(&out),
 		a.newAuditResetUnitCommand(&out),
 		a.newAuditCompareCommand(&out),
+		a.newAuditImportCommand(&out),
 	)
 	return cmd
+}
+
+func (a *App) newAuditImportCommand(out *string) *cobra.Command {
+	var (
+		format string
+		file   string
+	)
+	cmd := &cobra.Command{
+		Use:   "import [ruta]",
+		Short: "Importa los hallazgos de un reporte de escaneo como leads pendientes de caza",
+		Args:  cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := oneOf("format", format, "json", "text"); err != nil {
+				return err
+			}
+			if file == "" {
+				return UsageErrorf("--file es obligatorio")
+			}
+			target := ""
+			if len(args) == 1 {
+				target = args[0]
+			}
+			return a.runAuditImport(cmd.Context(), auditTarget(target), *out, format, file)
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text")
+	cmd.Flags().StringVar(&file, "file", "", "archivo del reporte de escaneo (JSON)")
+	return cmd
+}
+
+// runAuditImport importa leads de un reporte de escaneo: ningún hallazgo
+// importado aparece como confirmado y la severidad del motor nunca se
+// convierte en severidad auditada.
+func (a *App) runAuditImport(ctx context.Context, target, out, format, file string) error {
+	data, err := readBoundedJSON(file)
+	if err != nil {
+		return UsageErrorf("%v", err)
+	}
+	if err := report.Validate(data); err != nil {
+		return UsageErrorf("%v", err)
+	}
+	doc, err := report.Decode(data)
+	if err != nil {
+		return UsageErrorf("%v", err)
+	}
+	store, err := a.auditStore(auditTarget(target), out)
+	if err != nil {
+		return err
+	}
+	var result *audit.ImportOutcome
+	if err := store.WithRunLock(ctx, auditLockWait, func() error {
+		st, err := store.LoadState()
+		if err != nil {
+			return err
+		}
+		var leads []audit.ImportedLead
+		result, leads, err = audit.ImportLeads(st.Ledger, st.Candidates, doc)
+		if err != nil {
+			return err
+		}
+		st.ImportedLeads = append(st.ImportedLeads, leads...)
+		return store.CommitState(st)
+	}); err != nil {
+		return IncompleteErrorf("%v", err)
+	}
+	if format == "json" {
+		payload, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		return report.EmitRaw(a.Stdout, append(payload, '\n'))
+	}
+	_, err = fmt.Fprintf(a.Stdout, "Importación aplicada: %d unidad(es) lead, %d veredicto(s) propuesto(s), %d omitido(s)\n",
+		len(result.AddedUnits), len(result.Proposed), len(result.Skipped))
+	for _, name := range result.AddedUnits {
+		fmt.Fprintf(a.Stdout, "  unidad lead: %s\n", name)
+	}
+	return err
 }
 
 func (a *App) newAuditCompareCommand(out *string) *cobra.Command {
@@ -899,6 +978,28 @@ func (a *App) runAuditStatus(ctx context.Context, target, out, format string) er
 	}
 	_, err = fmt.Fprint(a.Stdout, renderAuditStatus(*doc))
 	return err
+}
+
+// readBoundedJSON lee un archivo JSON de forma acotada: el archivo se recorta
+// antes de validarlo, no se lee completo para comprobar su tamaño después.
+func readBoundedJSON(file string) ([]byte, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	const limit = 32 << 20
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("leer %s: %w", file, err)
+	}
+	if len(data) > limit {
+		return nil, fmt.Errorf("%s supera el límite de %d bytes", file, limit)
+	}
+	if !json.Valid(data) {
+		return nil, fmt.Errorf("%s no es JSON válido", file)
+	}
+	return data, nil
 }
 
 func readSubmission(stdin io.Reader, file string) ([]byte, error) {

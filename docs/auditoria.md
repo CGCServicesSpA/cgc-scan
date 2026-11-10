@@ -376,6 +376,26 @@ nunca aparece en informes, logs ni paquetes.
 - **Qué prueba el HMAC:** que el contenido sellado no cambió. No prueba la
   verdad del hallazgo ni protege frente a quien posea la clave.
 
+## Importación de leads desde el escaneo
+
+`audit import [ruta] --file <reporte.json>` importa los hallazgos de un
+escaneo (`scan`/`agent`, contrato `1.1.0`) como **leads pendientes de caza**:
+
+- Cada hallazgo no suprimido se convierte en una unidad planificada dedicada
+  (`import/<unidad-del-motor>/<fingerprint>`, dominio `import`).
+- El veredicto `needs_validation` se emite **únicamente cuando su contrato se
+  satisface**: bloqueos reales del motor (`verification.missing`) y un plan de
+  validación (`verification.rescan`). Sin contrato satisfacible, el hallazgo
+  queda como lead sin veredicto.
+- **Ningún hallazgo importado aparece automáticamente como confirmado**; la
+  severidad y prioridad del motor nunca se convierten en severidad auditada
+  (un `needs_validation` no lleva severidad).
+- Los datos originales del hallazgo se archivan separados del veredicto
+  (`imported_leads` en `state.json`, con el procedimiento y motor de origen).
+- Importar dos veces produce el mismo trabajo pendiente: unidades y veredictos
+  se deduplican por fingerprint. Entradas incompatibles se rechazan sin dejar
+  estado parcial.
+
 ## Consolidación por causa raíz
 
 Dos variantes comprobadas del mismo defecto se consolidan en un registro. La
