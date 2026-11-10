@@ -765,23 +765,29 @@ func (a *App) runAuditStatus(ctx context.Context, target, out, format string) er
 }
 
 func readSubmission(stdin io.Reader, file string) ([]byte, error) {
-	const limit = 8 << 20
 	if file == "-" {
-		data, err := io.ReadAll(io.LimitReader(stdin, limit+1))
+		data, err := io.ReadAll(io.LimitReader(stdin, audit.MaxSubmissionBytes+1))
 		if err != nil {
 			return nil, fmt.Errorf("leer entrada estándar: %w", err)
 		}
-		if len(data) > limit {
-			return nil, fmt.Errorf("la entrega supera el límite de %d bytes", limit)
+		if len(data) > audit.MaxSubmissionBytes {
+			return nil, fmt.Errorf("la entrega supera el límite de %d bytes", audit.MaxSubmissionBytes)
 		}
 		return data, nil
 	}
-	data, err := os.ReadFile(file)
+	// Lectura acotada: el archivo se recorta antes de validarlo, no se lee
+	// completo para después comprobar su tamaño.
+	f, err := os.Open(file)
 	if err != nil {
 		return nil, fmt.Errorf("leer entrega: %w", err)
 	}
-	if len(data) > limit {
-		return nil, fmt.Errorf("la entrega supera el límite de %d bytes", limit)
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, audit.MaxSubmissionBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("leer entrega: %w", err)
+	}
+	if len(data) > audit.MaxSubmissionBytes {
+		return nil, fmt.Errorf("la entrega supera el límite de %d bytes", audit.MaxSubmissionBytes)
 	}
 	return data, nil
 }

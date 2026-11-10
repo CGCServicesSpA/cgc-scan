@@ -78,6 +78,12 @@ jobs:
         run: |
           go test ./internal/masking -run=^$ -fuzz=FuzzSanitize -fuzztime=20s
           go test ./internal/masking -run=^$ -fuzz=FuzzRedact -fuzztime=20s
+      - name: Decodificadores de auditoría
+        run: |
+          go test ./internal/audit -run=^$ -fuzz=FuzzDecodeLedger -fuzztime=20s
+          go test ./internal/audit -run=^$ -fuzz=FuzzDecodeFindings -fuzztime=20s
+          go test ./internal/audit -run=^$ -fuzz=FuzzDecodeSubmission -fuzztime=20s
+          go test ./internal/audit -run=^$ -fuzz=FuzzDecodeCandidates -fuzztime=20s
 
   build-matrix:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}

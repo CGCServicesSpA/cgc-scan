@@ -123,7 +123,7 @@ func (s *Store) SaveLedger(l *Ledger) error {
 
 // LoadLedger lee y valida el ledger.
 func (s *Store) LoadLedger() (*Ledger, error) {
-	data, err := platform.ReadFileBounded(s.LedgerPath(), 16<<20)
+	data, err := platform.ReadFileBounded(s.LedgerPath(), ledgerReadLimit)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNoAudit
@@ -159,7 +159,7 @@ func (s *Store) SaveCandidates(l *Ledger, c *Candidates) error {
 // LoadCandidates lee el estado de verificación y lo valida contra el ledger.
 // Una carga fallida no modifica ningún archivo.
 func (s *Store) LoadCandidates(l *Ledger) (*Candidates, error) {
-	data, err := platform.ReadFileBounded(s.CandidatesPath(), 16<<20)
+	data, err := platform.ReadFileBounded(s.CandidatesPath(), candidatesReadLimit)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNoCandidates
@@ -184,7 +184,7 @@ func (s *Store) SaveFindings(f *Findings) error {
 
 // LoadFindings lee y valida el documento de hallazgos.
 func (s *Store) LoadFindings() (*Findings, error) {
-	data, err := platform.ReadFileBounded(s.FindingsPath(), 32<<20)
+	data, err := platform.ReadFileBounded(s.FindingsPath(), findingsReadLimit)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNoAudit

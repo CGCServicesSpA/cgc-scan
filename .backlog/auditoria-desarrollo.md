@@ -152,9 +152,7 @@ Aceptación y pruebas:
 
 ## P0-6 — Límites y fuzzing de entradas públicas
 
-**Estado:** pendiente. **Dependencias:** P0-5. **Estimación:** 2 días.
-
-**Archivos:** `internal/audit/schema.go`, `internal/audit/*_fuzz_test.go`, `internal/cli/audit.go`, CI.
+**Estado:** completada. **Dependencias:** P0-5. **Estimación:** 2 días.
 
 Trabajo:
 

@@ -458,8 +458,14 @@ func decodeStrict(data []byte, v any) error {
 // DecodeSubmission lee y decodifica una entrega, rechazando campos
 // desconocidos y contenido posterior al objeto.
 func DecodeSubmission(data []byte) (*Submission, error) {
+	if err := checkSize(data, MaxSubmissionBytes, "la entrega"); err != nil {
+		return nil, err
+	}
 	if !json.Valid(data) {
 		return nil, errors.New("la entrega no es JSON válido")
+	}
+	if err := checkJSONDepth(data, MaxJSONDepth); err != nil {
+		return nil, fmt.Errorf("entrega inválida: %w", err)
 	}
 	var s Submission
 	if err := decodeStrict(data, &s); err != nil {
@@ -468,6 +474,22 @@ func DecodeSubmission(data []byte) (*Submission, error) {
 	if s.SchemaVersion != SubmissionSchemaVersion {
 		return nil, fmt.Errorf("entrega con schema_version %q, se esperaba %q", s.SchemaVersion, SubmissionSchemaVersion)
 	}
+	for i := range s.Candidates {
+		switch s.Candidates[i].Verdict {
+		case VerdictConfirmed, VerdictNeedsValidation, VerdictRejected:
+		default:
+			return nil, fmt.Errorf("entrega inválida: el candidato %d declara el veredicto desconocido %q",
+				i, s.Candidates[i].Verdict)
+		}
+	}
+	if s.Verification != nil && s.Verification.Record != nil {
+		switch s.Verification.Record.Verdict {
+		case VerdictConfirmed, VerdictNeedsValidation, VerdictRejected:
+		default:
+			return nil, fmt.Errorf("entrega inválida: la verificación declara el veredicto desconocido %q",
+				s.Verification.Record.Verdict)
+		}
+	}
 	return &s, nil
 }
 
@@ -475,8 +497,14 @@ func DecodeSubmission(data []byte) (*Submission, error) {
 // campos desconocidos y contenido posterior al objeto. No valida la coherencia
 // con el ledger: para eso está ValidateCandidates.
 func DecodeCandidates(data []byte) (*Candidates, error) {
+	if err := checkSize(data, MaxCandidatesBytes, "el estado de verificación"); err != nil {
+		return nil, err
+	}
 	if !json.Valid(data) {
 		return nil, errors.New("el estado de verificación no es JSON válido")
+	}
+	if err := checkJSONDepth(data, MaxJSONDepth); err != nil {
+		return nil, fmt.Errorf("estado de verificación inválido: %w", err)
 	}
 	var c Candidates
 	if err := decodeStrict(data, &c); err != nil {
@@ -484,6 +512,31 @@ func DecodeCandidates(data []byte) (*Candidates, error) {
 	}
 	if c.SchemaVersion != CandidatesSchemaVersion {
 		return nil, fmt.Errorf("estado de verificación con esquema %q, se esperaba %q", c.SchemaVersion, CandidatesSchemaVersion)
+	}
+	for i := range c.Items {
+		cand := &c.Items[i]
+		where := fmt.Sprintf("candidato %q", cand.Fingerprint)
+		for _, r := range []*Record{&cand.Proposed, cand.Escalated, cand.Final} {
+			if r == nil {
+				continue
+			}
+			switch r.Verdict {
+			case VerdictConfirmed, VerdictNeedsValidation, VerdictRejected:
+			default:
+				return nil, fmt.Errorf("estado de verificación inválido: %s con veredicto desconocido %q", where, r.Verdict)
+			}
+		}
+		for j, a := range cand.Attempts {
+			if a.Record == nil {
+				continue
+			}
+			switch a.Record.Verdict {
+			case VerdictConfirmed, VerdictNeedsValidation, VerdictRejected:
+			default:
+				return nil, fmt.Errorf("estado de verificación inválido: %s attempt[%d] con veredicto desconocido %q",
+					where, j, a.Record.Verdict)
+			}
+		}
 	}
 	c.Normalize()
 	return &c, nil

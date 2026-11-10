@@ -92,8 +92,14 @@ func validateAgainst(data []byte, schemaFn func() (*jsonschema.Schema, error), m
 
 // DecodeLedger valida y decodifica un ledger.
 func DecodeLedger(data []byte) (*Ledger, error) {
+	if err := checkSize(data, MaxLedgerBytes, "el ledger"); err != nil {
+		return nil, err
+	}
 	if err := ValidateLedger(data); err != nil {
 		return nil, err
+	}
+	if err := checkJSONDepth(data, MaxJSONDepth); err != nil {
+		return nil, fmt.Errorf("ledger inválido: %w", err)
 	}
 	var l Ledger
 	if err := json.Unmarshal(data, &l); err != nil {
@@ -104,8 +110,14 @@ func DecodeLedger(data []byte) (*Ledger, error) {
 
 // DecodeFindings valida y decodifica el documento de hallazgos.
 func DecodeFindings(data []byte) (*Findings, error) {
+	if err := checkSize(data, MaxFindingsBytes, "los hallazgos"); err != nil {
+		return nil, err
+	}
 	if err := ValidateFindings(data); err != nil {
 		return nil, err
+	}
+	if err := checkJSONDepth(data, MaxJSONDepth); err != nil {
+		return nil, fmt.Errorf("hallazgos inválidos: %w", err)
 	}
 	var f Findings
 	if err := json.Unmarshal(data, &f); err != nil {

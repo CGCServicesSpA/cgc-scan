@@ -2,6 +2,14 @@
 
 ## Sin publicar
 
+- `audit` acota sus entradas públicas: la entrega 8 MiB, el ledger y el estado
+  de verificación 16 MiB, los hallazgos 32 MiB y 64 niveles de anidamiento
+  JSON, con límites aplicados por los decodificadores y lectura de archivos
+  acotada. Los cuatro decodificadores (`DecodeLedger`, `DecodeFindings`,
+  `DecodeSubmission`, `DecodeCandidates`) tienen fuzz targets con semillas
+  válidas, truncadas, sobredimensionadas y anidadas; CI los corre 20 segundos
+  cada uno. El fuzzing ya destapó y corrigió entregas y estados con
+  veredictos desconocidos que no podían serializarse.
 - `audit` valida las citas (`trace` y `evidence`) contra la fuente declarada
   por la corrida y la representa explícitamente: modo `revision` (snapshot de
   Git con árbol limpio; las citas se resuelven contra los blobs y siguen

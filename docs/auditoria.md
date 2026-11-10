@@ -241,6 +241,28 @@ cambió.
 
 ## Límites declarados
 
+Tamaños y anidamiento de las entradas públicas (`internal/audit/limits.go`),
+aplicados por los decodificadores y por la lectura del store:
+
+| Entrada | Límite |
+| --- | --- |
+| entrega (`audit submit --file`) | 8 MiB |
+| `ledger.json` | 16 MiB |
+| `candidates.json` | 16 MiB |
+| `findings.json` | 32 MiB |
+| `state.json` | 64 MiB (suma de los anteriores) |
+| anidamiento JSON | 64 niveles |
+
+Un documento que supera el límite se rechaza antes de decodificarse; la
+lectura de archivos es acotada (no se carga el documento completo para
+comprobar su tamaño después). Un objeto o arreglo más profundo que el límite
+se rechaza con error explícito. Los cuatro decodificadores públicos tienen
+fuzz targets (`DecodeLedger`, `DecodeFindings`, `DecodeSubmission`,
+`DecodeCandidates`) que CI corre 20 segundos cada uno; las semillas válidas,
+truncadas, sobredimensionadas y anidadas forman parte del corpus.
+
+Además:
+
 - En esta versión el perfil es **declarativo**: queda registrado en el ledger y
   en el informe, pero no altera el reparto ni el listón de evidencia.
 - Una corrida por defecto usa semántica `quick`: la verificación de candidato y

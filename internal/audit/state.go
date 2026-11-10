@@ -98,8 +98,14 @@ func ValidateRunState(st *RunState) error {
 // DecodeRunState lee y decodifica el estado autoritativo, rechazando campos
 // desconocidos y contenido posterior al objeto.
 func DecodeRunState(data []byte) (*RunState, error) {
+	if err := checkSize(data, MaxRunStateBytes, "el estado de la corrida"); err != nil {
+		return nil, err
+	}
 	if !json.Valid(data) {
 		return nil, errors.New("el estado de la corrida no es JSON válido")
+	}
+	if err := checkJSONDepth(data, MaxJSONDepth); err != nil {
+		return nil, fmt.Errorf("estado de la corrida inválido: %w", err)
 	}
 	var st RunState
 	if err := decodeStrict(data, &st); err != nil {
@@ -118,9 +124,13 @@ func (s *Store) StatePath() string { return s.ArtifactPath(StateFilename) }
 // StateFilename es el nombre del archivo de estado autoritativo.
 const StateFilename = "state.json"
 
-// Límite de lectura del estado: contiene ledger (16 MiB) y candidatos (16 MiB)
-// más, si la corrida se selló, hallazgos (32 MiB).
-const stateReadLimit = 64 << 20
+// Límites de lectura del store: ledger y estado de verificación 16 MiB,
+// hallazgos 32 MiB, estado autoritativo la suma de los tres.
+const (
+	ledgerReadLimit     = MaxLedgerBytes
+	candidatesReadLimit = MaxCandidatesBytes
+	findingsReadLimit   = MaxFindingsBytes
+)
 
 // LoadState devuelve el estado autoritativo de la corrida. Si el directorio
 // solo tiene el formato heredado de dos archivos, lo carga de forma explícita
@@ -128,7 +138,7 @@ const stateReadLimit = 64 << 20
 // inconsistente se rechaza: nunca se reinterpreta silenciosamente un estado
 // antiguo.
 func (s *Store) LoadState() (*RunState, error) {
-	data, err := platform.ReadFileBounded(s.StatePath(), stateReadLimit)
+	data, err := platform.ReadFileBounded(s.StatePath(), MaxRunStateBytes)
 	switch {
 	case err == nil:
 		st, err := DecodeRunState(data)
