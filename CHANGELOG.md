@@ -2,6 +2,13 @@
 
 ## Sin publicar
 
+- `--out` de `audit` verifica el destino antes de crear artefactos y
+  **rechaza** los internos al repositorio que Git no ignora: la evidencia de
+  una corrida no contamina el árbol del proyecto. En proyectos sin Git el
+  destino interno se rechaza porque la exclusión no se puede verificar; un
+  enlace simbólico que apunta fuera se resuelve como destino externo; un
+  rechazo no deja una corrida parcial y la comprobación no modifica
+  `.gitignore`.
 - Nuevo `audit report --fail-on <umbral>` para CI: `confirmed`,
   `needs_validation` o una severidad auditada de la escala del contrato. La
   precedencia centralizada sitúa la corrida incompleta (3) antes del umbral

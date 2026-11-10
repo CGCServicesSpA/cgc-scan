@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -674,6 +675,11 @@ func auditTarget(target string) string {
 
 func (a *App) auditStore(target, out string) (*audit.Store, error) {
 	if out != "" {
+		// La comprobación corre antes de resolver el store: un rechazo no
+		// deja una corrida parcial ni crea artefactos.
+		if err := checkOutDestination(target, out); err != nil {
+			return nil, UsageErrorf("%v", err)
+		}
 		store, err := audit.OpenStore(out)
 		if err != nil {
 			return nil, UsageErrorf("%v", err)
@@ -689,6 +695,84 @@ func (a *App) auditStore(target, out string) (*audit.Store, error) {
 		return nil, IncompleteErrorf("%v", err)
 	}
 	return s, nil
+}
+
+// checkOutDestination resuelve el destino --out y rechaza los internos al
+// repositorio que Git no ignora: la evidencia de una corrida no contamina el
+// árbol del proyecto. Decisión de producto: se rechaza (no se advierte), y en
+// proyectos sin Git se rechaza el destino interno porque la exclusión no se
+// puede verificar. La comprobación no modifica .gitignore.
+func checkOutDestination(target, out string) error {
+	if strings.TrimSpace(out) == "" {
+		return nil
+	}
+	absOut, err := filepath.Abs(out)
+	if err != nil {
+		return fmt.Errorf("resolver --out: %w", err)
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolver la ruta objetivo: %w", err)
+	}
+	// Resolver enlaces simbólicos: el destino nuevo no existe, así que se
+	// resuelve el ancestro existente más cercano.
+	resolved := absOut
+	if r, evalErr := filepath.EvalSymlinks(absOut); evalErr == nil {
+		resolved = r
+	} else {
+		dir := filepath.Dir(absOut)
+		for dir != filepath.Dir(dir) {
+			if r, evalErr := filepath.EvalSymlinks(dir); evalErr == nil {
+				resolved = filepath.Join(r, filepath.Base(absOut))
+				break
+			}
+			dir = filepath.Dir(dir)
+		}
+	}
+	inside := resolved != absTarget && strings.HasPrefix(resolved, absTarget+string(filepath.Separator))
+	if !inside {
+		// La raíz objetivo también se resuelve: en macOS /var es un enlace a
+		// /private/var.
+		if r, evalErr := filepath.EvalSymlinks(absTarget); evalErr == nil {
+			inside = resolved != r && strings.HasPrefix(resolved, r+string(filepath.Separator))
+		}
+	}
+	if !inside {
+		return nil // destino externo: permitido
+	}
+	rel, err := filepath.Rel(absTarget, absOut)
+	if err != nil {
+		return fmt.Errorf("--out: %w", err)
+	}
+	// git check-ignore: 0 ignorado, 1 visible, 128 sin repositorio. El
+	// destino nuevo no existe, así que se comprueba primero como directorio
+	// (barra final) y luego como archivo.
+	err = runCheckIgnore(absTarget, rel+"/")
+	if err != nil && commandExitCode(err) == 1 {
+		err = runCheckIgnore(absTarget, rel)
+	}
+	switch {
+	case err == nil:
+		return nil // interno pero efectivamente ignorado por Git
+	case commandExitCode(err) == 1:
+		return fmt.Errorf("--out %s está dentro del repositorio y Git no lo ignora: la corrida escribiría evidencia en el árbol del proyecto; usa un directorio externo o uno ignorado", out)
+	default:
+		return fmt.Errorf("--out %s está dentro del proyecto y sin repositorio de Git no se puede verificar su exclusión: usa un directorio externo", out)
+	}
+}
+
+// runCheckIgnore ejecuta git check-ignore en silencio.
+func runCheckIgnore(repoRoot, path string) error {
+	return exec.Command("git", "-C", repoRoot, "check-ignore", "-q", path).Run()
+}
+
+// commandExitCode extrae el código de salida de un comando ejecutado.
+func commandExitCode(err error) int {
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode()
+	}
+	return -1
 }
 
 func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile string, budget int, include, exclude []string, priorDir string) error {

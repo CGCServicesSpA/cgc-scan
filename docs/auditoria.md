@@ -396,6 +396,23 @@ escaneo (`scan`/`agent`, contrato `1.1.0`) como **leads pendientes de caza**:
   se deduplican por fingerprint. Entradas incompatibles se rechazan sin dejar
   estado parcial.
 
+## Destinos para --out
+
+**Decisión de producto:** se **rechaza** (no se advierte) un destino `--out`
+interno al repositorio que Git no ignora: la evidencia de una corrida no
+contamina el árbol del proyecto. La comprobación corre antes de crear
+artefactos: un rechazo no deja una corrida parcial.
+
+- Destino externo: permitido.
+- Destino interno efectivamente ignorado por Git: permitido.
+- Destino interno visible: rechazado (código 2).
+- Proyectos sin Git: el destino interno se rechaza porque la exclusión no se
+  puede verificar.
+- Escape mediante enlace simbólico: el destino se resuelve y un enlace que
+  apunta fuera se trata como destino externo (honesto: los datos quedan fuera
+  del árbol).
+- La comprobación no modifica `.gitignore`.
+
 ## Política de salida para CI
 
 `audit report --fail-on <umbral>` centraliza el código de salida para CI.

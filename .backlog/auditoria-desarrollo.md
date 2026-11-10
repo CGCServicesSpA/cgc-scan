@@ -459,9 +459,12 @@ Aceptación y pruebas:
 
 ## P2-4 — Destinos seguros para `--out`
 
-**Estado:** pendiente. **Dependencias:** ninguna. **Estimación:** 1 día.
+**Estado:** completada. **Dependencias:** ninguna. **Estimación:** 1 día.
 
-**Decisión previa:** advertir o rechazar destinos internos no ignorados.
+**Decisión de producto tomada:** se **rechaza** (no se advierte) el destino
+interno no ignorado; en proyectos sin Git también se rechaza porque la
+exclusión no se puede verificar. El escape por enlace simbólico se resuelve
+como destino externo.
 
 Trabajo:
 
