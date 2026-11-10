@@ -2,6 +2,15 @@
 
 ## Sin publicar
 
+- Nueva fase de **crítica independiente de cobertura** para `standard` y
+  `deep`: cuando la ola de caza completa, el motor emite la tarea `critique` a
+  un agente sin unidades en curso. El crítico responde con `missing_units`
+  (superficies que se convierten en unidades planificadas), `reassign_ids`
+  (reasignaciones que archivan el intento vigente), `resolved_prior_leads`
+  (registrados para revalidación) y `stop` (archivado; no evita requisitos
+  pendientes). Los perfiles que la exigen no se declaran completos sin crítica
+  final limpia (`critique_pending`) y el informe distingue crítica limpia,
+  pendiente y no requerida.
 - `standard` y `deep` verifican en dos pasadas: validar el candidato y revisar
   el registro final son fases distintas. El registro decidido pasa a
   `review_pending` y un revisor independiente (que no es cazador, validador

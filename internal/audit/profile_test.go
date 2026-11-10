@@ -120,7 +120,7 @@ func TestProfilePolicyPhases(t *testing.T) {
 	for _, phase := range deep.UnimplementedPhases() {
 		pending = append(pending, phase)
 	}
-	if strings.Join(pending, ",") != "final-critique,prior-rework" {
+	if strings.Join(pending, ",") != "prior-rework" {
 		t.Fatalf("deep: fases pendientes = %v", pending)
 	}
 }
@@ -135,28 +135,20 @@ func TestBuildFindingsHonorsProfilePhases(t *testing.T) {
 		t.Fatalf("quick = %s/%s, want complete", l.RunStatus, l.IncompleteReason)
 	}
 
-	// standard exige la crítica final: mientras no esté implementada, la
-	// corrida no puede declararse completa.
+	// standard exige la crítica final limpia: una corrida sin crítica
+	// completada queda pendiente.
 	l2, c2 := sealedFixture(t)
 	l2.Profile = ProfileStandard
 	l2.Recompute()
 	if _, err := BuildFindings(l2, c2); err != nil {
 		t.Fatalf("build standard: %v", err)
 	}
-	if l2.RunStatus != StatusIncomplete || l2.IncompleteReason != IncompletePhaseNotImplemented {
-		t.Fatalf("standard = %s/%s, want incomplete/phase_not_implemented", l2.RunStatus, l2.IncompleteReason)
-	}
-	found := false
-	for _, lim := range l2.Limitations {
-		if strings.Contains(lim, "final-critique") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatalf("la limitación debe nombrar la fase pendiente: %v", l2.Limitations)
+	if l2.RunStatus != StatusIncomplete || l2.IncompleteReason != IncompleteCritiquePending {
+		t.Fatalf("standard = %s/%s, want incomplete/critique_pending", l2.RunStatus, l2.IncompleteReason)
 	}
 
-	// deep exige además prior-rework, también pendiente.
+	// deep exige además prior-rework, todavía sin implementación: la
+	// limitación nombra la fase pendiente.
 	l3, c3 := sealedFixture(t)
 	l3.Profile = ProfileDeep
 	l3.Recompute()
@@ -165,6 +157,15 @@ func TestBuildFindingsHonorsProfilePhases(t *testing.T) {
 	}
 	if l3.IncompleteReason != IncompletePhaseNotImplemented {
 		t.Fatalf("deep = %s/%s", l3.RunStatus, l3.IncompleteReason)
+	}
+	found := false
+	for _, lim := range l3.Limitations {
+		if strings.Contains(lim, "prior-rework") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("la limitación debe nombrar la fase pendiente: %v", l3.Limitations)
 	}
 }
 

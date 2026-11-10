@@ -136,6 +136,28 @@ type PriorRun struct {
 	NeedsValidationFingerprints []string `json:"needs_validation_fingerprints"`
 }
 
+// CritiqueState archiva las rondas de crítica de cobertura de una corrida.
+type CritiqueState struct {
+	// Pending declara que hay una tarea de crítica emitida y sin respuesta.
+	Pending bool `json:"pending,omitempty"`
+	// IssuedTo es el agente que recibió la crítica pendiente.
+	IssuedTo string `json:"issued_to,omitempty"`
+	// FinalClean declara que la última crítica completó sin trabajo nuevo.
+	FinalClean bool `json:"final_clean,omitempty"`
+	// Stopped archiva que el crítico pidió detenerse.
+	Stopped bool   `json:"stopped,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	// Rounds cuenta las tareas de crítica emitidas.
+	Rounds        int      `json:"rounds,omitempty"`
+	ResolvedLeads []string `json:"resolved_leads,omitempty"`
+}
+
+// Normalize completa el estado de crítica.
+func (s *CritiqueState) Normalize() {
+	s.ResolvedLeads = nonNil(s.ResolvedLeads)
+	sort.Strings(s.ResolvedLeads)
+}
+
 // Ledger es el contrato de cobertura de una corrida de auditoría.
 type Ledger struct {
 	SchemaVersion    string    `json:"schema_version"`
@@ -149,6 +171,9 @@ type Ledger struct {
 	Units            []Unit    `json:"units"`
 	Limitations      []string  `json:"limitations,omitempty"`
 	Prior            *PriorRun `json:"prior,omitempty"`
+	// Critique archiva las rondas de crítica de cobertura; nil en una corrida
+	// que todavía no emitió ninguna.
+	Critique *CritiqueState `json:"critique,omitempty"`
 }
 
 // Recompute normaliza el ledger: ordena unidades, completa slices y recalcula
@@ -161,6 +186,9 @@ func (l *Ledger) Recompute() {
 		l.Units = []Unit{}
 	}
 	l.Limitations = nonNil(l.Limitations)
+	if l.Critique != nil {
+		l.Critique.Normalize()
+	}
 	sort.SliceStable(l.Units, func(i, j int) bool {
 		return l.Units[i].CoverageID < l.Units[j].CoverageID
 	})

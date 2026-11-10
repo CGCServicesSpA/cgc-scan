@@ -227,9 +227,13 @@ Aceptación y pruebas:
 
 ## P1-2 — Crítica independiente de cobertura
 
-**Estado:** pendiente. **Dependencias:** P0-4, P1-1 y P1-3. **Estimación:** 6 días.
+**Estado:** completada. **Dependencias:** P0-4, P1-1 y P1-3. **Estimación:** 6 días.
 
-**Archivos:** broker, report, CLI y contratos de tareas/entregas.
+**Decisión tomada:** el estado de crítica vive en el ledger (campo `critique`,
+esquema actualizado antes del release). El crítico se emite cuando la ola
+completa y no puede tener unidades en curso; solo `in_progress` y `covered`
+son elegibles para reasignación por crítica. La respuesta limpia —sin
+`missing_units` ni `reassign_ids`— habilita el cierre.
 
 Trabajo:
 

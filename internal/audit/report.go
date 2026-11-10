@@ -53,7 +53,7 @@ func BuildFindings(l *Ledger, c *Candidates) (*Findings, error) {
 		reason = IncompleteUnassigned
 	case countUndecided(c) > 0:
 		reason = IncompleteUnverifiedCandidates
-	case pendingCritique(l, c):
+	case pendingCritique(l):
 		reason = IncompleteCritiquePending
 	default:
 		if err := checkCandidateStateComplete(l, c); err != nil {
@@ -103,9 +103,34 @@ func profilePolicyFor(profile string) (*ProfilePolicy, error) {
 	return pol, nil
 }
 
-// pendingCritique declara si falta la crítica final de cobertura. Se
-// implementa con P1-2; mientras tanto no hay crítica pendiente.
-func pendingCritique(l *Ledger, c *Candidates) bool { return false }
+// pendingCritique declara si falta la crítica final de cobertura: los
+// perfiles que la exigen (standard, deep) no cierran sin crítica limpia.
+func pendingCritique(l *Ledger) bool {
+	pol, err := profilePolicyFor(l.Profile)
+	if err != nil || pol.Critique != CritiqueWaveAndFinal {
+		return false
+	}
+	if l.Critique == nil || l.Critique.Pending || !l.Critique.FinalClean {
+		return true
+	}
+	return false
+}
+
+// critiqueStatus clasifica la crítica de cobertura de la corrida: limpia,
+// pendiente o no requerida. El informe lo declara.
+func critiqueStatus(l *Ledger) string {
+	pol, err := profilePolicyFor(l.Profile)
+	if err != nil || pol.Critique != CritiqueWaveAndFinal {
+		return "no requerida"
+	}
+	if l.Critique == nil || l.Critique.Pending || !l.Critique.FinalClean {
+		return "pendiente"
+	}
+	if l.Critique.Stopped {
+		return "limpia (con stop del crítico)"
+	}
+	return "limpia"
+}
 
 func countUndecided(c *Candidates) int {
 	n := 0
@@ -172,6 +197,7 @@ func RenderReport(l *Ledger, f *Findings) []byte {
 	fmt.Fprintf(&b, "- Cobertura: %d unidad(es), %d cubierta(s), %d con candidato, %d bloqueada(s), %d diferida(s), %d fuera de alcance\n",
 		l.Summary.UnitsTotal, l.Summary.Covered, l.Summary.Candidate,
 		l.Summary.Blocked, l.Summary.Deferred, l.Summary.OutOfScope)
+	fmt.Fprintf(&b, "- Crítica de cobertura: %s\n", critiqueStatus(l))
 	if l.Budget != nil {
 		fmt.Fprintf(&b, "- Presupuesto: %d de %d invocaciones de agente\n", l.Budget.Used, l.Budget.MaxAgentInvocations)
 	} else {

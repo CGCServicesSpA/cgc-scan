@@ -203,6 +203,30 @@ y **revisar el registro final** son fases distintas:
 - Reabrir una corrida conserva la fase pendiente: un candidato en
   `review_pending` sigue esperando su revisión.
 
+## Crítica de cobertura
+
+Los perfiles `standard` y `deep` exigen crítica independiente de cobertura;
+`quick` no la requiere. Cuando la ola de caza completó (sin unidades
+planificadas ni en curso y sin verificación pendiente), el motor emite la
+tarea `critique` a un agente sin unidades en curso: no critica su propio
+trabajo incompleto. El crítico responde con:
+
+- `missing_units`: superficies que merecen unidad propia; se convierten en
+  unidades planificadas con la misma creación que `uncovered`, y la caza las
+  procesa antes de una nueva crítica;
+- `reassign_ids`: unidades a reasignar por evidencia débil; el intento vigente
+  se archiva con dueño, ola y checks, y la unidad vuelve a `planned`;
+- `resolved_prior_leads`: hallazgos de corridas anteriores que el crítico
+  resolvió; se registran para la revalidación;
+- `stop`: pide cerrar el reparto; se archiva con su razón y **no evita los
+  requisitos pendientes**: si la respuesta trae trabajo nuevo, la crítica no
+  queda limpia.
+
+Una crítica limpia (sin trabajo nuevo) habilita el cierre. Los perfiles
+`standard` y `deep` no se declaran completos sin crítica final limpia
+(`critique_pending`); `audit report` distingue crítica limpia, pendiente y no
+requerida. Repetir una propuesta no duplica unidades.
+
 ## Fuentes y citas
 
 Toda cita (`trace[].file`, `evidence[].file`) se valida contra la fuente que
@@ -330,10 +354,9 @@ Además:
   `uncovered` y se convierte en unidad planificada.
 - El motor no ejecuta el objetivo. Un hallazgo que exige ejecución queda en
   `needs_validation` con su plan local acotado.
-- Una asignación abandonada no se reasigna automáticamente (no hay olas de
-  crítica en esta versión). Para recuperar el contexto, inicia una corrida nueva
-  con `--prior <dir-de-la-anterior>`; la anterior queda como evidencia de lo
-  intentado.
+- Una asignación abandonada no se reasigna automáticamente: `audit reset-unit`
+  la recupera y la crítica de cobertura puede reasignarla archivando el
+  intento vigente.
 - El catálogo de clases y parte de la estructura del protocolo derivan de
   [`cloudflare/security-audit-skill`](https://github.com/cloudflare/security-audit-skill)
   (MIT); ver [`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md).

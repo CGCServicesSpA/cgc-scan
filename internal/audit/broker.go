@@ -548,6 +548,18 @@ type Verification struct {
 	Record      *Record `json:"record,omitempty"`
 }
 
+// Critique es la respuesta del crítico de cobertura. missing_units declara
+// superficies que merecen unidad propia; reassign_ids pide reasignar
+// unidades con evidencia débil; resolved_prior_leads registra hallazgos de
+// corridas anteriores que el crítico resolvió; stop pide cerrar el reparto.
+type Critique struct {
+	MissingUnits       []Uncovered `json:"missing_units,omitempty"`
+	ReassignIDs        []string    `json:"reassign_ids,omitempty"`
+	ResolvedPriorLeads []string    `json:"resolved_prior_leads,omitempty"`
+	Stop               bool        `json:"stop,omitempty"`
+	Reason             string      `json:"reason,omitempty"`
+}
+
 // Submission es lo que un agente entrega al motor.
 type Submission struct {
 	SchemaVersion string        `json:"schema_version"`
@@ -557,6 +569,7 @@ type Submission struct {
 	Verification  *Verification `json:"verification,omitempty"`
 	Hardening     []string      `json:"hardening,omitempty"`
 	Uncovered     []Uncovered   `json:"uncovered,omitempty"`
+	Critique      *Critique     `json:"critique,omitempty"`
 }
 
 // decodeStrict decodifica un único objeto JSON en v rechazando campos
@@ -718,6 +731,10 @@ func Next(l *Ledger, c *Candidates, opts NextOptions) (*Task, error) {
 	if l.RunStatus != StatusInProgress {
 		return nil, ErrNoTask
 	}
+	pol, err := policyFor(l, opts.Catalog)
+	if err != nil {
+		return nil, err
+	}
 
 	if cand, fresh := pickVerification(c, opts.AgentID, CandidateEscalation); cand != nil {
 		return issueVerification(l, cand, opts.AgentID, fresh, ModeEscalationCheck)
@@ -738,6 +755,9 @@ func Next(l *Ledger, c *Candidates, opts NextOptions) (*Task, error) {
 
 	planned := plannedUnits(l)
 	if len(planned) == 0 {
+		if task, err := issueCritique(l, opts.AgentID, pol); task != nil {
+			return task, err
+		}
 		return nil, ErrNoTask
 	}
 	if l.Budget != nil && l.Budget.Used >= l.Budget.MaxAgentInvocations {
@@ -991,6 +1011,47 @@ func ResetUnit(l *Ledger, coverageID, reason string) error {
 	return nil
 }
 
+// policyFor resuelve la política del perfil declarado por el ledger: usa el
+// catálogo de la corrida o el embebido.
+func policyFor(l *Ledger, cat *Catalog) (*ProfilePolicy, error) {
+	if cat != nil {
+		return ProfilePolicyFor(l.Profile, cat)
+	}
+	return profilePolicyFor(l.Profile)
+}
+
+// issueCritique emite la tarea de crítica de cobertura cuando la ola de caza
+// completó, el perfil la exige y no hay crítica pendiente. El crítico no
+// puede tener unidades en curso: no critica su propio trabajo incompleto.
+func issueCritique(l *Ledger, agent string, pol *ProfilePolicy) (*Task, error) {
+	if pol == nil || pol.Critique != CritiqueWaveAndFinal {
+		return nil, nil
+	}
+	if l.Critique != nil && (l.Critique.Pending || l.Critique.FinalClean) {
+		return nil, nil
+	}
+	for i := range l.Units {
+		if l.Units[i].State == StateInProgress {
+			return nil, nil
+		}
+	}
+	if l.Critique == nil {
+		l.Critique = &CritiqueState{}
+	}
+	l.Critique.Pending = true
+	l.Critique.IssuedTo = agent
+	l.Critique.FinalClean = false
+	l.Critique.Rounds++
+	l.Recompute()
+	return &Task{
+		SchemaVersion: TaskSchemaVersion,
+		Kind:          "critique",
+		RunID:         l.Run.ID,
+		AgentID:       agent,
+		Budget:        l.Budget,
+	}, nil
+}
+
 // SubmitOutcome resume lo que aplicó una entrega.
 type SubmitOutcome struct {
 	SchemaVersion string   `json:"schema_version"`
@@ -1038,6 +1099,9 @@ func SubmitWithOptions(l *Ledger, c *Candidates, sub *Submission, opts SubmitOpt
 		if err != nil {
 			return nil, err
 		}
+	}
+	if sub.Critique != nil {
+		return submitCritique(l, c, sub)
 	}
 	if sub.Verification != nil {
 		return submitVerification(l, c, sub, opts, pol)
@@ -1123,44 +1187,9 @@ func submitHunt(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, erro
 	}
 
 	// Superficies no cubiertas: se convierten en unidades planificadas.
-	added := make([]Unit, 0, len(sub.Uncovered))
-	seenIDs := map[string]bool{}
-	for _, u := range l.Units {
-		seenIDs[u.CoverageID] = true
-	}
-	for _, u := range sub.Uncovered {
-		if strings.TrimSpace(u.Subsystem) == "" || strings.TrimSpace(u.Domain) == "" ||
-			strings.TrimSpace(u.Boundary) == "" || strings.TrimSpace(u.AttackClass) == "" ||
-			strings.TrimSpace(u.Reason) == "" || len(u.StartingPaths) == 0 {
-			return nil, errors.New("auditoría: una superficie no cubierta exige subsistema, dominio, frontera, clase, rutas y razón")
-		}
-		if !classIDPattern.MatchString(u.AttackClass) {
-			return nil, fmt.Errorf("auditoría: clase inválida en superficie no cubierta: %q", u.AttackClass)
-		}
-		for _, p := range u.StartingPaths {
-			if !ValidRepoPath(p) {
-				return nil, fmt.Errorf("auditoría: ruta inválida en superficie no cubierta: %q", p)
-			}
-		}
-		id := slugID(u.Subsystem) + "/" + slugID(u.Domain) + "/" + u.AttackClass
-		if seenIDs[id] {
-			continue
-		}
-		seenIDs[id] = true
-		added = append(added, Unit{
-			CoverageID:    id,
-			Subsystem:     u.Subsystem,
-			Domain:        u.Domain,
-			Boundary:      u.Boundary,
-			AttackClass:   u.AttackClass,
-			StartingPaths: u.StartingPaths,
-			State:         StatePlanned,
-			ReviewedPaths: []string{},
-			Checks:        []Check{},
-			Candidates:    []string{},
-			Unresolved:    []string{},
-			Attempts:      []Attempt{},
-		})
+	added, err := plannedUnitsFromSurfaces(l, sub.Uncovered)
+	if err != nil {
+		return nil, err
 	}
 
 	// Aplicación: a partir de aquí no hay validaciones que puedan fallar.
@@ -1445,4 +1474,157 @@ func validateRecord(r Record) error {
 		return fmt.Errorf("auditoría: registro %q inválido: %w", r.Fingerprint, err)
 	}
 	return nil
+}
+
+// plannedUnitsFromSurfaces valida superficies declaradas —por un cazador
+// (uncovered) o por el crítico (missing_units)— y construye las unidades
+// planificadas nuevas. La misma superficie no se duplica.
+func plannedUnitsFromSurfaces(l *Ledger, surfaces []Uncovered) ([]Unit, error) {
+	added := make([]Unit, 0, len(surfaces))
+	seenIDs := map[string]bool{}
+	for _, u := range l.Units {
+		seenIDs[u.CoverageID] = true
+	}
+	for _, u := range surfaces {
+		if strings.TrimSpace(u.Subsystem) == "" || strings.TrimSpace(u.Domain) == "" ||
+			strings.TrimSpace(u.Boundary) == "" || strings.TrimSpace(u.AttackClass) == "" ||
+			strings.TrimSpace(u.Reason) == "" || len(u.StartingPaths) == 0 {
+			return nil, errors.New("auditoría: una superficie exige subsistema, dominio, frontera, clase, rutas y razón")
+		}
+		if !classIDPattern.MatchString(u.AttackClass) {
+			return nil, fmt.Errorf("auditoría: clase inválida en superficie: %q", u.AttackClass)
+		}
+		for _, p := range u.StartingPaths {
+			if !ValidRepoPath(p) {
+				return nil, fmt.Errorf("auditoría: ruta inválida en superficie: %q", p)
+			}
+		}
+		id := slugID(u.Subsystem) + "/" + slugID(u.Domain) + "/" + u.AttackClass
+		if seenIDs[id] {
+			continue
+		}
+		seenIDs[id] = true
+		added = append(added, newUnit(id, u.Subsystem, u.Domain, u.Boundary, u.AttackClass, u.StartingPaths))
+	}
+	return added, nil
+}
+
+// submitCritique aplica la respuesta del crítico de cobertura: crea unidades
+// por superficies omitidas, reasigna unidades archivando el intento vigente,
+// registra leads resueltos de corridas anteriores y archiva la limpieza o el
+// stop. Un stop no evita los requisitos pendientes.
+func submitCritique(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, error) {
+	cr := sub.Critique
+	if len(sub.Units) > 0 || len(sub.Candidates) > 0 || sub.Verification != nil ||
+		len(sub.Uncovered) > 0 || len(sub.Hardening) > 0 {
+		return nil, errors.New("auditoría: una crítica no puede traer unidades, candidatos, verificaciones ni superficies")
+	}
+	pol, err := profilePolicyFor(l.Profile)
+	if err != nil {
+		return nil, err
+	}
+	if pol.Critique != CritiqueWaveAndFinal {
+		return nil, fmt.Errorf("auditoría: el perfil %s no requiere crítica de cobertura", l.Profile)
+	}
+	if l.Critique == nil || !l.Critique.Pending {
+		return nil, errors.New("auditoría: no hay una crítica de cobertura pendiente")
+	}
+	if l.Critique.IssuedTo != sub.AgentID {
+		return nil, fmt.Errorf("auditoría: la crítica pendiente es de %q, no de %q", l.Critique.IssuedTo, sub.AgentID)
+	}
+	for i := range l.Units {
+		if unit := &l.Units[i]; unit.State == StateInProgress && unit.Owner == sub.AgentID {
+			return nil, fmt.Errorf("auditoría: el crítico %q tiene unidades en curso", sub.AgentID)
+		}
+	}
+	for _, fp := range cr.ResolvedPriorLeads {
+		if !fingerprintPattern.MatchString(fp) {
+			return nil, fmt.Errorf("auditoría: fingerprint inválido en resolved_prior_leads: %q", fp)
+		}
+	}
+	if cr.Stop && strings.TrimSpace(cr.Reason) == "" {
+		return nil, errors.New("auditoría: un stop exige reason")
+	}
+
+	added, err := plannedUnitsFromSurfaces(l, cr.MissingUnits)
+	if err != nil {
+		return nil, err
+	}
+
+	// Reasignaciones: unidad elegible, sin duplicados en la misma respuesta.
+	reassign := make([]*Unit, 0, len(cr.ReassignIDs))
+	seen := map[string]bool{}
+	for _, id := range cr.ReassignIDs {
+		if seen[id] {
+			return nil, fmt.Errorf("auditoría: la unidad %s aparece más de una vez para reasignar", id)
+		}
+		seen[id] = true
+		unit := l.UnitByID(id)
+		if unit == nil {
+			return nil, fmt.Errorf("auditoría: coverage_id desconocido para reasignar: %s", id)
+		}
+		if unit.State != StateInProgress && unit.State != StateCovered {
+			return nil, fmt.Errorf("auditoría: la unidad %s está %s; solo in_progress o covered puede reasignarse", id, unit.State)
+		}
+		reassign = append(reassign, unit)
+	}
+
+	// Aplicación: a partir de aquí no hay validaciones que puedan fallar.
+	out := &SubmitOutcome{SchemaVersion: OutcomeSchemaVersion, AddedUnits: make([]string, 0, len(added)), Notes: []string{}}
+	for _, unit := range reassign {
+		unit.Attempts = append(unit.Attempts, Attempt{
+			Wave:          unit.Wave,
+			AgentID:       unit.Owner,
+			State:         unit.State,
+			ReviewedPaths: unit.ReviewedPaths,
+			Checks:        unit.Checks,
+			Candidates:    unit.Candidates,
+			Unresolved:    unit.Unresolved,
+			Reason:        "reasignada por la crítica de cobertura",
+		})
+		unit.State = StatePlanned
+		unit.Owner = ""
+		unit.ReviewedPaths = []string{}
+		unit.Checks = []Check{}
+		unit.Candidates = []string{}
+		unit.Unresolved = []string{}
+		unit.Hardening = nil
+		unit.Reason = ""
+		out.Notes = append(out.Notes, fmt.Sprintf("unidad %s devuelta a planned por la crítica", unit.CoverageID))
+	}
+	for _, u := range added {
+		l.Units = append(l.Units, u)
+		out.AddedUnits = append(out.AddedUnits, u.CoverageID)
+	}
+	if len(added) > 0 {
+		out.Notes = append(out.Notes, "se agregaron superficies omitidas como unidades planificadas")
+	}
+
+	l.Critique.Pending = false
+	l.Critique.IssuedTo = ""
+	if cr.Stop {
+		l.Critique.Stopped = true
+		l.Critique.Reason = cr.Reason
+		out.Notes = append(out.Notes, "el crítico pidió cerrar el reparto")
+	}
+	if len(cr.MissingUnits) == 0 && len(cr.ReassignIDs) == 0 {
+		l.Critique.FinalClean = true
+	}
+	for _, fp := range cr.ResolvedPriorLeads {
+		if !containsString(l.Critique.ResolvedLeads, fp) {
+			l.Critique.ResolvedLeads = append(l.Critique.ResolvedLeads, fp)
+		}
+	}
+	c.Normalize()
+	l.Recompute()
+	return out, nil
+}
+
+func containsString(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
 }

@@ -64,11 +64,8 @@ func (p *ProfilePolicy) UnimplementedPhases() []string {
 	var out []string
 	for _, phase := range p.MandatoryPhases() {
 		switch phase {
-		case PhaseHunt, PhaseVerification:
+		case PhaseHunt, PhaseVerification, PhaseFinalCritique:
 			// Implementadas.
-		case PhaseFinalCritique:
-			// La crítica de cobertura llega con P1-2.
-			out = append(out, phase)
 		case PhasePriorRework:
 			// La revalidación de corridas anteriores llega con P1-6.
 			out = append(out, phase)

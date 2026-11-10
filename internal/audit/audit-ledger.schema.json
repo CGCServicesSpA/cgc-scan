@@ -87,6 +87,9 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "critique": {
+      "$ref": "#/$defs/critiqueState"
     }
   },
   "allOf": [
@@ -493,6 +496,37 @@
         "needs_validation_fingerprints": {
           "type": "array",
           "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/fingerprint"
+          }
+        }
+      }
+    },
+    "critiqueState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "pending": {
+          "type": "boolean"
+        },
+        "issued_to": {
+          "type": "string"
+        },
+        "final_clean": {
+          "type": "boolean"
+        },
+        "stopped": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "rounds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved_leads": {
+          "type": "array",
           "items": {
             "$ref": "#/$defs/fingerprint"
           }

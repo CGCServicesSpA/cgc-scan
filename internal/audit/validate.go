@@ -181,6 +181,22 @@ func ValidateLedgerSemantics(l *Ledger) error {
 			}
 		}
 	}
+	if l.Critique != nil {
+		if l.Critique.Pending && !ValidAgentID(l.Critique.IssuedTo) {
+			is.addf("critique: una crítica pendiente requiere issued_to válido")
+		}
+		if !l.Critique.Pending && l.Critique.IssuedTo != "" {
+			is.addf("critique: issued_to solo es válido con una crítica pendiente")
+		}
+		for _, fp := range l.Critique.ResolvedLeads {
+			if !fingerprintPattern.MatchString(fp) {
+				is.addf("critique: fingerprint inválido en resolved_leads: %q", fp)
+			}
+		}
+		if l.Critique.Stopped && strings.TrimSpace(l.Critique.Reason) == "" {
+			is.addf("critique: un stop requiere reason")
+		}
+	}
 	checkLedgerSummary(l, &is)
 	return is.err()
 }
