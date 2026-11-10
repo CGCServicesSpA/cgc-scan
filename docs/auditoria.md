@@ -359,6 +359,23 @@ el contrato de respuesta exigido.
 - La cobertura nunca se suprime: una unidad auditada anteriormente sigue en el
   mapa de la corrida nueva. Las listas orientan, no suprimen.
 
+## Integridad del informe
+
+`audit report --verify` verifica el **HMAC-SHA256** del informe sellado sin
+reescribir nada. La clave es una **clave local dedicada** con almacenamiento
+privado (`<config>/audit-report.key`, 0600); se crea al sellar el informe y
+nunca aparece en informes, logs ni paquetes.
+
+- El contenido autenticado es el **ledger y los hallazgos sellados** en una
+  serialización canónica idempotente (`audit-integrity-1.0.0`), sin el propio
+  valor de autenticación. Modificar el ledger o los registros invalida la
+  verificación; cualquier commit posterior al sellado también.
+- Cada fallo produce un diagnóstico explícito: informe antiguo sin integridad
+  (vuelve a sellarse), clave ausente, clave reemplazada o contenido cambiado.
+  Verificar no crea claves nuevas ni reescribe artefactos.
+- **Qué prueba el HMAC:** que el contenido sellado no cambió. No prueba la
+  verdad del hallazgo ni protege frente a quien posea la clave.
+
 ## Consolidación por causa raíz
 
 Dos variantes comprobadas del mismo defecto se consolidan en un registro. La

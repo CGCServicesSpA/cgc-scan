@@ -348,6 +348,7 @@ func (a *App) newAuditSubmitCommand(out *string) *cobra.Command {
 
 func (a *App) newAuditReportCommand(out *string) *cobra.Command {
 	var format string
+	var verify bool
 	cmd := &cobra.Command{
 		Use:   "report [ruta]",
 		Short: "Sella la corrida y deriva findings.json y los reportes",
@@ -360,11 +361,52 @@ func (a *App) newAuditReportCommand(out *string) *cobra.Command {
 			if len(args) == 1 {
 				target = args[0]
 			}
+			if verify {
+				return a.runAuditReportVerify(cmd.Context(), auditTarget(target), *out, format)
+			}
 			return a.runAuditReport(cmd.Context(), auditTarget(target), *out, format)
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text")
+	cmd.Flags().BoolVar(&verify, "verify", false, "verifica la integridad del informe sellado sin reescribir nada")
 	return cmd
+}
+
+// runAuditReportVerify verifica la integridad del informe sellado: solo lee,
+// nunca reescribe artefactos.
+func (a *App) runAuditReportVerify(ctx context.Context, target, out, format string) error {
+	store, err := a.auditStore(target, out)
+	if err != nil {
+		return err
+	}
+	var st *audit.RunState
+	if err := store.WithSharedRunLock(ctx, auditLockWait, func() error {
+		st, err = store.LoadState()
+		return err
+	}); err != nil {
+		return IncompleteErrorf("%v", err)
+	}
+	key, err := audit.LoadReportKey(a.Paths.ConfigDir)
+	if err != nil {
+		return IncompleteErrorf("%v", err)
+	}
+	if err := audit.VerifyReportIntegrity(st, key); err != nil {
+		return IncompleteErrorf("%v", err)
+	}
+	if format == "json" {
+		payload, err := json.MarshalIndent(map[string]any{
+			"schema_version": "audit-integrity-check-1.0.0",
+			"run_id":         st.Ledger.Run.ID,
+			"integrity":      "valid",
+			"version":        st.Integrity.Version,
+		}, "", "  ")
+		if err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		return report.EmitRaw(a.Stdout, append(payload, '\n'))
+	}
+	_, err = fmt.Fprintf(a.Stdout, "Integridad verificada: la corrida %s no cambió desde el sellado\n", st.Ledger.Run.ID)
+	return err
 }
 
 func (a *App) newAuditStatusCommand(out *string) *cobra.Command {
@@ -735,6 +777,17 @@ func (a *App) runAuditReport(ctx context.Context, target, out, format string) er
 			ledger.Recompute()
 		}
 		st.Findings = findings
+		// El HMAC del informe se integra en el commit: cubre el ledger y los
+		// hallazgos sellados, con la clave local dedicada.
+		key, kerr := audit.LoadOrCreateReportKey(a.Paths.ConfigDir)
+		if kerr != nil {
+			return kerr
+		}
+		mac, merr := audit.ReportHMAC(key, st)
+		if merr != nil {
+			return merr
+		}
+		st.Integrity = &audit.ReportIntegrity{Version: audit.ReportIntegrityVersion, HMAC: mac}
 		if err := store.CommitState(st); err != nil {
 			return err
 		}

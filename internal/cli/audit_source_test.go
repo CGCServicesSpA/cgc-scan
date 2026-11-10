@@ -204,6 +204,28 @@ func coverRemainingUnits(t *testing.T, app *App, runDir string) {
 		if err := json.Unmarshal([]byte(out), &task); err != nil {
 			t.Fatalf("task resto: %v\n%s", err, out)
 		}
+		if task.Kind != "hunt" {
+			// La verificación asignada se responde con la misma propuesta: en
+			// quick, needs_validation decide en la misma pasada. Las demás
+			// fases se procesan fuera de este bucle.
+			if task.Kind != "verify" || task.Candidate == nil {
+				return
+			}
+			fp := task.Candidate.Fingerprint
+			verif := audit.Submission{
+				SchemaVersion: audit.SubmissionSchemaVersion,
+				AgentID:       "hunter-resto",
+				Verification: &audit.Verification{
+					Fingerprint: fp, Decision: audit.VerdictNeedsValidation,
+					Record: ptr(sampleNeedsValidation(fp)),
+				},
+			}
+			if code, o, e := auditRun(t, app, "audit", "submit", "--out", runDir,
+				"--file", writeSubmissionFile(t, verif), "--format", "json"); code != 0 {
+				t.Fatalf("submit verif resto = %d: %s %s", code, o, e)
+			}
+			continue
+		}
 		file := writeSubmissionFile(t, coveredSubmission("hunter-resto", task))
 		if code, o, e := auditRun(t, app, "audit", "submit", "--out", runDir, "--file", file, "--format", "json"); code != 0 {
 			t.Fatalf("submit resto = %d: %s %s", code, o, e)

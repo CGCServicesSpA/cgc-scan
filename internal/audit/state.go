@@ -31,6 +31,9 @@ type RunState struct {
 	// UnitIdentity archiva, por coverage_id, el hash de la fuente de sus
 	// rutas de partida: la identidad que la corrida siguiente compara.
 	UnitIdentity map[string]map[string]string `json:"unit_identity,omitempty"`
+	// Integrity es el HMAC sellado del informe; excluido del contenido
+	// autenticado.
+	Integrity *ReportIntegrity `json:"integrity,omitempty"`
 }
 
 // Normalize completa el estado: versiones, slices, resúmenes derivados y, si

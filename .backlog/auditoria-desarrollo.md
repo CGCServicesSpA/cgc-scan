@@ -376,9 +376,12 @@ Aceptación y pruebas:
 
 ## P1-9 — Integridad verificable del informe
 
-**Estado:** pendiente. **Dependencias:** P0-1 y contratos finales de informe. **Estimación:** 3 días.
+**Estado:** completada. **Dependencias:** P0-1 y contratos finales de informe. **Estimación:** 3 días.
 
-**Archivos:** nuevo `internal/audit/integrity.go`, store y CLI.
+**Decisión tomada:** clave local dedicada en el directorio de configuración
+(0600, creada al sellar); el HMAC cubre ledger y hallazgos en serialización
+canónica idempotente, excluyendo su propio valor; se sella en el commit del
+informe y `--verify` es solo lectura con diagnóstico explícito por fallo.
 
 Trabajo:
 

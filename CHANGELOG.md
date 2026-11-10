@@ -2,6 +2,14 @@
 
 ## Sin publicar
 
+- **Integridad verificable del informe**: `audit report --verify` verifica el
+  HMAC-SHA256 del ledger y los hallazgos sellados sin reescribir nada, con una
+  clave local dedicada de almacenamiento privado (0600) que nunca aparece en
+  informes, logs ni paquetes. La serialización canónica es idempotente y
+  excluye el propio valor de autenticación; cada fallo produce un diagnóstico
+  explícito (informe antiguo sin integridad, clave ausente, clave
+  reemplazada, contenido cambiado). El HMAC prueba que el contenido sellado no
+  cambió; no prueba la verdad ni protege frente a quien posea la clave.
 - Nuevo `audit compare <anterior> <actual>`: clasifica los hallazgos
   confirmados entre dos corridas (`persistent`, `new`, `resolved`,
   `not_evaluated`) usando fingerprints y relaciones de consolidación. La
