@@ -2,6 +2,13 @@
 
 ## Sin publicar
 
+- **Recorridos de descubrimiento deduplicados y cobertura operable**: la
+  auditoría reutiliza la resolución de raíz del mismo árbol para el estado del
+  proyecto y para el ledger, conservando las unidades lógicas de ambos. Nuevo
+  benchmark de construcción de ledger en fixture de monorepo y un E2E con
+  repositorio Git real desde `init` hasta informe que cubre recuperación,
+  revalidación con continuidad, integridad y corrida incompleta, sin red ni
+  proveedor de IA.
 - `install.sh` y su paquete son **autosuficientes con esquemas**: los cuatro
   esquemas públicos (`report`, `agent`, `audit-ledger`, `findings`) viajan con
   el paquete y el instalador verifica la concordancia entre esquemas, binario

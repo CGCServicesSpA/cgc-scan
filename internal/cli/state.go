@@ -178,7 +178,13 @@ func (a *App) projectStore(target string) (*projectstate.Store, error) {
 	if err != nil {
 		return nil, UsageErrorf("ruta objetivo inválida: %v", err)
 	}
-	root := discovery.DetectRoot(abs)
+	return a.projectStoreRoot(abs, discovery.DetectRoot(abs))
+}
+
+// projectStoreRoot abre el estado del proyecto en una raíz ya resuelta: la
+// auditoría reutiliza el descubrimiento del mismo árbol para `project` y para
+// el ledger, conservando las unidades lógicas de ambos.
+func (a *App) projectStoreRoot(target, root string) (*projectstate.Store, error) {
 	store, err := projectstate.Open(a.Paths, root)
 	if err != nil {
 		return nil, IncompleteErrorf("%v", err)

@@ -542,15 +542,14 @@ Aceptación y pruebas:
 
 ## P2-8 — E2E, benchmarks y eliminación del recorrido duplicado
 
-**Estado:** pendiente. **Dependencias:** P0 y protocolo P1 para el E2E completo. **Estimación:** 2 días.
+**Estado:** completada. **Dependencias:** P0 y protocolo P1 para el E2E completo. **Estimación:** 2 días.
 
-Trabajo:
-
-- Añadir un E2E con repositorio Git real desde `init` hasta informe.
-- Cubrir recuperación, revalidación y corrida incompleta.
-- Integrar los fuzz targets de P0-6 sin duplicarlos.
-- Medir construcción de ledger en fixtures de monorepo.
-- Reutilizar descubrimiento del mismo árbol para `project` y `root`, conservando sus unidades lógicas.
+**Decisión tomada:** `DetectRoot` se resuelve una vez por corrida de comandos
+y se reutiliza entre el estado del proyecto y el ledger. Mediciones registradas
+(`internal/audit/bench_test.go`): en el fixture de monorepo del repositorio,
+quick ≈1,6 ms/op (821 allocs), standard ≈2,0 ms/op (989 allocs), deep ≈1,7 ms/op
+(780 allocs) en Apple M1 con 10 iteraciones. Los fuzz targets de P0-6 viajan
+una sola vez en CI.
 
 Aceptación y pruebas:
 

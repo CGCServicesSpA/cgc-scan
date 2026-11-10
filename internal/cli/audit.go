@@ -674,6 +674,13 @@ func auditTarget(target string) string {
 }
 
 func (a *App) auditStore(target, out string) (*audit.Store, error) {
+	return a.auditStoreWithRoot(target, out, "")
+}
+
+// auditStoreWithRoot resuelve el directorio de la corrida; root es la raíz del
+// proyecto ya descubierta por el flujo llamador, para no recorrer el mismo
+// árbol dos veces en una misma corrida de comandos.
+func (a *App) auditStoreWithRoot(target, out, root string) (*audit.Store, error) {
 	if out != "" {
 		// La comprobación corre antes de resolver el store: un rechazo no
 		// deja una corrida parcial ni crea artefactos.
@@ -686,7 +693,14 @@ func (a *App) auditStore(target, out string) (*audit.Store, error) {
 		}
 		return store, nil
 	}
-	store, err := a.projectStore(target)
+	if root == "" {
+		abs, err := filepath.Abs(target)
+		if err != nil {
+			return nil, UsageErrorf("ruta objetivo inválida: %v", err)
+		}
+		root = discovery.DetectRoot(abs)
+	}
+	store, err := a.projectStoreRoot(target, root)
 	if err != nil {
 		return nil, err
 	}
@@ -877,7 +891,7 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 	if err != nil {
 		return IncompleteErrorf("%v", err)
 	}
-	store, err := a.auditStore(abs, out)
+	store, err := a.auditStoreWithRoot(abs, out, rootGuess)
 	if err != nil {
 		return err
 	}
@@ -886,9 +900,10 @@ func (a *App) runAuditInit(cmd *cobra.Command, target, out, format, profile stri
 	// estado de verificación.
 	if err := store.WithLock(cmd.Context(), auditLockWait, func() error {
 		st := &audit.RunState{
-			Source:     &src.Info,
-			Ledger:     ledger,
-			Candidates: &audit.Candidates{SchemaVersion: audit.CandidatesSchemaVersion, RunID: ledger.Run.ID, Items: []audit.Candidate{}},
+			Source:         &src.Info,
+			CatalogVersion: catalog.SchemaVersion,
+			Ledger:         ledger,
+			Candidates:     &audit.Candidates{SchemaVersion: audit.CandidatesSchemaVersion, RunID: ledger.Run.ID, Items: []audit.Candidate{}},
 		}
 		return store.CommitState(st)
 	}); err != nil {
