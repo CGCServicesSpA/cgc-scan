@@ -290,3 +290,36 @@ func TestAuditWorktreeDivergenceBlocksCompleteReport(t *testing.T) {
 		t.Fatalf("status = %s, want incomplete", status.Status)
 	}
 }
+
+func TestAuditCompareReadsBothRuns(t *testing.T) {
+	app, _, _ := newTestApp(t)
+	root := auditProject(t)
+	first := filepath.Join(t.TempDir(), "run-1")
+	second := filepath.Join(t.TempDir(), "run-2")
+	for _, dir := range []string{first, second} {
+		if code, out, errOut := auditRun(t, app, "audit", "init", root, "--out", dir, "--format", "json"); code != 0 {
+			t.Fatalf("init = %d: %s %s", code, out, errOut)
+		}
+	}
+	code, out, errOut := auditRun(t, app, "audit", "compare", first, second, "--format", "json")
+	if code != 0 {
+		t.Fatalf("compare = %d: %s %s", code, out, errOut)
+	}
+	var doc struct {
+		SchemaVersion string `json:"schema_version"`
+		Entries       []struct {
+			Classification string `json:"classification"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("compare json: %v", err)
+	}
+	if doc.SchemaVersion != "audit-compare-1.0.0" {
+		t.Fatalf("esquema inesperado: %q", doc.SchemaVersion)
+	}
+	// La comparación no modifica las corridas.
+	code, out, errOut = auditRun(t, app, "audit", "status", "--out", second, "--format", "json")
+	if code != 0 {
+		t.Fatalf("status tras comparar = %d: %s %s", code, out, errOut)
+	}
+}

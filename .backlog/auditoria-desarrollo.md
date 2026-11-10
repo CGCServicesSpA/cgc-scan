@@ -353,9 +353,12 @@ Aceptación y pruebas:
 
 ## P1-8 — Comparación entre auditorías
 
-**Estado:** pendiente. **Dependencias:** P1-6 y P1-7. **Estimación:** 3 días.
+**Estado:** completada. **Dependencias:** P1-6 y P1-7. **Estimación:** 3 días.
 
-**Archivos:** nuevo `internal/audit/compare.go` y CLI.
+**Decisión tomada:** la resolución exige evidencia de evaluación actual
+(registro refutado en la corrida actual, o corrida actual completa sin
+recurrencia); los registros marcados con cambio de fuente nunca se declaran
+resueltos. Solo lectura.
 
 Trabajo:
 

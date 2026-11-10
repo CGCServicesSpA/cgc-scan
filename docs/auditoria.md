@@ -377,6 +377,27 @@ títulos similares permanecen separados.
 - La evidencia complementaria y la independencia de revisión no cambian: las
   variantes se verificaron de forma independiente antes de consolidarse.
 
+## Comparación entre auditorías
+
+`audit compare <anterior> <actual>` clasifica los hallazgos confirmados entre
+dos corridas sin modificarlas. Clasificaciones:
+
+| Clasificación | Qué significa |
+| --- | --- |
+| `persistent` | Confirmado en ambas corridas |
+| `new` | Confirmado ahora, sin confirmación anterior |
+| `resolved` | Confirmado antes y evaluado como ausente o refutado **con evidencia de evaluación actual** |
+| `not_evaluated` | Confirmado antes, sin evidencia de evaluación actual |
+
+- La resolución exige evidencia: el registro refutado en la corrida actual, o
+  una corrida actual `complete` sin recurrencia. Corridas parciales,
+  bloqueadas o con el registro marcado por cambio de fuente no producen
+  falsos `resolved` (`not_evaluated`).
+- Usa fingerprints y **relaciones de consolidación**: un registro consolidado
+  evalúa a sus variantes absorbidas.
+- La salida es estable (orden por fingerprint) y rechaza versiones de
+  contrato incompatibles o la comparación de una corrida consigo misma.
+
 ## Presupuesto
 
 `--budget N` es el máximo de invocaciones de agente en **todas las fases**, con

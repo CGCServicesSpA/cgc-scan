@@ -112,8 +112,66 @@ presupuesto y deriva los reportes. La evidencia la aporta el agente.`,
 		a.newAuditReportCommand(&out),
 		a.newAuditStatusCommand(&out),
 		a.newAuditResetUnitCommand(&out),
+		a.newAuditCompareCommand(&out),
 	)
 	return cmd
+}
+
+func (a *App) newAuditCompareCommand(out *string) *cobra.Command {
+	var format string
+	cmd := &cobra.Command{
+		Use:   "compare [anterior] [actual]",
+		Short: "Clasifica los hallazgos entre dos corridas sin modificarlas",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := oneOf("format", format, "json", "text"); err != nil {
+				return err
+			}
+			return a.runAuditCompare(auditTarget(args[0]), auditTarget(args[1]), *out, format)
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "text", "formato: json|text")
+	return cmd
+}
+
+// runAuditCompare compara dos corridas: solo lee, nunca modifica artefactos.
+func (a *App) runAuditCompare(priorDir, currentDir, out, format string) error {
+	priorStore, err := audit.OpenStore(priorDir)
+	if err != nil {
+		return UsageErrorf("%v", err)
+	}
+	currentStore, err := audit.OpenStore(currentDir)
+	if err != nil {
+		return UsageErrorf("%v", err)
+	}
+	priorState, err := priorStore.LoadState()
+	if err != nil {
+		return IncompleteErrorf("corrida anterior: %v", err)
+	}
+	currentState, err := currentStore.LoadState()
+	if err != nil {
+		return IncompleteErrorf("corrida actual: %v", err)
+	}
+	doc, err := audit.CompareRuns(priorState, currentState)
+	if err != nil {
+		return UsageErrorf("%v", err)
+	}
+	if format == "json" {
+		payload, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			return IncompleteErrorf("%v", err)
+		}
+		return report.EmitRaw(a.Stdout, append(payload, '\n'))
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Comparación %s ← %s\n", doc.Current.RunID, doc.Prior.RunID)
+	fmt.Fprintf(&b, "Persistentes: %d · Nuevos: %d · Resueltos: %d · Sin evaluar: %d\n",
+		doc.Summary.Persistent, doc.Summary.New, doc.Summary.Resolved, doc.Summary.NotEvaluated)
+	for _, e := range doc.Entries {
+		fmt.Fprintf(&b, "  %s %-14s %s\n", e.Fingerprint, e.Classification, e.Reason)
+	}
+	_, err = fmt.Fprint(a.Stdout, b.String())
+	return err
 }
 
 func (a *App) newAuditResetUnitCommand(out *string) *cobra.Command {

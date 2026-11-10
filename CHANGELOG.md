@@ -2,6 +2,12 @@
 
 ## Sin publicar
 
+- Nuevo `audit compare <anterior> <actual>`: clasifica los hallazgos
+  confirmados entre dos corridas (`persistent`, `new`, `resolved`,
+  `not_evaluated`) usando fingerprints y relaciones de consolidación. La
+  resolución exige evidencia de evaluación actual: corridas parciales,
+  bloqueadas o con el registro marcado por cambio de fuente no producen
+  falsos `resolved`. Solo lee: no modifica ninguna corrida.
 - **Consolidación por causa raíz**: un hallazgo puede declarar
   `root_cause_ref` (identidad explícita de causa raíz, contrato público
   opcional) y dos variantes comprobadas del mismo defecto se consolidan en un
