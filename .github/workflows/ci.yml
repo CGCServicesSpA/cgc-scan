@@ -84,6 +84,8 @@ jobs:
           go test ./internal/audit -run=^$ -fuzz=FuzzDecodeFindings -fuzztime=20s
           go test ./internal/audit -run=^$ -fuzz=FuzzDecodeSubmission -fuzztime=20s
           go test ./internal/audit -run=^$ -fuzz=FuzzDecodeCandidates -fuzztime=20s
+          go test ./internal/audit -run=^$ -fuzz=FuzzDecodeRunState -fuzztime=20s
+          go test ./internal/audit -run=^$ -fuzz=FuzzDecodeSignedCatalog -fuzztime=20s
 
   build-matrix:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}

@@ -126,3 +126,67 @@ func FuzzDecodeCandidates(f *testing.F) {
 		}
 	})
 }
+
+func FuzzDecodeRunState(f *testing.F) {
+	// Semilla válida: un estado mínimo pero completo, construido en línea
+	// para no depender de helpers de pruebas unitarias.
+	l := plannerLedger("sql-injection")
+	st := &RunState{
+		SchemaVersion:  StateSchemaVersion,
+		Source:         &SourceInfo{Mode: SourceModeWorktree},
+		CatalogVersion: CatalogSchemaVersion,
+		Ledger:         l,
+		Candidates:     &Candidates{SchemaVersion: CandidatesSchemaVersion, RunID: l.Run.ID, Items: []Candidate{}},
+	}
+	valid, err := json.MarshalIndent(st, "", "  ")
+	if err != nil {
+		f.Fatal(err)
+	}
+	valid = append(valid, '\n')
+	for _, seed := range fuzzSeeds(valid) {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		rst, err := DecodeRunState(data)
+		if err != nil {
+			return
+		}
+		if _, jerr := json.Marshal(rst); jerr != nil {
+			t.Fatalf("el estado decodificado debe serializar: %v", jerr)
+		}
+	})
+}
+
+func FuzzDecodeSignedCatalog(f *testing.F) {
+	// Semillas: sobre válido, truncado, sobredimensionado y anidado.
+	cat, err := LoadCatalog()
+	if err != nil {
+		f.Fatal(err)
+	}
+	signed := SignedCatalog{
+		SchemaVersion: CatalogTrustVersion,
+		Catalog:       cat,
+		KeyID:         "seed",
+		Algorithm:     "ed25519",
+		Signature:     "0000",
+	}
+	valid, err := json.MarshalIndent(signed, "", "  ")
+	if err != nil {
+		f.Fatal(err)
+	}
+	valid = append(valid, '\n')
+	for _, seed := range fuzzSeeds(valid) {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		// Solo forma: la verificación necesita un anillo de confianza, que
+		// aquí no existe; ningún fallo debe entrar en pánico.
+		var signed SignedCatalog
+		if err := json.Unmarshal(data, &signed); err != nil {
+			return
+		}
+		if _, jerr := json.Marshal(&signed); jerr != nil {
+			t.Fatalf("el sobre decodificado debe serializar: %v", jerr)
+		}
+	})
+}
