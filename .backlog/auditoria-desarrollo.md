@@ -1,6 +1,85 @@
 # Backlog de desarrollo y refactorización de `cgc-scan audit`
 
-Fuente: [auditoría corregida](../docs/auditoria-pendientes.md), contrastada sobre `d7b3b93`. Todas las tareas están pendientes. Las rutas indicadas son puntos de entrada; el agente deberá confirmar el estado del repositorio antes de implementar.
+Fuente histórica: [auditoría corregida](../docs/auditoria-pendientes.md), contrastada sobre `d7b3b93`. Los estados individuales de este backlog registran la evolución posterior; la fuente histórica no es un diagnóstico del código actual. Las rutas indicadas son puntos de entrada que deben confirmarse antes de implementar.
+
+## Estado y ruta de cierre
+
+**Análisis actualizado:** 10 de noviembre de 2026, base `8b18490`. De las 24 tareas principales, 21 figuran completadas, P2-6 está en curso y P2-5/P2-9 están pendientes. Además siguen pendientes D-1, D-2 y D-3. Esta actualización amplía el plan; no revalida integralmente las implementaciones ni acredita pruebas nuevas.
+
+El cierre completo exige terminar los seis frentes abiertos y verificar su integración. Excluir una tarea del release no equivale a cerrar este backlog. Las decisiones descritas como propuestas deben resolverse y documentarse durante la implementación; no son decisiones ya adoptadas ni requieren nuevas aprobaciones para elecciones rutinarias dentro del alcance autorizado.
+
+| Paso | Trabajo pendiente | Dependencia y salida verificable | Esfuerzo orientativo |
+| --- | --- | --- | --- |
+| 1 | Línea base y decisiones de contrato | Estado de Git, pruebas iniciales, versiones y decisiones de P2-5/D-1/D-3 registradas | 0,5–1 día |
+| 2 | P2-5: catálogo y actualización autenticada | Contrato definido; diez companions trazados, fixtures y actualización local segura | 7–15 días |
+| 3 | D-1, D-2 y D-3 | Contratos finales de hardening y candidatos; escalas documentadas | 2–5 días |
+| 4 | Cierre de P2-6 | P2-5 y deudas resueltas; ejemplos reproducibles, skill y trazabilidad completas | 1–3 días |
+| 5 | Integración y P2-9 | Pruebas finales, migración y paquete local verificados | 2–4 días |
+
+**Estimación restante: 12,5–28 días**, sujeta al inventario del catálogo y las decisiones de compatibilidad y firma. Es una estimación de esfuerzo, no una medición ni un plazo garantizado. Actualizarla al terminar el paso 1.
+
+### Preparación del agente implementador
+
+- Confirmar raíz, instrucciones aplicables, commit y cambios locales. Preservar el archivo `.backlog/.auditoria-desarrollo.md.swp` observado durante el análisis y cualquier trabajo ajeno.
+- Consultar CodeGraph antes de explorar código; comprobar versiones y contratos de catálogo, estado, entregas, esquemas y paquete.
+- Ejecutar `go test ./...` como línea base, registrar resultado y distinguir fallos previos de regresiones nuevas.
+- Mantener las tareas completadas; reabrirlas solo con evidencia de un criterio incumplido, identificando el defecto concreto.
+- Aplicar el enrutamiento de `AGENTS.md`: delegar exploración amplia o escritura no trivial según corresponda, con un único responsable por entrega. No iniciar SDD por defecto ni habilitar revisión basada en recibos. Las fases del protocolo auditado no son autorización para activar ese modo de desarrollo.
+- Trabajar por entregas coherentes de código, pruebas y documentación. Registrar decisiones antes de implementar el comportamiento dependiente. Solicitar información solo cuando una decisión no pueda resolverse dentro del alcance autorizado.
+
+### Evidencia de avance y reanudación
+
+Al cerrar cada subtarea, añadir aquí su decisión final, archivos relevantes, referencia del commit si existe, comandos ejecutados, resultado y limitaciones. Si no existe commit, identificar el estado del árbol verificado sin inventar una referencia. Mantener el siguiente paso y los bloqueos explícitos. No marcar una tarea completada por tener código escrito o una prueba planificada.
+
+#### Registro — paso 1: línea base y decisiones de contrato
+
+**Fecha:** 10 de noviembre de 2026. **Base:** `8b18490`, árbol limpio salvo este
+backlog y su swap (preservados). **CodeGraph:** índice activo, 232 archivos.
+
+- **Línea base de pruebas:** `go test ./...` verde — 31 paquetes, salida 0;
+  `go vet ./...` y `gofmt` sin hallazgos. Sin fallos previos que atribuir a
+  regresiones.
+- **Versiones vigentes:** catálogo `audit-catalog-1.1.0`; estado
+  `audit-state-1.0.0`; entrega `audit-submission-1.0.0`; ledger
+  `audit-ledger-1.0.0`; hallazgos `findings-1.0.0`; integridad
+  `audit-integrity-1.0.0`; comparación `audit-compare-1.0.0`; importación
+  `audit-import-1.0.0`; `VERSION` `0.2.0-rc.1`; skill global `1.3.0`.
+- **Disponibilidad de la referencia (P2-5a):** `cloudflare/security-audit-skill`
+  **no está disponible localmente** (no hay checkout ni copia en el equipo). El
+  árbol de la revisión fijada `c1c8a8c1` se obtuvo de forma puntual y de solo
+  lectura por HTTPS para el inventario; no se copió contenido de prompts al
+  repositorio y no se reemplazó la referencia por otra versión. Los textos de
+  clases nuevos serán redacción propia, como ya hace el catálogo; los
+  companions aportan la estructura de dominios y clases, no su texto.
+- **Inventario de los diez companions** (archivos y clases declaradas en la
+  referencia fijada): WEB-PROTOCOL-AND-AUTH (20), CLIENT-SIDE (14),
+  SUPPLY-CHAIN-AND-RELEASE (12), CLOUD-AND-DEPLOYMENT (15),
+  PROTOCOLS-RPC-AND-MESSAGING (14), DATA-ISOLATION-AND-LIFECYCLE (15),
+  DESKTOP-MOBILE-AND-LOCAL-IPC (16), MEMORY-SAFETY-AND-BINARY (20),
+  AI-AND-LLM (14), RESOURCE-EXHAUSTION-AND-AVAILABILITY (13). Los dominios del
+  catálogo actual ya cubren parte de supply-chain, cloud, client-side y
+  protocols; el mapeo de P2-5b seleccionará clases por señales detectables en
+  fuente, no 1 a 1.
+- **Decisión D-3 (registrada):** el estado de verificación
+  (`candidates.json`) **sigue siendo interno sin esquema público**. Motivos: no
+  hay consumidor externo (el agente recibe asignaciones y entrega
+  `audit-submission-1.0.0`; el estado interno lo valida y persiste el motor),
+  su forma evoluciona con el protocolo (ya cambió dos veces durante este
+  backlog) y publicarlo comprometería compatibilidad sin beneficio. Interfaces
+  públicas declaradas: `audit-ledger.schema.json`, `findings.schema.json`,
+  `report.schema.json`, `agent.schema.json`, `audit next` (tarea), entrega,
+  comparación, importación y estado. Se re-evaluará si aparece un consumidor
+  externo del estado.
+- **Decisión D-1 (registrada):** el campo global `hardening` se conserva con su
+  semántica antigua (recomendación de la unidad entregada, aplicada a todas
+  las unidades que el dueño entregó) **y** se añade el campo dirigido por
+  unidad, `hardening_by_unit`, con validación de que cada `coverage_id`
+  referenciado pertenezca a la entrega. El campo global no se reinterpreta:
+  queda documentado como deprecated-additive y la migración es el formato
+  mixto (ambos coexisten; el global conserva su significado).
+- **Decisión D-2 (registrada):** documentar ambas escalas junto a sus
+  definiciones y en `docs/auditoria.md`; sin cambio de comportamiento.
+- **Siguiente paso:** P2-5b (primeros incrementos del catálogo con fixtures).
 
 ## Reglas de ejecución
 
@@ -13,7 +92,7 @@ Fuente: [auditoría corregida](../docs/auditoria-pendientes.md), contrastada sob
 - Ninguna tarea implica publicar releases, transferir archivos o ejecutar operaciones remotas.
 - No activar revisiones basadas en recibos sin autorización explícita.
 
-## Orden de ejecución
+## Orden original de ejecución (histórico)
 
 | Etapa | Tareas | Condición de salida |
 | --- | --- | --- |
@@ -23,7 +102,7 @@ Fuente: [auditoría corregida](../docs/auditoria-pendientes.md), contrastada sob
 | 4. Continuidad y presentación | P1-5, P1-6 → P1-7 → P1-8; P1-9 | Prompts, continuidad, consolidación, delta e integridad |
 | 5. Integración y entrega | P2-1…P2-9 | Integración, documentación, paquete y release preparados |
 
-P2-4 y P2-7 pueden adelantarse. P2-6 debe actualizarse durante las etapas anteriores. Las etapas establecen dependencias, no autorización para trabajar en paralelo.
+Este orden explica las dependencias originales; para el trabajo restante usar la ruta de cierre anterior. P2-6 se mantiene incremental. Las etapas establecen dependencias, no autorización para trabajar en paralelo.
 
 ## P0-5 — Validación semántica y estricta de candidatos
 
@@ -498,6 +577,17 @@ Aceptación y pruebas:
 - Un catálogo alterado o incompatible se rechaza.
 - Las corridas conservan la versión usada.
 
+### Desglose ejecutable de P2-5
+
+- [ ] **P2-5a — Inventario y contrato.** Confirmar la referencia `cloudflare/security-audit-skill@c1c8a8c1` fijada en P1-1 y su disponibilidad local; si no está disponible, registrar el bloqueo de fidelidad sin inventar su contenido ni reemplazarla silenciosamente por una versión remota. Mapear web/auth, cliente, cadena de suministro, cloud, protocolos, aislamiento de datos, escritorio/móvil, memoria/binario, IA/LLM y agotamiento de recursos a clases, señales, invariantes y checks, sin exigir correspondencia uno a uno entre companion y dominio. Documentar límites de aplicabilidad; una exclusión debe justificarse y no contar como cobertura implementada.
+- [ ] **P2-5b — Incrementos del catálogo.** Añadir grupos coherentes con fixture positivo y negativo por clase. Extender el vocabulario de señales solo cuando sea necesario. Comprobar selección, IDs y orden deterministas en quick/standard/deep. Separar reconocimiento de superficie de evidencia de cobertura.
+- [ ] **P2-5c — Compatibilidad y continuidad.** Definir versiones aceptadas y migraciones. Conservar versión, identidad y política del catálogo de cada corrida; actualizar el catálogo instalado no debe reinterpretar corridas anteriores. Probar reapertura, continuidad e invalidación de reutilización tras cambios de catálogo.
+- [ ] **P2-5d — Formato firmado y confianza.** Definir algoritmo, bytes autenticados, identificador de clave y límites de lectura. Propuesta: claves públicas de confianza separadas de la clave privada de firma; ninguna clave privada en repositorio, informes o paquetes. Documentar incorporación/rotación de claves y rechazo de claves desconocidas. Definir política de retroceso y recuperación; no prometer protección antirretroceso sin estado o reglas que la hagan verificable. Usar claves desechables en pruebas.
+- [ ] **P2-5e — Actualización local.** Implementar una entrada de archivo local, verificar firma y compatibilidad antes de activar y sustituir de forma atómica. Definir qué ocurre ante interrupción, actualización repetida y catálogo inválido. No descargar, publicar ni transferir archivos remotamente como parte de esta tarea.
+- [ ] **P2-5f — Pruebas y documentación.** Cubrir catálogo válido, alterado, truncado, sobredimensionado, firma inválida, clave desconocida, versión incompatible, política de retroceso e interrupción. Un rechazo conserva el catálogo activo y las corridas. Documentar el comando real, confianza, recuperación y límites.
+
+Dependencias internas: a → b/c/d → e → f. La división permite entregas pequeñas; no presupone ejecución paralela. Para cerrar P2-5 deben estar resueltas todas las decisiones y entregados todos los componentes comprometidos, no solo ampliado el JSON.
+
 ## P2-6 — Requisitos, aceptación y documentación
 
 **Estado:** en curso. **Dependencias:** incremental durante todo el backlog. **Estimación:** 3 días.
@@ -521,6 +611,13 @@ Aceptación:
 - Cada comando documentado existe y sus ejemplos son reproducibles.
 - Funciones pendientes están identificadas como pendientes.
 - La documentación diferencia validación estructural, independencia y verdad del hallazgo.
+
+### Trabajo restante de P2-6
+
+- [ ] **P2-6a — Ejemplos.** Actualizar `docs/uso.md` con el ciclo init/next/submit/status/explain/reset-unit/report/verify/compare y los formatos soportados, usando la sintaxis real. Añadir el flujo de catálogo cuando P2-5 lo entregue; ejecutar ejemplos en un entorno local aislado.
+- [ ] **P2-6b — Skill incluida.** Actualizar `skills/cgc-scan/SKILL.md` conforme a los contratos finales: perfiles, independencia, presupuesto, fuentes, recuperación, hardening y catálogo. No describir funciones pendientes como existentes.
+- [ ] **P2-6c — Trazabilidad.** Revisar RF-39…RF-56 y CA-73…CA-91; vincular tarea → requisito → aceptación → prueba o evidencia observable. Añadir IDs nuevos si faltan criterios para catálogo o deuda sin renumerar los existentes.
+- [ ] **P2-6d — Coherencia.** Contrastar ayuda CLI, ejemplos y `docs/auditoria.md`. Explicar por separado estructura, independencia, integridad y verdad del hallazgo. Cerrar después de P2-5 y D-1/D-3, conservando actualizaciones incrementales.
 
 ## P2-7 — Paquete autosuficiente con esquemas
 
@@ -582,6 +679,14 @@ Aceptación:
 - Las notas describen únicamente funciones entregadas.
 - La preparación termina con artefactos locales verificables; publicación y tag quedan fuera de esta tarea.
 
+### Secuencia de cierre de P2-9
+
+- [ ] Elegir versión después de conocer los cambios reales de compatibilidad, incluidos D-1/D-3 y catálogo.
+- [ ] Actualizar notas, `VERSION`, skill y documentación; cambiar versiones de esquemas y catálogo solo cuando su contrato lo requiera, no para igualarlas artificialmente al binario.
+- [ ] Describir migración y funciones entregadas; distinguir limitaciones del producto y tareas aún abiertas.
+- [ ] Construir el paquete final con la versión definitiva y repetir su comprobación de instalación aislada. Registrar ubicación, contenido y checksum del artefacto local.
+- [ ] Terminar con artefactos locales verificables. No crear tag, publicar release, hacer push ni usar sesiones remotas.
+
 ## Deuda complementaria
 
 | ID | Trabajo | Dependencia | Aceptación |
@@ -592,8 +697,26 @@ Aceptación:
 
 Estas tareas están pendientes y no tienen estimación en el documento base. El historial de intentos queda cubierto por P0-4; las huellas pendientes, por P2-2; el recorrido duplicado, por P2-8.
 
+### Desglose de deuda pendiente
+
+- [ ] **D-1a:** diseñar la asociación explícita de hardening a `coverage_id` y su validación. Rechazar referencias inexistentes o ajenas a la entrega cuando corresponda.
+- [ ] **D-1b:** definir la compatibilidad del campo global heredado. Preservar explícitamente su semántica antigua o proporcionar migración versionada; no reinterpretarlo ni perder recomendaciones silenciosamente. Definir qué ocurre al combinar campos antiguos y nuevos.
+- [ ] **D-1c:** implementar persistencia y presentación; actualizar contratos/esquemas si corresponde. Probar entregas con varias unidades, asignación dirigida, formato antiguo, formato mixto y rechazo sin escritura parcial.
+- [ ] **D-2:** documentar junto a las definiciones y en la documentación del protocolo que `VerdictRank` ordena fuerza del veredicto y `severityRank` severidad. Explicar los usos sin cambiar su comportamiento ni confundir ambas escalas.
+- [ ] **D-3:** registrar una decisión con sus motivos. Propuesta inicial: conservar candidatos como formato interno si no hay consumidor externo que justifique un contrato público. Si se publica, versionar y validar el esquema, incorporarlo al paquete y a las comprobaciones del instalador, y probar ausencia/incompatibilidad. En ambos casos documentar qué interfaces sí son públicas.
+
 ## Criterio común de cierre
 
 Una tarea termina cuando cumple sus criterios, incorpora pruebas de sus fallos relevantes, mantiene contratos coherentes y documenta cualquier migración. Ejecutar pruebas focalizadas durante el desarrollo y `go test ./...` antes de entregar cambios de código; usar `-race`, fuzzing y pruebas de instalación donde corresponda.
 
-Las estimaciones originales suman aproximadamente **68–73 días**, sin incluir decisiones de producto, deuda complementaria ni contingencias. Deben revisarse después de cerrar persistencia y contratos del protocolo.
+### Validación final del conjunto
+
+- [ ] Pruebas focalizadas de cada cambio y `go test ./...` satisfactorios sobre el estado final.
+- [ ] `-race` en las áreas de estado/concurrencia modificadas y pruebas de recuperación pertinentes.
+- [ ] Campañas de 20 segundos por target real de fuzzing de audit; confirmar nombres en el repositorio y conservar las semillas y configuración CI existentes. Añadir cobertura del nuevo decodificador de catálogo si se introduce.
+- [ ] E2E local sin proveedor de IA: asignación, entrega, revisión/crítica según perfil, sellado, integridad, comparación y continuidad. Cubrir cambios de catálogo y compatibilidad heredada.
+- [ ] Instalación desde paquete extraído en destino aislado, sin depender del checkout; comprobar binario, documentación, skill, catálogo y todos los esquemas públicos finales. Probar errores por esquema ausente o incompatible.
+- [ ] Ayuda y ejemplos reproducibles; notas de release describen solo lo entregado. Ninguna clave privada o secreto en el paquete.
+- [ ] P2-5, P2-6, P2-9 y D-1…D-3 cerrados con evidencia. Toda regresión detectada tiene resolución o bloqueo explícito; un bloqueo impide declarar cierre completo.
+
+Las estimaciones originales de **68–73 días** corresponden al backlog histórico completo, sin deuda complementaria ni contingencias. No representan el esfuerzo restante; usar la estimación y secuencia de la ruta de cierre al inicio de este documento.
