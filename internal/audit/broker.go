@@ -61,7 +61,15 @@ const (
 	DispositionBlocked   = "blocked"
 )
 
-// VerdictRank ordena los veredictos por fuerza. Un rechazo nunca escala.
+// VerdictRank ordena los veredictos por FUERZA DEL VEREDICTO dentro del
+// protocolo de auditoría: rejected (0) < needs_validation (1) < confirmed (2).
+// La usa el broker para decidir escalaciones (una promoción de veredicto
+// exige un segundo verificador) y la consolidación para elegir el registro
+// representativo. Es una escala ordinal del veredicto, no de gravedad: no se
+// puede comparar con la severidad ni sustituir a severityRank.
+//
+// Véase severityRank en validate.go para la escala de severidad del hallazgo
+// y docs/auditoria.md («Dos escalas distintas») para la explicación de usos.
 func VerdictRank(verdict string) int {
 	switch verdict {
 	case VerdictRejected:
@@ -623,6 +631,35 @@ type UnitResult struct {
 	Hardening             []string `json:"hardening"`
 }
 
+// UnitHardening es una recomendación de endurecimiento dirigida a una unidad
+// concreta de la entrega: no se propaga a las demás.
+type UnitHardening struct {
+	CoverageID string `json:"coverage_id"`
+	Note       string `json:"note"`
+}
+
+// Submission es lo que un agente entrega al motor.
+//
+// Compatibilidad de hardening: el campo global `hardening` conserva su
+// semántica antigua (recomendación aplicada a TODAS las unidades de la
+// entrega) y no se reinterpreta ni se pierde; `hardening_by_unit` es el
+// formato dirigido, donde cada nota afecta solo a su coverage_id. Ambos
+// coexisten y un formato antiguo sigue funcionando sin migración.
+type Submission struct {
+	SchemaVersion string        `json:"schema_version"`
+	AgentID       string        `json:"agent_id"`
+	Units         []UnitResult  `json:"units,omitempty"`
+	Candidates    []Record      `json:"candidates,omitempty"`
+	Verification  *Verification `json:"verification,omitempty"`
+	// Hardening es el campo global heredado; deprecado a favor de
+	// hardening_by_unit, conservado para compatibilidad.
+	Hardening []string `json:"hardening,omitempty"`
+	// HardeningByUnit es el formato dirigido por unidad.
+	HardeningByUnit []UnitHardening `json:"hardening_by_unit,omitempty"`
+	Uncovered       []Uncovered     `json:"uncovered,omitempty"`
+	Critique        *Critique       `json:"critique,omitempty"`
+}
+
 // Uncovered declara una superficie que merece su propia unidad y que el
 // cazador encontró fuera de su asignación.
 type Uncovered struct {
@@ -652,18 +689,6 @@ type Critique struct {
 	ResolvedPriorLeads []string    `json:"resolved_prior_leads,omitempty"`
 	Stop               bool        `json:"stop,omitempty"`
 	Reason             string      `json:"reason,omitempty"`
-}
-
-// Submission es lo que un agente entrega al motor.
-type Submission struct {
-	SchemaVersion string        `json:"schema_version"`
-	AgentID       string        `json:"agent_id"`
-	Units         []UnitResult  `json:"units,omitempty"`
-	Candidates    []Record      `json:"candidates,omitempty"`
-	Verification  *Verification `json:"verification,omitempty"`
-	Hardening     []string      `json:"hardening,omitempty"`
-	Uncovered     []Uncovered   `json:"uncovered,omitempty"`
-	Critique      *Critique     `json:"critique,omitempty"`
 }
 
 // decodeStrict decodifica un único objeto JSON en v rechazando campos
@@ -1322,6 +1347,16 @@ func submitHunt(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, erro
 			return nil, fmt.Errorf("auditoría: el candidato %s no está vinculado a ninguna unidad", fp)
 		}
 	}
+	// El hardening dirigido debe referenciar unidades de esta entrega: una
+	// recomendación ajena no se aplica ni se descarta en silencio.
+	for _, h := range sub.HardeningByUnit {
+		if !submittedUnits[h.CoverageID] {
+			return nil, fmt.Errorf("auditoría: el hardening dirigido cita la unidad %s, que no pertenece a la entrega", h.CoverageID)
+		}
+		if strings.TrimSpace(h.Note) == "" {
+			return nil, fmt.Errorf("auditoría: el hardening dirigido a %s exige una nota no vacía", h.CoverageID)
+		}
+	}
 	for _, u := range l.Units {
 		if u.State == StateInProgress && u.Owner == sub.AgentID && !submittedUnits[u.CoverageID] {
 			return nil, fmt.Errorf("auditoría: falta la unidad asignada %s en la entrega", u.CoverageID)
@@ -1348,9 +1383,14 @@ func submitHunt(l *Ledger, c *Candidates, sub *Submission) (*SubmitOutcome, erro
 		unit.Candidates = nonNil(res.CandidateFingerprints)
 		unit.Unresolved = nonNil(res.Unresolved)
 		if len(sub.Hardening) > 0 || len(res.Hardening) > 0 {
+			// Campo global heredado: se aplica a todas las unidades de la
+			// entrega, con su semántica antigua documentada.
 			hardening := append([]string{}, sub.Hardening...)
 			hardening = append(hardening, res.Hardening...)
 			unit.Hardening = hardening
+		}
+		if notes := hardeningNotesFor(sub.HardeningByUnit, res.CoverageID); len(notes) > 0 {
+			unit.Hardening = append(unit.Hardening, notes...)
 		}
 		out.AppliedUnits++
 	}
@@ -1604,6 +1644,17 @@ func submitVerification(l *Ledger, c *Candidates, sub *Submission, opts SubmitOp
 	c.Normalize()
 	l.Recompute()
 	return out, nil
+}
+
+// hardeningNotesFor devuelve las notas dirigidas a una unidad concreta.
+func hardeningNotesFor(list []UnitHardening, coverageID string) []string {
+	out := make([]string, 0, 2)
+	for _, h := range list {
+		if h.CoverageID == coverageID && strings.TrimSpace(h.Note) != "" {
+			out = append(out, h.Note)
+		}
+	}
+	return out
 }
 
 func validateRecord(r Record) error {

@@ -30,6 +30,15 @@ var conditionKinds = map[string]bool{
 	"data_state": true, "timing_dependency": true, "third_party_dependency": true,
 }
 
+// severityRank ordena la SEVERIDAD del hallazgo auditado: informational (0) <
+// low (1) < medium (2) < high (3) < critical (4). La usa la validación para
+// acotar la severidad overall al impacto demostrado y para reportar solo
+// medium y arriba en el detalle. Es la escala de gravedad del hallazgo, no la
+// del veredicto: confirmed y needs_validation son veredictos distintos, no
+// grados de severidad, y VerdictRank (broker.go) es la escala que los ordena.
+//
+// Véase VerdictRank en broker.go para la escala de fuerza del veredicto y
+// docs/auditoria.md («Dos escalas distintas») para la explicación de usos.
 var severityRank = map[string]int{
 	"informational": 0, "low": 1, "medium": 2, "high": 3, "critical": 4,
 }

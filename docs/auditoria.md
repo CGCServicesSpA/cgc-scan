@@ -96,6 +96,21 @@ el contrato. El reporte lo repite.
   estado y el dueño nuevos, y un reinicio repetido o de una unidad no
   elegible no agrega historial falso.
 
+## Dos escalas distintas
+
+El protocolo usa dos escalas que no se mezclan:
+
+| Escala | Dónde | Ordena | Uso |
+| --- | --- | --- | --- |
+| **Fuerza del veredicto** (`VerdictRank`) | `internal/audit/broker.go` | `rejected` < `needs_validation` < `confirmed` | Decidir escalaciones: una promoción de veredicto exige un segundo verificador independiente; y elegir el registro representativo en la consolidación. |
+| **Severidad del hallazgo** (`severityRank`) | `internal/audit/validate.go` | `informational` < `low` < `medium` < `high` < `critical` | Acotar la severidad overall al impacto demostrado y filtrar el detalle a medium y arriba. |
+
+Un veredicto no es un grado de severidad: `confirmed` y `needs_validation`
+son estados distintos (el segundo no lleva severidad), y una escalación no
+mide gravedad sino que exige independencia adicional. Comparar ambas escalas
+directamente —por ejemplo, para decidir si un hallazgo «sube»— es un error de
+contrato; cada una responde a una pregunta distinta.
+
 ## Validación del estado de verificación
 
 `candidates.json` es interno, pero no se confía en él: se valida semánticamente
