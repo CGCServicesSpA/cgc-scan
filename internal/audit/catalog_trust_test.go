@@ -49,19 +49,19 @@ func signedFor(t *testing.T, version, keyID string) (*SignedCatalog, string) {
 }
 
 func TestSignedCatalogVerifyAndActivate(t *testing.T) {
-	signed, dir := signedFor(t, "audit-catalog-1.2.0", "test-key")
+	signed, dir := signedFor(t, "audit-catalog-1.3.0", "test-key")
 	activated, err := ActivateSignedCatalog(signed, dir)
 	if err != nil {
 		t.Fatalf("activar: %v", err)
 	}
-	if activated.SchemaVersion != "audit-catalog-1.2.0" {
+	if activated.SchemaVersion != "audit-catalog-1.3.0" {
 		t.Fatalf("versión inesperada: %q", activated.SchemaVersion)
 	}
 	info, err := InstalledCatalog(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !info.Installed || info.Version != "audit-catalog-1.2.0" {
+	if !info.Installed || info.Version != "audit-catalog-1.3.0" {
 		t.Fatalf("catálogo activado mal registrado: %+v", info)
 	}
 	// Activación repetida con el mismo sobre: idempotente.
@@ -71,7 +71,7 @@ func TestSignedCatalogVerifyAndActivate(t *testing.T) {
 }
 
 func TestSignedCatalogRejectsTampered(t *testing.T) {
-	signed, dir := signedFor(t, "audit-catalog-1.2.0", "test-key")
+	signed, dir := signedFor(t, "audit-catalog-1.3.0", "test-key")
 	// Catálogo alterado tras firmar: la firma no verifica y nada se activa.
 	tampered := *signed
 	tampered.Catalog.Description = "descripción alterada"
@@ -102,7 +102,7 @@ func TestSignedCatalogRejectsUnknownKey(t *testing.T) {
 	if serr != nil {
 		t.Fatal(serr)
 	}
-	_, dir := signedFor(t, "audit-catalog-1.2.0", "test-key")
+	_, dir := signedFor(t, "audit-catalog-1.3.0", "test-key")
 	if _, err := VerifySignedCatalog(signed, dir); err == nil ||
 		!strings.Contains(err.Error(), "no es de confianza") {
 		t.Fatalf("err = %v, want clave desconocida", err)
@@ -118,14 +118,14 @@ func TestSignedCatalogRejectsIncompatibleVersion(t *testing.T) {
 }
 
 func TestSignedCatalogRejectsBadSignatureShape(t *testing.T) {
-	signed, dir := signedFor(t, "audit-catalog-1.2.0", "test-key")
+	signed, dir := signedFor(t, "audit-catalog-1.3.0", "test-key")
 	signed.Signature = "no-hex"
 	if _, err := VerifySignedCatalog(signed, dir); err == nil ||
 		!strings.Contains(err.Error(), "firma") {
 		t.Fatalf("err = %v, want firma con forma inválida", err)
 	}
 	// Sobre con esquema distinto.
-	signedOK, dir2 := signedFor(t, "audit-catalog-1.2.0", "test-key")
+	signedOK, dir2 := signedFor(t, "audit-catalog-1.3.0", "test-key")
 	signedOK.SchemaVersion = "otro-esquema"
 	if _, err := VerifySignedCatalog(signedOK, dir2); err == nil ||
 		!strings.Contains(err.Error(), "esquema") {
@@ -136,7 +136,7 @@ func TestSignedCatalogRejectsBadSignatureShape(t *testing.T) {
 		t.Fatalf("límite del sobre cambiado sin actualizar pruebas: %d", MaxSignedCatalogBytes)
 	}
 	// Un sobre serializado y truncado no puede verificarse de forma completa.
-	trunc, tdir := signedFor(t, "audit-catalog-1.2.0", "test-key")
+	trunc, tdir := signedFor(t, "audit-catalog-1.3.0", "test-key")
 	data, err := json.Marshal(trunc)
 	if err != nil {
 		t.Fatal(err)

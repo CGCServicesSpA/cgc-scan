@@ -59,13 +59,13 @@ func TestAuditCatalogStatusWithoutActivation(t *testing.T) {
 
 func TestAuditCatalogActivateVerifiesAndActivates(t *testing.T) {
 	app, _, _ := newTestApp(t)
-	overwrite := catalogOverwriteFor(t, app, "audit-catalog-1.2.0", "cli-key")
+	overwrite := catalogOverwriteFor(t, app, "audit-catalog-1.3.0", "cli-key")
 	code, out, errOut := auditRun(t, app, "audit", "catalog", "activate", "--file", overwrite)
 	if code != 0 {
 		t.Fatalf("activate = %d: %s %s", code, out, errOut)
 	}
 	code, out, _ = auditRun(t, app, "audit", "catalog", "status")
-	if code != 0 || !strings.Contains(out, "audit-catalog-1.2.0") {
+	if code != 0 || !strings.Contains(out, "audit-catalog-1.3.0") {
 		t.Fatalf("status tras activar = %d: %s", code, out)
 	}
 }
@@ -73,7 +73,7 @@ func TestAuditCatalogActivateVerifiesAndActivates(t *testing.T) {
 func TestAuditCatalogActivateRejectsAndPreserves(t *testing.T) {
 	app, _, _ := newTestApp(t)
 	// Activación válida inicial.
-	good := catalogOverwriteFor(t, app, "audit-catalog-1.2.0", "cli-key")
+	good := catalogOverwriteFor(t, app, "audit-catalog-1.3.0", "cli-key")
 	if code, out, errOut := auditRun(t, app, "audit", "catalog", "activate", "--file", good); code != 0 {
 		t.Fatalf("activate válido = %d: %s %s", code, out, errOut)
 	}
@@ -105,7 +105,7 @@ func TestAuditCatalogActivateRejectsAndPreserves(t *testing.T) {
 		t.Fatalf("activate ajena = %d: %s; se esperaba rechazo explícito", code, errOut)
 	}
 	code, out, _ := auditRun(t, app, "audit", "catalog", "status")
-	if code != 0 || !strings.Contains(out, "audit-catalog-1.2.0") {
+	if code != 0 || !strings.Contains(out, "audit-catalog-1.3.0") {
 		t.Fatalf("el catálogo activo debió conservarse: %d %s", code, out)
 	}
 }

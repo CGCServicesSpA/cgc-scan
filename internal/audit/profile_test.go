@@ -168,8 +168,8 @@ func TestCatalogProfilesAreVersioned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("catálogo: %v", err)
 	}
-	if cat.SchemaVersion != "audit-catalog-1.2.0" {
-		t.Fatalf("esquema = %q, want audit-catalog-1.2.0", cat.SchemaVersion)
+	if cat.SchemaVersion != "audit-catalog-1.3.0" {
+		t.Fatalf("esquema = %q, want audit-catalog-1.3.0", cat.SchemaVersion)
 	}
 	if !strings.HasPrefix(cat.SourceVersion, "cloudflare/security-audit-skill@") {
 		t.Fatalf("la referencia externa no está fijada: %q", cat.SourceVersion)

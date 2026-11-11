@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion es la versión del catálogo de clases.
-const CatalogSchemaVersion = "audit-catalog-1.2.0"
+const CatalogSchemaVersion = "audit-catalog-1.3.0"
 
 // Etapas del ciclo de vida: vocabulario cerrado que agrupa las clases para la
 // granularidad por subsistema × ciclo de vida del perfil deep.
@@ -45,12 +45,20 @@ const (
 	// SignalCache reconoce la capa de caché de la aplicación o del edge:
 	// activa las clases de política de caché.
 	SignalCache = "cache"
+	// SignalMessaging reconoce la capa de mensajería entre componentes
+	// (brokers, colas, RPC): activa las clases del dominio messaging.
+	SignalMessaging = "messaging_signal"
+	// SignalIPC reconoce la interfaz de proceso local o de aplicación
+	// (sockets, esquemas de URL, deep links): activa las clases del dominio
+	// local-ipc.
+	SignalIPC = "ipc_signal"
 )
 
 var knownSignals = map[string]bool{
 	SignalSource: true, SignalManifest: true, SignalLockfile: true,
 	SignalCI: true, SignalContainer: true, SignalConfig: true,
 	SignalHTTPServer: true, SignalCache: true,
+	SignalMessaging: true, SignalIPC: true,
 }
 
 var classIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
@@ -94,6 +102,8 @@ type Signals struct {
 	Config     ExtensionSpec   `json:"config"`
 	HTTPServer PathPatternSpec `json:"http_server"`
 	Cache      PathPatternSpec `json:"cache"`
+	Messaging  PathPatternSpec `json:"messaging_signal"`
+	IPC        PathPatternSpec `json:"ipc_signal"`
 }
 
 // Limits acota el reconocimiento para que el reparto sea barato y estable.
@@ -224,6 +234,12 @@ func (c *Catalog) Validate() error {
 	}
 	if len(c.Signals.Cache.PathPatterns) == 0 {
 		add("signals.cache.path_patterns vacío")
+	}
+	if len(c.Signals.Messaging.PathPatterns) == 0 {
+		add("signals.messaging_signal.path_patterns vacío")
+	}
+	if len(c.Signals.IPC.PathPatterns) == 0 {
+		add("signals.ipc_signal.path_patterns vacío")
 	}
 	if len(c.Classes) == 0 {
 		add("classes vacío")

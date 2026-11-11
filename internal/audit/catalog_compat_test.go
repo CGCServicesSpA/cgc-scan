@@ -73,7 +73,7 @@ func TestCatalogVersionRecordedAtInit(t *testing.T) {
 		Ledger:         l,
 		Candidates:     &Candidates{SchemaVersion: CandidatesSchemaVersion, RunID: l.Run.ID, Items: []Candidate{}},
 	}
-	if st.CatalogVersion != "audit-catalog-1.2.0" {
+	if st.CatalogVersion != "audit-catalog-1.3.0" {
 		t.Fatalf("la corrida nueva debe registrar el catálogo vigente: %q", st.CatalogVersion)
 	}
 }

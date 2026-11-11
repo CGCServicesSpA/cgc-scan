@@ -278,6 +278,12 @@ func scanSignals(root string, unit discovery.Unit, cat *Catalog) (map[string][]s
 		if matchAnyPathGlob(cat.Signals.Cache.PathPatterns, rel) {
 			add(SignalCache, rel)
 		}
+		if matchAnyPathGlob(cat.Signals.Messaging.PathPatterns, rel) {
+			add(SignalMessaging, rel)
+		}
+		if matchAnyPathGlob(cat.Signals.IPC.PathPatterns, rel) {
+			add(SignalIPC, rel)
+		}
 		return nil
 	})
 	if err != nil {

@@ -111,7 +111,7 @@ func VerifySignedCatalog(signed *SignedCatalog, configDir string) (*Catalog, err
 	// aceptada por esta versión del motor se rechaza con el diagnóstico de
 	// incompatibilidad, aunque el contenido tampoco cumpla el contrato.
 	switch signed.Catalog.SchemaVersion {
-	case "audit-catalog-1.1.0", "audit-catalog-1.2.0":
+	case "audit-catalog-1.1.0", "audit-catalog-1.2.0", "audit-catalog-1.3.0":
 	default:
 		return nil, fmt.Errorf("%w: %q", ErrIncompatibleCatalog, signed.Catalog.SchemaVersion)
 	}

@@ -1,5 +1,5 @@
 {
-  "schema_version": "audit-catalog-1.2.0",
+  "schema_version": "audit-catalog-1.3.0",
   "description": "Catálogo de dominios, fronteras y clases de ataque que el motor usa para construir el ledger de cobertura. Los textos son datos versionados; el motor no interpreta el código, solo reparte el trabajo y valida el contrato. Las referencias source apuntan a archivos del skill adaptado en la versión fijada por source_version.",
   "source_version": "cloudflare/security-audit-skill@c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
   "limits": {
@@ -138,6 +138,40 @@
         "**/nginx*.conf",
         "**/varnish*.vcl",
         "**/cdn*.yml"
+      ]
+    },
+    "messaging_signal": {
+      "path_patterns": [
+        "**/queue*.go",
+        "**/broker*.go",
+        "**/consumer*.go",
+        "**/producer*.go",
+        "**/pubsub*.go",
+        "**/subscriber*.go",
+        "**/publisher*.go",
+        "**/consumer*.py",
+        "**/producer*.py",
+        "**/queue*.py",
+        "**/messaging*.ts",
+        "**/messaging*.js",
+        "**/grpc*.go",
+        "**/graphql*.go",
+        "**/webhook*.go"
+      ]
+    },
+    "ipc_signal": {
+      "path_patterns": [
+        "**/ipc*.go",
+        "**/daemon*.go",
+        "**/socket*.go",
+        "**/unixsock*.go",
+        "**/namedpipe*.go",
+        "**/deeplink*.go",
+        "**/deeplink*.ts",
+        "**/deeplink*.js",
+        "**/scheme*.go",
+        "**/handler*.swift",
+        "**/intent*.kt"
       ]
     }
   },
@@ -639,6 +673,325 @@
         "Verifica que la limpieza cubre el camino de error parcial y no solo el feliz."
       ],
       "source": "companions/RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#accumulation"
+    },
+    {
+      "id": "prototype-pollution-gadget",
+      "domain": "client",
+      "boundary": "object-state",
+      "lifecycle": "runtime",
+      "title": "Contaminación de prototipos con gadget de uso posterior",
+      "priority": 40,
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Un objeto alcanzable por entrada externa no puede extender Object.prototype ni un prototipo de framework del que depende una decisión de seguridad posterior.",
+      "checks": [
+        "Identifica los caminos de escritura recursiva (merge, deep-extend, asignación por clave) alcanzables con entrada externa.",
+        "Rastrea el gadget posterior que convierte la contaminación en efecto de seguridad; sin gadget es riesgo teórico.",
+        "Verifica el control del framework (congelación, claves no heredadas) antes de asignar impacto."
+      ],
+      "source": "companions/CLIENT-SIDE.md#prototype-pollution"
+    },
+    {
+      "id": "postmessage-origin-confusion",
+      "domain": "client",
+      "boundary": "cross-origin-messaging",
+      "lifecycle": "runtime",
+      "title": "postMessage con origen o fuente mal vinculada",
+      "priority": 40,
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Cada mensaje entre ventanas verifica su origen contra una lista cerrada y su fuente esperada antes de que su contenido alcance una decisión o un sumidero.",
+      "checks": [
+        "Inventa los receptores de mensajes y qué verifican de event.origin y event.source.",
+        "Sigue el contenido del mensaje hasta su decisión o sumidero y declara qué identidad gana.",
+        "Exige el efecto entre orígenes; el uso del propio dato del atacante no es hallazgo."
+      ],
+      "source": "companions/CLIENT-SIDE.md#postmessage"
+    },
+    {
+      "id": "client-storage-stale-authz",
+      "domain": "client",
+      "boundary": "browser-storage",
+      "lifecycle": "runtime",
+      "title": "Almacenamiento del navegador con autorización vencida",
+      "priority": 45,
+      "languages": [
+        "javascript",
+        "typescript"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Los datos de sesión almacenados en el navegador se invalidan y limpian en el ciclo de vida de la cuenta o del inquilino que los creó.",
+      "checks": [
+        "Inventa quién escribe y quién lee cada almacenamiento (local, session, IndexedDB).",
+        "Determina qué cierre de sesión, cambio de cuenta o ciclo de vida limpia cada registro.",
+        "Rastrea la lectura vencida hasta la decisión de autorización que todavía la acepta."
+      ],
+      "source": "companions/CLIENT-SIDE.md#storage"
+    },
+    {
+      "id": "message-boundary-canonicalization",
+      "domain": "messaging",
+      "boundary": "framing",
+      "lifecycle": "runtime",
+      "title": "Desacuerdo de límite y canonización entre componentes de mensaje",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "messaging_signal"
+      ],
+      "invariant": "Productor y consumidor interpretan el mismo mensaje con el mismo límite y la misma canonización; ninguna normalización divergente crea dos lecturas de un campo con decisión de seguridad.",
+      "checks": [
+        "Nombre los dos componentes y el valor normalizado exacto de cada lado.",
+        "Compara esquemas, tipos de unión y valores por defecto entre extremos.",
+        "Exige dos interpretaciones con decisión de seguridad distinta; la sola diferencia de formato no es hallazgo."
+      ],
+      "source": "companions/PROTOCOLS-RPC-AND-MESSAGING.md#framing"
+    },
+    {
+      "id": "topic-subscription-scope",
+      "domain": "messaging",
+      "boundary": "broker-isolation",
+      "lifecycle": "runtime",
+      "title": "Ámbito de tópico, clave de enrutamiento o suscripción excedido",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "messaging_signal"
+      ],
+      "invariant": "Un productor no puede publicar ni un consumidor suscribirse fuera del ámbito de tópico, clave de enrutamiento o suscripción que su identidad autoriza.",
+      "checks": [
+        "Mapea tópicos, claves de enrutamiento y suscripciones a las identidades que los declaran.",
+        "Compara el ámbito autorizado con el ámbito efectivo del broker.",
+        "Demuestra la lectura o escritura cruzada con dos identidades concretas."
+      ],
+      "source": "companions/PROTOCOLS-RPC-AND-MESSAGING.md#broker"
+    },
+    {
+      "id": "duplicate-delivery-idempotency",
+      "domain": "messaging",
+      "boundary": "delivery",
+      "lifecycle": "runtime",
+      "title": "Entrega duplicada sin idempotencia",
+      "priority": 45,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "messaging_signal"
+      ],
+      "invariant": "Un mensaje procesado dos veces produce el mismo estado que procesado una vez; el reconocimiento y el compromiso no ordenan efectos fuera de su transacción.",
+      "checks": [
+        "Identifica los efectos con estado de cada consumidor y qué pasa ante una re-entrega.",
+        "Busca la clave de idempotencia y su ventana; verifica el orden reconocer/comprometer.",
+        "Reproduce la duplicación con un caso local acotado."
+      ],
+      "source": "companions/PROTOCOLS-RPC-AND-MESSAGING.md#delivery"
+    },
+    {
+      "id": "tenant-isolation-missing",
+      "domain": "data-isolation",
+      "boundary": "tenant-enforcement",
+      "lifecycle": "runtime",
+      "title": "Falta de imposición de inquilino o propietario en la consulta",
+      "priority": 35,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Toda consulta sobre datos con inquilino o propietario impone ese límite en la propia consulta, no solo en la interfaz.",
+      "checks": [
+        "Inventa las consultas de lectura y escritura sobre datos con inquilino.",
+        "Compara dónde se declara el límite con dónde se impone realmente.",
+        "Demuestra la lectura cruzada con dos inquilinos concretos y el mismo identificador."
+      ],
+      "source": "companions/DATA-ISOLATION-AND-LIFECYCLE.md#tenant"
+    },
+    {
+      "id": "derived-copy-acl-drift",
+      "domain": "data-isolation",
+      "boundary": "derived-data",
+      "lifecycle": "runtime",
+      "title": "Derivados con ACL distinta a la fuente",
+      "priority": 45,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Cada copia derivada —índice, caché, búsqueda, análisis— aplica la misma política de acceso que su fuente, o declara explícitamente su desviación.",
+      "checks": [
+        "Inventa las copias derivadas y quién las puede leer.",
+        "Compara la política de la fuente con la de cada derivado.",
+        "Demuestra la divulgación con un lector sin acceso a la fuente."
+      ],
+      "source": "companions/DATA-ISOLATION-AND-LIFECYCLE.md#derived"
+    },
+    {
+      "id": "softdelete-tombstone-bypass",
+      "domain": "data-isolation",
+      "boundary": "lifecycle",
+      "lifecycle": "runtime",
+      "title": "Borrado lógico que no detiene el acceso ni el renacimiento",
+      "priority": 45,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Un registro marcado como eliminado deja de servir lecturas, escrituras y referencias nuevas; un restablecimiento no reintroduce estado inválido.",
+      "checks": [
+        "Sigue el registro eliminado por cada ruta de lectura y escritura.",
+        "Comprueba las referencias nuevas que aceptan la clave eliminada.",
+        "Verifica qué reintroduce el registro y si el estado resultante es válido."
+      ],
+      "source": "companions/DATA-ISOLATION-AND-LIFECYCLE.md#lifecycle"
+    },
+    {
+      "id": "integer-overflow-unchecked",
+      "domain": "memory-safety",
+      "boundary": "bounds",
+      "lifecycle": "runtime",
+      "title": "Desbordamiento o truncamiento de entero sin comprobar",
+      "priority": 40,
+      "languages": [
+        "go",
+        "rust"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Toda aritmética que decide un límite de lectura, escritura o asignación comprueba el desbordamiento y el truncamiento antes de usar el resultado.",
+      "checks": [
+        "Deriva los anchos de cada operando y del resultado en el cálculo del límite.",
+        "Comprueba la conversión explícita y su validación antes del uso.",
+        "Demuestra el valor fuera de límites con un caso local acotado; el riesgo teórico no es hallazgo."
+      ],
+      "source": "companions/MEMORY-SAFETY-AND-BINARY.md#bounds"
+    },
+    {
+      "id": "binary-plugin-search-order",
+      "domain": "memory-safety",
+      "boundary": "loading",
+      "lifecycle": "distribution",
+      "title": "Orden de búsqueda de plugin o binario confundible",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "El cargador resuelve su binario o plugin por una ruta de confianza cerrada con identidad verificada; una ruta relativa o controlada por el entorno no decide la carga.",
+      "checks": [
+        "Identifica el orden de búsqueda efectivo del cargador y quién controla cada componente.",
+        "Verifica la identidad del artefacto cargado y su vinculación con la fuente esperada.",
+        "Demuestra la sustitución con un artefacto local acotado."
+      ],
+      "source": "companions/MEMORY-SAFETY-AND-BINARY.md#loading"
+    },
+    {
+      "id": "tool-argument-injection",
+      "domain": "agent-boundary",
+      "boundary": "tool-dispatch",
+      "lifecycle": "runtime",
+      "title": "Inyección de argumentos de herramienta hacia un sumidero",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Los argumentos de una llamada a herramienta se validan contra su esquema y su autorización en el despachador, no en la capa que los redactó.",
+      "checks": [
+        "Inventa el despachador de herramientas y qué valida en cada llamada.",
+        "Sigue el argumento controlado hasta el sumidero que ejecuta o publica.",
+        "Demuestra la llamada no autorizada con una entrada local acotada."
+      ],
+      "source": "companions/AI-AND-LLM.md#tools"
+    },
+    {
+      "id": "indirect-injection-retrieved-content",
+      "domain": "agent-boundary",
+      "boundary": "context-ingestion",
+      "lifecycle": "runtime",
+      "title": "Inyección indirecta por contenido recuperado o ingerido",
+      "priority": 45,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "El contenido recuperado o ingerido entra al contexto como dato delimitado, nunca como instrucción, y su procedencia queda registrada.",
+      "checks": [
+        "Identifica los puntos de ingestión de contenido externo al contexto.",
+        "Comprueba el delimitado y el etiquetado de procedencia de cada uno.",
+        "Demuestra la confusión de rol con un documento local malicioso acotado."
+      ],
+      "source": "companions/AI-AND-LLM.md#context"
+    },
+    {
+      "id": "local-ipc-untrusted-peer",
+      "domain": "local-ipc",
+      "boundary": "ipc-trust",
+      "lifecycle": "runtime",
+      "title": "IPC local que confía en el par sin verificarlo",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "ipc_signal"
+      ],
+      "invariant": "Un servidor IPC local verifica la identidad y los privilegios del par antes de aceptar una operación, y no exporta componentes con capacidad de sistema sin esa verificación.",
+      "checks": [
+        "Inventa los puntos de conexión local y qué verifica cada uno del par.",
+        "Compara la capacidad concedida con la que la identidad del par respalda.",
+        "Demuestra la operación no autorizada con un cliente local acotado."
+      ],
+      "source": "companions/DESKTOP-MOBILE-AND-LOCAL-IPC.md#ipc"
+    },
+    {
+      "id": "deeplink-navigation-confusion",
+      "domain": "local-ipc",
+      "boundary": "navigation",
+      "lifecycle": "runtime",
+      "title": "Enlace profundo o esquema de navegación confundible",
+      "priority": 45,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "ipc_signal"
+      ],
+      "invariant": "Un enlace profundo o esquema externo valida su ruta y sus parámetros contra una lista cerrada antes de decidir navegación, comando o carga de recurso.",
+      "checks": [
+        "Inventa los esquemas y rutas registrados y qué dispara cada uno.",
+        "Comprueba la validación de parámetros y de origen de la llamada.",
+        "Demuestra la navegación o el comando no previsto con un enlace local acotado."
+      ],
+      "source": "companions/DESKTOP-MOBILE-AND-LOCAL-IPC.md#deeplink"
     }
   ]
 }
