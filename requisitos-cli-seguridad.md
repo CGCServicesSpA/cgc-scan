@@ -384,6 +384,9 @@ los criterios de aceptación nuevos (sección 13) y "Tarea" con el backlog
 | RF-54 | Importar leads de un escaneo (`audit import`) sin presentarlos como confirmados; la severidad del motor nunca se convierte en severidad auditada. | P2-1 | CA-89 |
 | RF-55 | Explicar el estado persistido (`audit explain`) por unidad o fingerprint con diagnóstico útil para identificadores inexistentes o ambiguos. | P2-2 | CA-90 |
 | RF-56 | Verificar el destino `--out` antes de crear artefactos y rechazar los internos no ignorados por Git. | P2-4 | CA-91 |
+| RF-57 | Dirigir las recomendaciones de endurecimiento a una unidad concreta (`hardening_by_unit`) validando que pertenezca a la entrega; el campo global heredado conserva su semántica antigua documentada y coexiste con el dirigido. | D-1 | CA-92 |
+| RF-57a | Registrar en el catálogo versionado la referencia externa que define el protocolo y mapear los diez companions a clases con señales e invariantes; la ausencia de señales nunca se presenta como cobertura. | P2-5 | CA-93 |
+| RF-57b | Activar un catálogo de actualización únicamente desde un sobre firmado local con clave pública de confianza separada de toda clave privada, verificando compatibilidad antes del contrato y sustituyendo de forma atómica. | P2-5 | CA-94 |
 
 Los filtros de visualización no deben ocultar el estado real de cobertura. Un hallazgo solo pasa a *resuelto* si su ámbito se analizó satisfactoriamente con cobertura comparable; la ausencia en un escaneo parcial significa *no evaluado*.
 
@@ -664,6 +667,9 @@ En v1, la CLI termina su responsabilidad al entregar resultados normalizados, ev
 | **CA-89** *(nuevo, RF-54)* | Ningún hallazgo importado aparece automáticamente como confirmado; importar dos veces produce el mismo trabajo pendiente. |
 | **CA-90** *(nuevo, RF-55)* | `status` y `explain` no reescriben artefactos y sus salidas coinciden con el estado persistido; identificadores inexistentes o ambiguos producen errores útiles. |
 | **CA-91** *(nuevo, RF-56)* | Un destino `--out` interno visible se rechaza antes de crear artefactos; un destino interno ignorado por Git se permite y la comprobación no modifica `.gitignore`. |
+| **CA-92** *(nuevo, RF-57)* | Una recomendación dirigida a una unidad no se propaga a las demás; el formato antiguo global conserva su semántica y el mixto aplica cada campo a su ámbito; una referencia ajena a la entrega se rechaza sin mutar. |
+| **CA-93** *(nuevo, RF-57a)* | El catálogo versionado traza cada clase a su companion y declara las señales que la activan; un árbol sin la señal no produce la unidad y la ausencia de señales no se declara como cobertura. |
+| **CA-94** *(nuevo, RF-57b)* | Un sobre firmado con clave fuera del anillo o versión incompatible se rechaza con diagnóstico explícito y el catálogo activo se conserva; la activación verificada es atómica e idempotente y no hay descarga remota. |
 
 Los criterios relativos al agente validan el contenido del prompt y un flujo de integración controlado; no constituyen garantía de obediencia de cualquier agente externo.
 

@@ -228,11 +228,12 @@ a model, never executes project code and never contacts the network.
 
 ```bash
 cgc-scan audit init . --profile standard --budget 12
-cgc-scan audit next . --agent hunter-a --format json
+cgc-scan audit next . --agent hunter-a --format json        # or --format prompt
 cgc-scan audit submit . --file submission.json
 cgc-scan audit next . --agent verifier-a --format json
 cgc-scan audit submit . --file verification.json
 cgc-scan audit report .
+cgc-scan audit report . --verify                            # integrity, read-only
 ```
 
 Rules:
@@ -251,6 +252,47 @@ Rules:
   the project clean.
 - `audit init --prior DIR` shows previous context but never suppresses current
   units. `--out` keeps the run outside the project by default.
+
+Profiles set breadth and phases, never the evidence bar:
+
+- `quick` — units per subsystem × domain, one verification pass, no critique.
+- `standard` — units per subsystem × boundary × class, two passes (final
+  review by an independent reviewer), coverage critique per wave and final.
+- `deep` — units per subsystem × lifecycle stage, two passes, critique, and
+  revalidation of prior-run records whose source changed.
+
+More protocol rules the CLI enforces:
+
+- With two-pass profiles a decided record waits in `review_pending`; a
+  **material** replacement (verdict, root cause, trace, execution, impact or
+  severity) needs a reviewer independent of its author; an editorial rewrite
+  applies without another signature.
+- `standard`/`deep` cannot complete without a clean final coverage critique
+  (`critique`). The critic answers with `missing_units`, `reassign_ids`,
+  `resolved_prior_leads` and `stop`; a stop is archived and never bypasses
+  pending work.
+- `--budget` reserves mandatory phases before assigning hunting; exhaustion
+  defers units and seals the run `incomplete` (`budget_exhausted`) before the
+  CLI answers.
+- Citations (`trace`, `evidence`) are validated against the declared source:
+  a fabricated trace is rejected at submit time; a cited file that changed
+  later blocks presenting the finding as current (`source_diverged`).
+- `audit reset-unit --coverage-id ID --reason "..."` recovers an abandoned
+  unit; late deliveries of the abandoned attempt are rejected.
+- Two records sharing an explicit `root_cause_ref` consolidate into one
+  deterministic representative; similar titles with different causes stay
+  separate.
+- `audit explain --coverage-id | --fingerprint` explains the persisted state
+  without rewriting anything; `audit compare A B` classifies findings across
+  runs and never claims `resolved` without current evaluation evidence.
+- `audit import --file report.json` turns scan findings into pending leads;
+  an imported finding is never auto-confirmed and engine severity never
+  becomes audited severity.
+- `audit report --fail-on <threshold>` is the CI exit policy (`confirmed`,
+  `needs_validation` or an audited severity); an incomplete run returns 3
+  before the threshold is evaluated.
+- The class catalog can be updated only from a locally signed envelope
+  (`audit catalog activate`); there is no remote download.
 
 ## Canonical report (report-1.1.0)
 

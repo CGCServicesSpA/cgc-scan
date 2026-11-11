@@ -27,6 +27,63 @@ están en disco, incluidos cambios sin commit y archivos nuevos. No se hace
 `clone`, `fetch` ni ninguna operación remota, salvo la preparación de bases,
 motores e imágenes de toolchain cuando no se usa `--offline`.
 
+## Auditoría asistida
+
+```bash
+cgc-scan audit init [ruta] [--profile quick|standard|deep] [--budget N]
+                   [--include PATRÓN ...] [--exclude PATRÓN ...] [--prior DIR]
+                   [--out DIR] [--format text|json]
+cgc-scan audit next [ruta] --agent <id> [--max-units N]
+                    [--format json|text|prompt] [--out DIR]
+cgc-scan audit submit [ruta] --file <entrega.json> [--format text|json] [--out DIR]
+cgc-scan audit status [ruta] [--format text|json] [--out DIR]
+cgc-scan audit explain [ruta] --coverage-id <id>|--fingerprint <huella>
+                       [--format text|json] [--out DIR]
+cgc-scan audit reset-unit [ruta] --coverage-id <id> --reason "..." [--out DIR]
+cgc-scan audit report [ruta] [--format text|json] [--fail-on <umbral>]
+                      [--verify] [--out DIR]
+cgc-scan audit compare <corrida-anterior> <corrida-actual> [--format text|json]
+cgc-scan audit import [ruta] --file <reporte.json> [--format text|json] [--out DIR]
+cgc-scan audit catalog status
+cgc-scan audit catalog activate --file <catalogo-firmado.json>
+```
+
+Flujo típico (quick, una pasada de verificación):
+
+```bash
+cgc-scan audit init . --profile quick --budget 12
+cgc-scan audit next . --agent hunter-a --format json      # asignación de caza
+# el agente caza y guarda su entrega en entrega.json
+cgc-scan audit submit . --file entrega.json
+cgc-scan audit next . --agent verifier-a --format json    # verificación independiente
+cgc-scan audit submit . --file verificacion.json
+cgc-scan audit report .                                   # sella y deriva los reportes
+cgc-scan audit report . --verify                          # integridad sin reescritura
+```
+
+Notas de uso:
+
+- El directorio de la corrida vive por defecto en el estado del proyecto, nunca
+  dentro del árbol analizado; `--out DIR` exige un destino externo o ignorado
+  por Git.
+- Los perfiles cambian la granularidad y las fases, nunca el listón de
+  evidencia: `quick` colapsa por subsistema × dominio con una pasada;
+  `standard` por frontera × clase con dos pasadas y crítica; `deep` por ciclo
+  de vida y además revalida lo que la corrida `--prior` dejó con la fuente
+  cambiada.
+- `--budget N` cuenta invocaciones de agente en todas las fases y reserva las
+  obligatorias antes de repartir caza; el agotamiento difiere y sella la
+  corrida como incompleta (código 3).
+- `--fail-on` (solo `audit report`): `confirmed`, `needs_validation` o una
+  severidad auditada (`informational|low|medium|high|critical`); una corrida
+  incompleta siempre devuelve 3 antes de evaluar el umbral.
+- Si un agente abandona una unidad, `audit reset-unit` la devuelve a `planned`
+  archivando el intento como `blocked`.
+- `audit import --file reporte.json` convierte hallazgos de un escaneo en
+  leads pendientes de caza; nunca aparecen como confirmados.
+- El catálogo de clases embebido se puede actualizar solo con un sobre firmado
+  local (`audit catalog activate`); no hay descarga remota.
+
 ## Toolchains por contenedor
 
 Con Docker local disponible, `scan`, `agent` y `verify` ejecutan govulncheck,

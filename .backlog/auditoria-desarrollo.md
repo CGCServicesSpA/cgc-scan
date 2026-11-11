@@ -672,13 +672,17 @@ Dependencias internas: a → b/c/d → e → f. La división permite entregas pe
 
 ## P2-6 — Requisitos, aceptación y documentación
 
-**Estado:** en curso. **Dependencias:** incremental durante todo el backlog. **Estimación:** 3 días.
+**Estado:** completada. **Dependencias:** incremental durante todo el backlog. **Estimación:** 3 días.
 
-**Entregado:** RF-39…RF-56 de auditoría en §7.6 con su trazabilidad a tarea y
-criterio; CA-73…CA-91 nuevos sin renumerar; comandos, perfiles, recuperación,
-presupuesto, fuentes, integridad y límites documentados en
-`docs/auditoria.md`. **Pendiente:** actualizar los ejemplos de `docs/uso.md` y
-la skill incluida.
+**Entregado:** RF-39…RF-57b de auditoría en §7.6 con su trazabilidad a tarea y
+criterio; CA-73…CA-94 nuevos sin renumerar; comandos, perfiles, recuperación,
+presupuesto, fuentes, integridad, límites, hardening dirigido y catálogo
+firmado documentados en `docs/auditoria.md`; ejemplos del ciclo completo en
+`docs/uso.md` con sintaxis real ejecutada y verificada en un entorno aislado;
+skill incluida actualizada a los contratos finales. La ayuda de la CLI
+coincide con los ejemplos y `docs/auditoria.md`, y la documentación
+diferencia validación estructural, independencia, integridad y verdad del
+hallazgo.
 
 Trabajo:
 
@@ -696,10 +700,19 @@ Aceptación:
 
 ### Trabajo restante de P2-6
 
-- [ ] **P2-6a — Ejemplos.** Actualizar `docs/uso.md` con el ciclo init/next/submit/status/explain/reset-unit/report/verify/compare y los formatos soportados, usando la sintaxis real. Añadir el flujo de catálogo cuando P2-5 lo entregue; ejecutar ejemplos en un entorno local aislado.
-- [ ] **P2-6b — Skill incluida.** Actualizar `skills/cgc-scan/SKILL.md` conforme a los contratos finales: perfiles, independencia, presupuesto, fuentes, recuperación, hardening y catálogo. No describir funciones pendientes como existentes.
-- [ ] **P2-6c — Trazabilidad.** Revisar RF-39…RF-56 y CA-73…CA-91; vincular tarea → requisito → aceptación → prueba o evidencia observable. Añadir IDs nuevos si faltan criterios para catálogo o deuda sin renumerar los existentes.
-- [ ] **P2-6d — Coherencia.** Contrastar ayuda CLI, ejemplos y `docs/auditoria.md`. Explicar por separado estructura, independencia, integridad y verdad del hallazgo. Cerrar después de P2-5 y D-1/D-3, conservando actualizaciones incrementales.
+- [x] **P2-6a — Ejemplos.** `docs/uso.md` con el ciclo completo y los formatos
+  soportados, con sintaxis real verificada en entorno aislado (init, next,
+  submit, status, explain, report --fail-on, catalog status; los flags
+  coinciden con la ayuda de la CLI).
+- [x] **P2-6b — Skill incluida.** `skills/cgc-scan/SKILL.md` con perfiles,
+  dos pasadas y reemplazo material, crítica, presupuesto, fuentes, reset-unit,
+  consolidación, explain/compare/import, `--fail-on` y catálogo firmado. No
+  describe funciones pendientes como existentes.
+- [x] **P2-6c — Trazabilidad.** RF-39…RF-57b y CA-73…CA-94 vinculados a tarea
+  y criterio, con IDs nuevos sin renumerar (RF-57/57a/57b para D-1 y catálogo).
+- [x] **P2-6d — Coherencia.** Ayuda CLI contrastada con ejemplos y
+  `docs/auditoria.md` después de P2-5 y D-1/D-2/D-3; estructura,
+  independencia, integridad y verdad explicadas por separado.
 
 ## P2-7 — Paquete autosuficiente con esquemas
 
