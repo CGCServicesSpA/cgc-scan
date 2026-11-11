@@ -89,6 +89,15 @@ backlog y su swap (preservados). **CodeGraph:** índice activo, 232 archivos.
   de companions ya levantado, queda **P2-5 (7–15 d), cierre de P2-6 (1–3 d) e
   integración + P2-9 (2–4 d)**: **10–22 días**. El rango de P2-5 domina la
   incertidumbre: depende de cuántas clases nuevas se demuestren con fixtures.
+- **P2-5a cerrado y P2-5b iniciado** (`886d3bf`): catálogo `1.2.0` con cinco
+  clases nuevas trazadas a companions (3 de WEB-PROTOCOL-AND-AUTH, 2 de
+  RESOURCE-EXHAUSTION-AND-AVAILABILITY), señales `http_server` y `cache`, y
+  matcher `matchAnyPathGlob` (descubierto: `path.Match` no soporta `**`).
+  Fixtures positivo/negativo por clase; la ausencia de señales no se presenta
+  como cobertura. Fuzz del ledger sigue en verde. **Pendiente de P2-5:** las
+  clases de los otros ocho companions, P2-5c (compatibilidad/continuidad
+  probada con cambio de catálogo), P2-5d (formato firmado), P2-5e
+  (actualización local) y P2-5f (pruebas y documentación).
 
 ## Reglas de ejecución
 
