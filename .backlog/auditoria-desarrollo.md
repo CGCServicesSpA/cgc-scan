@@ -110,30 +110,30 @@ backlog y su swap (preservados). **CodeGraph:** índice activo, 232 archivos.
   campo global heredado conservado con semántica antigua documentada y
   formatos mixtos coexistiendo; `VerdictRank` y `severityRank` documentados en
   código y en `docs/auditoria.md` («Dos escalas distintas»).
-- **P2-5d/P2-5e — implementación escrita, VERIFICACIÓN BLOQUEADA.** Estado:
-  `internal/audit/catalog_trust.go` (sobre `SignedCatalog`, firma ed25519
-  sobre serialización canónica, anillo de claves públicas separado de la
-  privada, verificación con rechazo explícito de firma inválida/clave
-  desconocida/versión incompatible, activación atómica del catálogo instalado
-  con idempotencia) y `catalog_trust_test.go` (verificación/activación,
-  catálogo alterado, clave desconocida, versión incompatible, forma de firma
-  y esquema del sobre). Ambos archivos están en el árbol **sin commit y sin
-  haber compilado ni ejecutado sus pruebas**: el entorno de ejecución se
-  degradó a mitad de la tarea (los comandos sobre el volumen externo
-  `/Volumes/PROJECTS` pasaron de respuestas inmediatas a tiempos de decenas
-  de segundos o bloqueos indefinidos; `go build`/`go test` no terminan y los
-  procesos colgados requirieron kill; lecturas y escrituras triviales sobre
-  el volumen también se bloquean, y `go version` desde el directorio personal
-  responde con normalidad). **Este bloqueo impide declarar avance según el
-  criterio de cierre: sin compilación y pruebas no hay entrega.** El código
-  queda en el árbol identificado para reanudar; el siguiente paso al
-  reanudar es `go build ./... && go test ./internal/audit
-  -run TestSignedCatalog -v`, corregir lo que falle, y solo entonces
-  commit + P2-5f.
+- **P2-5d/P2-5e cerrados** (`5f52842`, verificado el 11 de noviembre tras
+  recuperarse el entorno): la implementación escrita la noche anterior
+  compiló al reanudar; las pruebas destaparon un solo fallo de diagnóstico —
+  `VerifySignedCatalog` evaluaba el contrato completo antes de la
+  compatibilidad, así que una versión incompatible devolvía el error del
+  contrato en lugar del de incompatibilidad. Corregido: la compatibilidad se
+  evalúa primero. Entregado: sobre `SignedCatalog`
+  (`audit-catalog-signed-1.0.0`), firma ed25519 sobre serialización canónica,
+  anillo de claves públicas en `<config>/catalog-keys/` (0600) separado de
+  toda clave privada, activación atómica idempotente del catálogo instalado,
+  límite de lectura del sobre de 8 MiB, y rechazo explícito de esquema del
+  sobre distinto, algoritmo no soportado, contrato incumplido, versión
+  incompatible, clave fuera del anillo y firma inválida (un rechazo no activa
+  nada). Suite completa en verde (31 paquetes) tras la entrega.
+- **Resolución del bloqueo de entorno:** el volumen externo recuperó latencia
+  normal al reanudar (escritura de prueba en 0,013 s). Se encontró y limpió
+  un `index.lock` huérfano de git (00:12 de la noche anterior, sin proceso
+  git activo). Consecuencia registrada: el commit del registro de evidencia
+  del bloqueo no llegó a escribirse esa noche; la evidencia se incorpora con
+  este registro.
 
-**Bloqueos activos:** entorno de shell degradado sobre el volumen del
-proyecto (descrito arriba); el trabajo en curso no puede verificar código
-hasta que el volumen responda con latencia normal.
+**Bloqueos activos:** ninguno. **Siguiente paso:** P2-5f (pruebas y
+documentación de confianza, recuperación y límites del catálogo firmado) y
+continuar P2-5b con los otros ocho companions.
 
 ## Reglas de ejecución
 
