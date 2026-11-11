@@ -134,6 +134,23 @@ backlog y su swap (preservados). **CodeGraph:** índice activo, 232 archivos.
 **Bloqueos activos:** ninguno. **Siguiente paso:** P2-5f (pruebas y
 documentación de confianza, recuperación y límites del catálogo firmado) y
 continuar P2-5b con los otros ocho companions.
+- **P2-5f cerrado** (`4cd9b39`): comando `audit catalog` (`status` y
+  `activate --file SOBRE.json`) — la entrada de actualización es un archivo
+  local firmado, sin descarga ni publicación remota; `status` informa sin
+  activar; la activación verifica antes de escribir, es atómica y un rechazo
+  conserva el catálogo activo. Documentado el formato, la confianza, la
+  compatibilidad y la recuperación en `docs/auditoria.md`. Pruebas CLI:
+  status sin activación, activación verificada, rechazo de clave ajena
+  conservando el activo y rechazo de versión incompatible. Suite completa en
+  verde (31 paquetes).
+- **Estado de P2-5:** a, c, d, e y f **cerrados**; b **parcial** — quedan las
+  clases de los otros ocho companions (WEB-PROTOCOL-AND-AUTH, CLIENT-SIDE,
+  SUPPLY-CHAIN-AND-RELEASE, CLOUD-AND-DEPLOYMENT,
+  PROTOCOLS-RPC-AND-MESSAGING, DATA-ISOLATION-AND-LIFECYCLE,
+  DESKTOP-MOBILE-AND-LOCAL-IPC, MEMORY-SAFETY-AND-BINARY, AI-AND-LLM
+  parciales según señales detectables en fuente). P2-5 no se cierra hasta
+  que b esté completo y los fixtures de cada clase nueva demuestren su
+  comportamiento.
 
 ## Reglas de ejecución
 
