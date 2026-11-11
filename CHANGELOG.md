@@ -2,6 +2,13 @@
 
 ## Sin publicar
 
+- **Catálogo firmado y actualización local** (`audit catalog`): un catálogo de
+  actualización solo se activa desde un sobre firmado local (ed25519 sobre
+  serialización canónica, `audit-catalog-signed-1.0.0`) verificado contra un
+  anillo de claves públicas de confianza separado de toda clave privada; la
+  compatibilidad de versión se evalúa antes del contrato, la activación es
+  atómica e idempotente, un rechazo conserva el catálogo activo y no hay
+  descarga ni publicación remota en ningún paso.
 - **Recorridos de descubrimiento deduplicados y cobertura operable**: la
   auditoría reutiliza la resolución de raíz del mismo árbol para el estado del
   proyecto y para el ledger, conservando las unidades lógicas de ambos. Nuevo

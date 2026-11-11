@@ -449,6 +449,35 @@ artefactos: un rechazo no deja una corrida parcial.
 - La política de salida se evalúa tras el sellado: no altera hallazgos ni
   estado; la ayuda y esta documentación describen los códigos efectivos.
 
+## Catálogo firmado y actualización local
+
+El catálogo embebido del binario es la raíz de confianza y no se reemplaza.
+Un catálogo de actualización solo se activa desde un **sobre firmado local**
+(`audit catalog activate --file SOBRE.json`); no hay descarga, publicación ni
+transferencia remota en ningún paso.
+
+- **Formato** (`audit-catalog-signed-1.0.0`): el catálogo completo, el
+  identificador de la clave que firmó (`key_id`) y la firma **ed25519** sobre
+  la serialización canónica del catálogo decodificado; los espacios y el orden
+  de claves del archivo no participan en la verificación. Límite de lectura
+  del sobre: 8 MiB.
+- **Confianza:** las claves públicas de confianza viven en
+  `<config>/catalog-keys/<key_id>.pub` (0600), separadas de toda clave privada
+  de firma. Ninguna clave privada viaja en repositorio, informes ni paquete;
+  las herramientas de firma y las pruebas usan pares desechables. Una clave
+  fuera del anillo produce el rechazo explícito «no es de confianza».
+- **Compatibilidad antes del contrato:** una versión de catálogo no aceptada
+  por esta versión del motor se rechaza con el diagnóstico de incompatibilidad
+  (versiones aceptadas en esta entrega: `1.1.0` y `1.2.0`), aunque su
+  contenido tampoco cumpliera el contrato.
+- **Activación segura:** la verificación precede a cualquier escritura; el
+  catálogo instalado se sustituye de forma atómica (un rechazo no activa nada
+  y el catálogo activo se conserva) y repetir el mismo sobre es idempotente.
+  `audit catalog status` informa qué catálogo está activado sin activar nada.
+- **Corridas:** cada corrida conserva la versión de catálogo con la que se
+  creó; actualizar el catálogo instalado no reinterpreta corridas anteriores
+  y un cambio de catálogo invalida la reutilización orientativa.
+
 ## Consolidación por causa raíz
 
 Dos variantes comprobadas del mismo defecto se consolidan en un registro. La

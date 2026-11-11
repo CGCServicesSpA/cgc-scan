@@ -119,7 +119,72 @@ presupuesto y deriva los reportes. La evidencia la aporta el agente.`,
 		a.newAuditCompareCommand(&out),
 		a.newAuditImportCommand(&out),
 		a.newAuditExplainCommand(&out),
+		a.newAuditCatalogCommand(&out),
 	)
+	return cmd
+}
+
+// newAuditCatalogCommand gestiona el catálogo activado por actualización.
+// No descarga ni publica nada: la entrada es un archivo local firmado.
+func (a *App) newAuditCatalogCommand(out *string) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "catalog",
+		Short: "Gestiona el catálogo de clases activado por actualización local",
+		Args:  cobra.NoArgs,
+	}
+	cmd.AddCommand(a.newAuditCatalogStatusCommand(), a.newAuditCatalogActivateCommand())
+	return cmd
+}
+
+func (a *App) newAuditCatalogStatusCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "Informa qué catálogo está activado por actualización",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			info, err := audit.InstalledCatalog(a.Paths.ConfigDir)
+			if err != nil {
+				return IncompleteErrorf("%v", err)
+			}
+			if !info.Installed {
+				_, err := fmt.Fprint(a.Stdout, "Catálogo activado: ninguno; el motor usa el catálogo embebido del binario.\n")
+				return err
+			}
+			_, err = fmt.Fprintf(a.Stdout, "Catálogo activado: %s\n  SHA-256: %s\n", info.Version, info.SHA256)
+			return err
+		},
+	}
+}
+
+func (a *App) newAuditCatalogActivateCommand() *cobra.Command {
+	var file string
+	cmd := &cobra.Command{
+		Use:   "activate --file SOBRE.json",
+		Short: "Verifica y activa un catálogo firmado desde un archivo local",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if file == "" {
+				return UsageErrorf("--file es obligatorio")
+			}
+			data, err := readBoundedJSON(file)
+			if err != nil {
+				return UsageErrorf("%v", err)
+			}
+			var signed audit.SignedCatalog
+			if err := json.Unmarshal(data, &signed); err != nil {
+				return UsageErrorf("el sobre del catálogo no es válido: %v", err)
+			}
+			activated, err := audit.ActivateSignedCatalog(&signed, a.Paths.ConfigDir)
+			if err != nil {
+				// Un rechazo conserva el catálogo activo; el diagnóstico es
+				// explícito y no se omite silenciosamente.
+				return IncompleteErrorf("%v", err)
+			}
+			_, err = fmt.Fprintf(a.Stdout, "Catálogo activado: %s (clave %s)\n", activated.SchemaVersion, signed.KeyID)
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&file, "file", "", "archivo del catálogo firmado (JSON)")
 	return cmd
 }
 
