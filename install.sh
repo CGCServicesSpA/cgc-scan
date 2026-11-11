@@ -18,7 +18,7 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-DEFAULT_VERSION="0.1.0-rc.3"
+DEFAULT_VERSION="0.2.0-rc.2"
 
 if [ -n "${CGC_SCAN_VERSION:-}" ]; then
     VERSION=$CGC_SCAN_VERSION

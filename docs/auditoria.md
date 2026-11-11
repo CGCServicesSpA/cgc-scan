@@ -168,7 +168,7 @@ anterior o el nuevo, nunca un punto intermedio.
 
 `--profile` cambia la granularidad del reparto, nunca el listón de evidencia.
 La política vive en el catálogo versionado (`internal/audit/catalog.json`,
-`audit-catalog-1.1.0`) y se separa de la construcción y selección de unidades
+`audit-catalog-1.3.0`) y se separa de la construcción y selección de unidades
 (`internal/audit/profile.go`):
 
 | Perfil | Granularidad | Verificación | Crítica de cobertura |

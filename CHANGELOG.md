@@ -1,6 +1,69 @@
 # Changelog
 
-## Sin publicar
+## 0.2.0-rc.2 (11 de noviembre de 2026)
+
+Cambios de formato y migración:
+
+- La skill global de agentes sube a `1.4.0` con los contratos finales de
+  auditoría; `scripts/install-skill.sh` la actualiza sin depender del checkout.
+- El estado de una corrida de auditoría vive ahora en un único archivo
+  autoritativo (`state.json`, `audit-state-1.0.0`); `ledger.json`,
+  `candidates.json` y `findings.json` quedan como vistas derivadas
+  regeneradas tras cada commit. Una corrida antigua de dos archivos se carga
+  como legado y migra en la primera escritura; un legado inconsistente se
+  rechaza sin reinterpretarlo.
+- `cgc-scan --version` declara además los contratos embebidos
+  (`esquemas[audit-ledger-1.0.0,findings-1.0.0,agent-1.0.0]`); `install.sh`
+  verifica la concordancia de los cuatro esquemas públicos con el binario.
+- El catálogo de clases de auditoría sube a `audit-catalog-1.3.0` con
+  metadatos por perfil, ciclo de vida por clase y la referencia externa
+  fijada; un catálogo de actualización solo se activa desde un sobre firmado
+  local (`audit-catalog-signed-1.0.0`, ed25519).
+- El contrato de hallazgos admite el campo opcional `root_cause_ref` (dos
+  copias del esquema actualizadas); el ledger admite el campo opcional
+  `critique` y los campos de continuidad en `prior`.
+- La entrega admite `hardening_by_unit` (dirigido por unidad); el campo
+  global `hardening` conserva su semántica antigua y ambos coexisten.
+
+Nuevo protocolo `cgc-scan audit` (aditivo):
+
+- **Estado por corrida**: validación semántica estricta del estado de
+  verificación (independencia entre cazador y verificadores, ramas
+  `escalated`/`final`, referencias en ambas direcciones, EOF estricto),
+  persistencia transaccional en una frontera de commit atómica y bloqueo
+  exclusivo por corrida (`flock`) con lectura compartida para `status`.
+- **Cobertura y protocolo**: ledger determinista desde el catálogo con
+  perfiles de granularidad y fases obligatorias (`quick`/`standard`/`deep`),
+  verificación en dos pasadas con reemplazo material y revisión final
+  independiente, crítica de cobertura por ola y final, presupuesto reservado
+  con agotamiento unificado y recuperación de unidades abandonadas
+  (`audit reset-unit`).
+- **Evidencia**: citas validadas contra la fuente declarada (snapshot de Git
+  o árbol actual con sellos de hash), prompts de tareas con plantilla
+  versionada y delimitadores con nonce, y consolidación de variantes por
+  identidad explícita de causa raíz (`root_cause_ref`).
+- **Continuidad**: contexto entre corridas con identidad archivada por unidad
+  y revalidación de lo que cambió (`stale_confirmed`/`stale_rejected`);
+  comparación entre auditorías (`audit compare`) sin falsos `resolved`;
+  integridad del informe con HMAC y clave local dedicada
+  (`audit report --verify`); importación de leads del escaneo
+  (`audit import`) sin presentarlos como confirmados; explicación del estado
+  persistido (`audit explain`); política de salida para CI
+  (`audit report --fail-on`).
+
+Integración y entrega:
+
+- `--out` de `audit` verifica el destino antes de crear artefactos y rechaza
+  los internos no ignorados por Git; sin Git, el destino interno se rechaza.
+- E2E con repositorio Git real, benchmarks de construcción de ledger y
+  recorridos de descubrimiento deduplicados.
+- Fuzz targets (20 s por target en CI) para los seis decodificadores
+  públicos: ledger, hallazgos, entrega, estado, comparación y sobre firmado.
+
+Excluido de esta versión (queda en el backlog): nada del protocolo `audit`;
+las 24 tareas del backlog están cerradas. La validación adversarial real, el
+sandbox de ejecución y el runtime de IA siguen fuera por diseño del producto
+(CA-04, CA-05, §6.6).
 
 - **Catálogo firmado y actualización local** (`audit catalog`): un catálogo de
   actualización solo se activa desde un sobre firmado local (ed25519 sobre

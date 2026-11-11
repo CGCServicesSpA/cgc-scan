@@ -1,7 +1,7 @@
 ---
 name: cgc-scan
 description: "Use when a project needs a local security scan and the agent must act on the result: one-shot scan with remediation groups, prioritized next actions, baseline delta and cheap iteration with explain/verify/status/plan. Runs the local cgc-scan CLI, reads its JSON contracts, and respects coverage, trusted validation recipes, toolchain containers and exit codes."
-version: 1.3.0
+version: 1.4.0
 license: Apache-2.0
 allowed-tools:
   - Bash(cgc-scan *)
