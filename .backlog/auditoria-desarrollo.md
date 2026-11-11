@@ -98,6 +98,42 @@ backlog y su swap (preservados). **CodeGraph:** índice activo, 232 archivos.
   clases de los otros ocho companions, P2-5c (compatibilidad/continuidad
   probada con cambio de catálogo), P2-5d (formato firmado), P2-5e
   (actualización local) y P2-5f (pruebas y documentación).
+- **P2-5c cerrado** (`1eb16f8`): compatibilidad de catálogo probada — una
+  corrida del catálogo 1.1.0 se reabre conservando su versión exacta sin
+  reinterpretarse; la comparación opera con catálogos distintos; la
+  continuidad con catálogo distinto invalida la reutilización orientativa;
+  `init` registra el catálogo vigente. Además, la prueba destapó y corrigió
+  un defecto real: `ValidateRunState` desreferenciaba `st.Source` sin
+  comprobar nil (un Normalize la deriva, pero la llamada directa paniqueaba).
+- **D-1 y D-2 cerrados** (`b3c58cd`): `hardening_by_unit` dirigido con
+  validación contra la entrega (ajena o nota vacía se rechaza sin mutar);
+  campo global heredado conservado con semántica antigua documentada y
+  formatos mixtos coexistiendo; `VerdictRank` y `severityRank` documentados en
+  código y en `docs/auditoria.md` («Dos escalas distintas»).
+- **P2-5d/P2-5e — implementación escrita, VERIFICACIÓN BLOQUEADA.** Estado:
+  `internal/audit/catalog_trust.go` (sobre `SignedCatalog`, firma ed25519
+  sobre serialización canónica, anillo de claves públicas separado de la
+  privada, verificación con rechazo explícito de firma inválida/clave
+  desconocida/versión incompatible, activación atómica del catálogo instalado
+  con idempotencia) y `catalog_trust_test.go` (verificación/activación,
+  catálogo alterado, clave desconocida, versión incompatible, forma de firma
+  y esquema del sobre). Ambos archivos están en el árbol **sin commit y sin
+  haber compilado ni ejecutado sus pruebas**: el entorno de ejecución se
+  degradó a mitad de la tarea (los comandos sobre el volumen externo
+  `/Volumes/PROJECTS` pasaron de respuestas inmediatas a tiempos de decenas
+  de segundos o bloqueos indefinidos; `go build`/`go test` no terminan y los
+  procesos colgados requirieron kill; lecturas y escrituras triviales sobre
+  el volumen también se bloquean, y `go version` desde el directorio personal
+  responde con normalidad). **Este bloqueo impide declarar avance según el
+  criterio de cierre: sin compilación y pruebas no hay entrega.** El código
+  queda en el árbol identificado para reanudar; el siguiente paso al
+  reanudar es `go build ./... && go test ./internal/audit
+  -run TestSignedCatalog -v`, corregir lo que falle, y solo entonces
+  commit + P2-5f.
+
+**Bloqueos activos:** entorno de shell degradado sobre el volumen del
+proyecto (descrito arriba); el trabajo en curso no puede verificar código
+hasta que el volumen responda con latencia normal.
 
 ## Reglas de ejecución
 
