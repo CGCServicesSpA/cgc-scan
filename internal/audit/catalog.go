@@ -10,7 +10,7 @@ import (
 )
 
 // CatalogSchemaVersion es la versión del catálogo de clases.
-const CatalogSchemaVersion = "audit-catalog-1.1.0"
+const CatalogSchemaVersion = "audit-catalog-1.2.0"
 
 // Etapas del ciclo de vida: vocabulario cerrado que agrupa las clases para la
 // granularidad por subsistema × ciclo de vida del perfil deep.
@@ -39,11 +39,18 @@ const (
 	SignalCI        = "ci"
 	SignalContainer = "container"
 	SignalConfig    = "config"
+	// SignalHTTPServer reconoce la capa de servidor HTTP (handlers, rutas,
+	// middleware): activa las clases del dominio web.
+	SignalHTTPServer = "http_server"
+	// SignalCache reconoce la capa de caché de la aplicación o del edge:
+	// activa las clases de política de caché.
+	SignalCache = "cache"
 )
 
 var knownSignals = map[string]bool{
 	SignalSource: true, SignalManifest: true, SignalLockfile: true,
 	SignalCI: true, SignalContainer: true, SignalConfig: true,
+	SignalHTTPServer: true, SignalCache: true,
 }
 
 var classIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
@@ -80,11 +87,13 @@ type ExtensionSpec struct {
 
 // Signals agrupa las señales declaradas.
 type Signals struct {
-	Manifest  FileNameSpec    `json:"manifest"`
-	Lockfile  FileNameSpec    `json:"lockfile"`
-	CI        PathPatternSpec `json:"ci"`
-	Container FilePatternSpec `json:"container"`
-	Config    ExtensionSpec   `json:"config"`
+	Manifest   FileNameSpec    `json:"manifest"`
+	Lockfile   FileNameSpec    `json:"lockfile"`
+	CI         PathPatternSpec `json:"ci"`
+	Container  FilePatternSpec `json:"container"`
+	Config     ExtensionSpec   `json:"config"`
+	HTTPServer PathPatternSpec `json:"http_server"`
+	Cache      PathPatternSpec `json:"cache"`
 }
 
 // Limits acota el reconocimiento para que el reparto sea barato y estable.
@@ -209,6 +218,12 @@ func (c *Catalog) Validate() error {
 	}
 	if len(c.Signals.Config.Extensions) == 0 {
 		add("signals.config.extensions vacío")
+	}
+	if len(c.Signals.HTTPServer.PathPatterns) == 0 {
+		add("signals.http_server.path_patterns vacío")
+	}
+	if len(c.Signals.Cache.PathPatterns) == 0 {
+		add("signals.cache.path_patterns vacío")
 	}
 	if len(c.Classes) == 0 {
 		add("classes vacío")

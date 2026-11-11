@@ -263,7 +263,7 @@ func scanSignals(root string, unit discovery.Unit, cat *Catalog) (map[string][]s
 		if lockfileNames[baseName] {
 			add(SignalLockfile, rel)
 		}
-		if matchAnyPath(cat.Signals.CI.PathPatterns, rel) {
+		if matchAnyPathGlob(cat.Signals.CI.PathPatterns, rel) {
 			add(SignalCI, rel)
 		}
 		if matchAnyBase(cat.Signals.Container.FilePatterns, baseName) {
@@ -271,6 +271,12 @@ func scanSignals(root string, unit discovery.Unit, cat *Catalog) (map[string][]s
 		}
 		if configExt[path.Ext(baseName)] {
 			add(SignalConfig, rel)
+		}
+		if matchAnyPathGlob(cat.Signals.HTTPServer.PathPatterns, rel) {
+			add(SignalHTTPServer, rel)
+		}
+		if matchAnyPathGlob(cat.Signals.Cache.PathPatterns, rel) {
+			add(SignalCache, rel)
 		}
 		return nil
 	})
@@ -486,6 +492,53 @@ func matchAnyPath(patterns []string, rel string) bool {
 		}
 	}
 	return false
+}
+
+// matchAnyPathGlob aplica patrones con soporte de `**`: en path.Match el
+// `*` no cruza separadores, así que `**/handler*.go` nunca coincidiría con
+// una ruta anidada. Se traduce cada patrón a segmentos: `**` coincide con
+// cero o más segmentos y los demás usan path.Match por segmento.
+func matchAnyPathGlob(patterns []string, rel string) bool {
+	for _, p := range patterns {
+		if matchPathPattern(p, rel) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchPathPattern(pattern, rel string) bool {
+	patSegs := splitSlash(pattern)
+	relSegs := splitSlash(rel)
+	return matchSegments(patSegs, relSegs)
+}
+
+func splitSlash(s string) []string {
+	return strings.Split(s, "/")
+}
+
+func matchSegments(pat, rel []string) bool {
+	for len(pat) > 0 {
+		switch pat[0] {
+		case "**":
+			// `**` coincide con cero o más segmentos: probar cada corte.
+			for i := 0; i <= len(rel); i++ {
+				if matchSegments(pat[1:], rel[i:]) {
+					return true
+				}
+			}
+			return false
+		default:
+			if len(rel) == 0 {
+				return false
+			}
+			if ok, err := path.Match(pat[0], rel[0]); err != nil || !ok {
+				return false
+			}
+			pat, rel = pat[1:], rel[1:]
+		}
+	}
+	return len(rel) == 0
 }
 
 func matchAnyBase(patterns []string, base string) bool {

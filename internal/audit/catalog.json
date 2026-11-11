@@ -1,5 +1,5 @@
 {
-  "schema_version": "audit-catalog-1.1.0",
+  "schema_version": "audit-catalog-1.2.0",
   "description": "Catálogo de dominios, fronteras y clases de ataque que el motor usa para construir el ledger de cobertura. Los textos son datos versionados; el motor no interpreta el código, solo reparte el trabajo y valida el contrato. Las referencias source apuntan a archivos del skill adaptado en la versión fijada por source_version.",
   "source_version": "cloudflare/security-audit-skill@c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
   "limits": {
@@ -111,6 +111,33 @@
         ".ini",
         ".conf",
         ".env"
+      ]
+    },
+    "http_server": {
+      "path_patterns": [
+        "**/handler*.go",
+        "**/routes*.go",
+        "**/server*.go",
+        "**/middleware*.go",
+        "**/*controller*.js",
+        "**/*controller*.ts",
+        "**/*controller*.py",
+        "**/*route*.php",
+        "**/views.py",
+        "**/urls.py",
+        "**/app.rb"
+      ]
+    },
+    "cache": {
+      "path_patterns": [
+        "**/cache*.go",
+        "**/*cache*.js",
+        "**/*cache*.ts",
+        "**/cache.py",
+        "**/caching*.go",
+        "**/nginx*.conf",
+        "**/varnish*.vcl",
+        "**/cdn*.yml"
       ]
     }
   },
@@ -507,6 +534,111 @@
       ],
       "source": "CLOUD-AND-DEPLOYMENT.md#container",
       "lifecycle": "distribution"
+    },
+    {
+      "id": "http-framing-desync",
+      "domain": "web",
+      "boundary": "request-framing",
+      "lifecycle": "runtime",
+      "title": "Desincronización de peticiones HTTP",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "http_server"
+      ],
+      "invariant": "Front end y back end asignan los mismos bytes a la misma petición; ninguna normalización divergente de cabeceras decide el límite de una petición.",
+      "checks": [
+        "Identifica los componentes que interpretan la misma petición y qué bytes asigna cada uno.",
+        "Compara la normalización de cabeceras y de longitud entre componentes con autoridad de parseo.",
+        "Exige dos interpretaciones opuestas del mismo flujo; un riesgo teórico sin segunda interpretación no es hallazgo."
+      ],
+      "source": "companions/WEB-PROTOCOL-AND-AUTH.md#framing"
+    },
+    {
+      "id": "web-cache-unkeyed-input",
+      "domain": "web",
+      "boundary": "cache-policy",
+      "lifecycle": "runtime",
+      "title": "Envenenamiento de caché web con entrada sin clave",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "cache"
+      ],
+      "invariant": "Toda entrada de petición que altera el contenido cacheado o cabeceras de seguridad participa en la clave de caché.",
+      "checks": [
+        "Construye la clave de caché efectiva y lista cada entrada de petición que altera la respuesta.",
+        "Compara esa lista con la clave declarada por la política de caché.",
+        "Verifica qué componente aplica la política y quién puede introducir la entrada."
+      ],
+      "source": "companions/WEB-PROTOCOL-AND-AUTH.md#cache"
+    },
+    {
+      "id": "host-header-trust",
+      "domain": "web",
+      "boundary": "request-trust",
+      "lifecycle": "runtime",
+      "title": "Confianza en cabeceras de host y reenvío",
+      "priority": 40,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "http_server"
+      ],
+      "invariant": "Una cabecera controlada por el cliente no decide identidad, destino de redirección, URL absoluta ni clave de caché sin validación contra una lista cerrada.",
+      "checks": [
+        "Sigue Host, X-Forwarded-*, Origin y Referer hasta su decisión final.",
+        "Identifica quién puede aportar el valor y qué elimina la capa de ingress de confianza.",
+        "Exige el efecto en una identidad o respuesta concreta, no la mera presencia de la cabecera."
+      ],
+      "source": "companions/WEB-PROTOCOL-AND-AUTH.md#host-trust"
+    },
+    {
+      "id": "superlinear-parsing",
+      "domain": "resources",
+      "boundary": "amplification",
+      "lifecycle": "runtime",
+      "title": "Parseo o evaluación superlineal",
+      "priority": 45,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "La complejidad del trabajo aceptado crece linealmente con el tamaño de entrada acotado; no hay camino aceptado con coste superlineal sin límite explícito.",
+      "checks": [
+        "Deriva la profundidad o cardinalidad aceptada y la complejidad del camino que la procesa.",
+        "Compara regex, parseo anidado, evaluación recursiva y ordenación con crecimiento acotado.",
+        "Demuestra la curva de crecimiento con un caso local acotado; el riesgo sin medición no es hallazgo."
+      ],
+      "source": "companions/RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#amplification"
+    },
+    {
+      "id": "unbounded-accumulation",
+      "domain": "resources",
+      "boundary": "accumulation",
+      "lifecycle": "runtime",
+      "title": "Acumulación sin límite por elemento ni agregado",
+      "priority": 45,
+      "languages": [
+        "any"
+      ],
+      "requires": [
+        "source"
+      ],
+      "invariant": "Toda acumulación de trabajo o estado tiene límite por elemento y agregado, con limpieza en desconexión, timeout y cancelación.",
+      "checks": [
+        "Inventa los cuerpos, flujos, sesiones o suscripciones que el proceso acumula.",
+        "Busca el límite por elemento y el agregado, y la limpieza ante desconexión o cancelación.",
+        "Verifica que la limpieza cubre el camino de error parcial y no solo el feliz."
+      ],
+      "source": "companions/RESOURCE-EXHAUSTION-AND-AVAILABILITY.md#accumulation"
     }
   ]
 }
