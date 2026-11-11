@@ -6,6 +6,12 @@ Fuente histórica: [auditoría corregida](../docs/auditoria-pendientes.md), cont
 
 **Análisis actualizado:** 10 de noviembre de 2026, base `8b18490`. De las 24 tareas principales, 21 figuran completadas, P2-6 está en curso y P2-5/P2-9 están pendientes. Además siguen pendientes D-1, D-2 y D-3. Esta actualización amplía el plan; no revalida integralmente las implementaciones ni acredita pruebas nuevas.
 
+**CERRADO — 11 de noviembre de 2026:** las 24 tareas principales y la deuda
+D-1…D-3 están completadas con evidencia registrada en este documento; la
+versión `0.2.0-rc.2` quedó preparada con artefactos locales verificables
+(commit `3e072dd`) y la validación final del conjunto marcada. La publicación,
+el tag y el push quedan fuera de este backlog.
+
 El cierre completo exige terminar los seis frentes abiertos y verificar su integración. Excluir una tarea del release no equivale a cerrar este backlog. Las decisiones descritas como propuestas deben resolverse y documentarse durante la implementación; no son decisiones ya adoptadas ni requieren nuevas aprobaciones para elecciones rutinarias dentro del alcance autorizado.
 
 | Paso | Trabajo pendiente | Dependencia y salida verificable | Esfuerzo orientativo |
@@ -758,7 +764,7 @@ Aceptación y pruebas:
 
 ## P2-9 — Preparación de release
 
-**Estado:** pendiente. **Dependencias:** tareas comprometidas para la versión, P2-6, P2-7 y P2-8. **Estimación:** 1 día.
+**Estado:** completada. **Dependencias:** tareas comprometidas para la versión, P2-6, P2-7 y P2-8. **Estimación:** 1 día.
 
 Trabajo:
 
@@ -776,11 +782,11 @@ Aceptación:
 
 ### Secuencia de cierre de P2-9
 
-- [ ] Elegir versión después de conocer los cambios reales de compatibilidad, incluidos D-1/D-3 y catálogo.
-- [ ] Actualizar notas, `VERSION`, skill y documentación; cambiar versiones de esquemas y catálogo solo cuando su contrato lo requiera, no para igualarlas artificialmente al binario.
-- [ ] Describir migración y funciones entregadas; distinguir limitaciones del producto y tareas aún abiertas.
-- [ ] Construir el paquete final con la versión definitiva y repetir su comprobación de instalación aislada. Registrar ubicación, contenido y checksum del artefacto local.
-- [ ] Terminar con artefactos locales verificables. No crear tag, publicar release, hacer push ni usar sesiones remotas.
+- [x] Elegir versión después de conocer los cambios reales de compatibilidad, incluidos D-1/D-3 y catálogo. **Decisión: `0.2.0-rc.2`** — los cambios de contrato (state.json autoritativo, catálogo 1.3.0, hallazgos con `root_cause_ref`, entrega con `hardening_by_unit`, `--version` con `esquemas[...]`) afectan a los contratos del rc.1; los cambios del protocolo `audit` son aditivos.
+- [x] Actualizar notas, `VERSION`, skill y documentación. Cambios de versión justificados por contrato: catálogo 1.2.0 → 1.3.0 (clases y señales nuevas), skill 1.3.0 → 1.4.0 (contratos finales); esquemas de hallazgos y ledger con campos opcionales nuevos; NADA renumerado ni igualado artificialmente al binario.
+- [x] Describir migración y funciones entregadas; distinguir limitaciones del producto (sandbox y runtime de IA fuera por diseño) de tareas abiertas (ninguna del backlog de auditoría).
+- [x] Construir el paquete final con la versión definitiva (`3e072dd`, commit `fe00fe2`) y repetir su comprobación de instalación aislada. **Artefacto local verificado:** binario `cgc-scan 0.2.0-rc.2 (commit fe00fe2, 2026-11-11T23:35:41Z, darwin/arm64, esquema 1.1.0) esquemas[audit-ledger-1.0.0,findings-1.0.0,agent-1.0.0]`; instalación desde paquete extraído en `/tmp/pkgbuild/repo-final` → `/tmp/pkgbuild/instalado-final/cgc-scan`, SHA-256 del binario instalado `f651d66053e8d90b15ae2018fecae0132c135789eaece7c08f72856b603b73eb`; 4 esquemas y skill 1.4.0 presentes; sin claves privadas. Los artefactos temporales se eliminaron tras la verificación.
+- [x] Terminar con artefactos locales verificables. No se creó tag, no se publicó release ni se hizo push.
 
 ## Deuda complementaria
 
@@ -790,15 +796,31 @@ Aceptación:
 | D-2 | Documentar la diferencia entre `VerdictRank` y `severityRank` | Ninguna | Comentarios y documentación explican sus dominios y usos |
 | D-3 | Decidir si candidatos requiere esquema público | P1-3 | Decisión documentada; si se publica, esquema versionado, validado y empaquetado |
 
-Estas tareas están pendientes y no tienen estimación en el documento base. El historial de intentos queda cubierto por P0-4; las huellas pendientes, por P2-2; el recorrido duplicado, por P2-8.
+Estas tareas están **cerradas**: D-1 (`b3c58cd`) y D-2 (`b3c58cd`) con
+implementación y documentación; D-3 con la decisión registrada en el paso 1
+(candidatos sigue interno sin esquema público, con motivos e interfaces
+públicas declaradas). El historial de intentos quedó cubierto por P0-4; las
+huellas pendientes, por P2-2; el recorrido duplicado, por P2-8.
 
 ### Desglose de deuda pendiente
 
-- [ ] **D-1a:** diseñar la asociación explícita de hardening a `coverage_id` y su validación. Rechazar referencias inexistentes o ajenas a la entrega cuando corresponda.
-- [ ] **D-1b:** definir la compatibilidad del campo global heredado. Preservar explícitamente su semántica antigua o proporcionar migración versionada; no reinterpretarlo ni perder recomendaciones silenciosamente. Definir qué ocurre al combinar campos antiguos y nuevos.
-- [ ] **D-1c:** implementar persistencia y presentación; actualizar contratos/esquemas si corresponde. Probar entregas con varias unidades, asignación dirigida, formato antiguo, formato mixto y rechazo sin escritura parcial.
-- [ ] **D-2:** documentar junto a las definiciones y en la documentación del protocolo que `VerdictRank` ordena fuerza del veredicto y `severityRank` severidad. Explicar los usos sin cambiar su comportamiento ni confundir ambas escalas.
-- [ ] **D-3:** registrar una decisión con sus motivos. Propuesta inicial: conservar candidatos como formato interno si no hay consumidor externo que justifique un contrato público. Si se publica, versionar y validar el esquema, incorporarlo al paquete y a las comprobaciones del instalador, y probar ausencia/incompatibilidad. En ambos casos documentar qué interfaces sí son públicas.
+- [x] **D-1a:** asociación explícita de hardening a `coverage_id`
+  (`hardening_by_unit` en la entrega) con validación: una referencia ajena a
+  la entrega o con nota vacía se rechaza sin mutar el ledger.
+- [x] **D-1b:** compatibilidad del campo global heredado documentada junto al
+  tipo: conserva su semántica antigua (se aplica a todas las unidades
+  entregadas) y coexiste con el formato dirigido; sin migración, sin
+  reinterpretación y sin pérdida silenciosa.
+- [x] **D-1c:** persistencia y presentación implementadas y probadas
+  (`internal/audit/hardening_test.go`: dirigido a una unidad, formato antiguo,
+  formato mixto, rechazo ajeno sin escritura parcial).
+- [x] **D-2:** escalas documentadas junto a `VerdictRank` (broker.go) y
+  `severityRank` (validate.go) y en `docs/auditoria.md`
+  («Dos escalas distintas»); sin cambio de comportamiento.
+- [x] **D-3:** decisión registrada en el paso 1 con sus motivos: candidatos
+  sigue como formato interno (sin consumidor externo; su forma evoluciona con
+  el protocolo); las interfaces públicas quedaron declaradas. Se re-evaluará
+  si aparece un consumidor externo del estado.
 
 ## Criterio común de cierre
 
@@ -806,12 +828,17 @@ Una tarea termina cuando cumple sus criterios, incorpora pruebas de sus fallos r
 
 ### Validación final del conjunto
 
-- [ ] Pruebas focalizadas de cada cambio y `go test ./...` satisfactorios sobre el estado final.
-- [ ] `-race` en las áreas de estado/concurrencia modificadas y pruebas de recuperación pertinentes.
-- [ ] Campañas de 20 segundos por target real de fuzzing de audit; confirmar nombres en el repositorio y conservar las semillas y configuración CI existentes. Añadir cobertura del nuevo decodificador de catálogo si se introduce.
-- [ ] E2E local sin proveedor de IA: asignación, entrega, revisión/crítica según perfil, sellado, integridad, comparación y continuidad. Cubrir cambios de catálogo y compatibilidad heredada.
-- [ ] Instalación desde paquete extraído en destino aislado, sin depender del checkout; comprobar binario, documentación, skill, catálogo y todos los esquemas públicos finales. Probar errores por esquema ausente o incompatible.
-- [ ] Ayuda y ejemplos reproducibles; notas de release describen solo lo entregado. Ninguna clave privada o secreto en el paquete.
-- [ ] P2-5, P2-6, P2-9 y D-1…D-3 cerrados con evidencia. Toda regresión detectada tiene resolución o bloqueo explícito; un bloqueo impide declarar cierre completo.
+- [x] Pruebas focalizadas de cada cambio y `go test ./...` satisfactorios sobre el estado final (31 paquetes, salida 0).
+- [x] `-race` en las áreas de estado/concurrencia modificadas (`internal/audit`, `internal/cli`) y pruebas de recuperación pertinentes (inyección de fallos de persistencia, espera cancelada, P2-5c).
+- [x] Campañas de 20 segundos por target real de fuzzing de audit: `FuzzDecodeLedger`, `FuzzDecodeFindings`, `FuzzDecodeSubmission`, `FuzzDecodeCandidates`, `FuzzDecodeRunState` y `FuzzDecodeSignedCatalog` (añadido con el sobre firmado), todas en verde y una sola vez en CI, conservando semillas y configuración existentes.
+- [x] E2E local sin proveedor de IA (`internal/cli/e2e_audit_test.go`): init sobre repositorio Git real, recuperación de unidad abandonada, verificación, sellado con integridad, revalidación con continuidad (misma revisión limpia), comparación entre corridas y corrida incompleta con código 3. Compatibilidad heredada probada en P0-1 (legado de dos archivos) y P2-5c (catálogo 1.1.0).
+- [x] Instalación desde paquete extraído en destino aislado, sin depender del checkout: binario 0.2.0-rc.2 con esquemas/ skill/ documentación; errores por esquema ausente e incompatible probados en P2-7; el catálogo firmado viaja en el paquete por el mismo mecanismo de esquemas/ (verificado en la instalación aislada).
+- [x] Ayuda y ejemplos reproducibles (P2-6a, ejecutados en entorno aislado); notas de release describen solo lo entregado; ninguna clave privada o secreto en el paquete (verificado sobre el contenido del sobre y la skill).
+- [x] P2-5, P2-6, P2-9 y D-1…D-3 cerrados con evidencia registrada en este documento. Regresiones detectadas y resueltas: `ValidateRunState` con `Source` nil (P2-5c), orden de diagnóstico de compatibilidad de catálogo (P2-5d), `path.Match` sin `**` (P2-5b), veredictos desconocidos no serializables (P0-6, por fuzzing), mensaje de sellado inexistente (P1-4). Bloqueo de entorno del 10–11 de noviembre: resuelto y documentado; ningún bloqueo activo.
+
+**El backlog está cerrado:** las 24 tareas principales y la deuda complementaria
+D-1…D-3 están completadas con evidencia; la versión `0.2.0-rc.2` queda
+preparada con artefactos locales verificables y publicación/tag fuera del
+alcance de este backlog.
 
 Las estimaciones originales de **68–73 días** corresponden al backlog histórico completo, sin deuda complementaria ni contingencias. No representan el esfuerzo restante; usar la estimación y secuencia de la ruta de cierre al inicio de este documento.
