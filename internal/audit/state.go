@@ -80,6 +80,10 @@ func ValidateRunState(st *RunState) error {
 	if err := is.err(); err != nil {
 		return err
 	}
+	if st.Source == nil {
+		is.addf("el estado exige una declaración de fuente")
+		return is.err()
+	}
 	switch st.Source.Mode {
 	case SourceModeRevision:
 		if strings.TrimSpace(st.Source.Revision) == "" {
