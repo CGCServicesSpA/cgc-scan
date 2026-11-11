@@ -151,6 +151,17 @@ continuar P2-5b con los otros ocho companions.
   parciales según señales detectables en fuente). P2-5 no se cierra hasta
   que b esté completo y los fixtures de cada clase nueva demuestren su
   comportamiento.
+- **P2-5b cerrado y P2-5 completo** (`c51e4a3`, catálogo `1.3.0`): 15 clases
+  nuevas trazadas a los ocho companions restantes — client (3),
+  messaging (3), data-isolation (3), memory-safety (2), agent-boundary (2) y
+  local-ipc (2) — con señales `messaging_signal` e `ipc_signal` nuevas y
+  fixtures positivo/negativo por grupo (activación solo con señal; ausencia
+  de señales nunca se presenta como cobertura). Exclusiones justificadas:
+  cloud/supply-chain ya cubiertos por configuration y dependencies; móvil
+  nativo (Swift/Kotlin) fuera porque el catálogo declara solo los seis
+  lenguajes soportados. La compatibilidad del sobre firmado se amplió a
+  1.3.0 y las corridas 1.1.0/1.2.0 siguen reabriendo sin reinterpretarse.
+  Suite completa en verde (31 paquetes).
 
 ## Reglas de ejecución
 
@@ -631,7 +642,7 @@ Aceptación y pruebas:
 
 ## P2-5 — Catálogo ampliado y actualización autenticada
 
-**Estado:** pendiente. **Dependencias:** P1-1. **Estimación original:** 5–10 días; reestimar tras definir distribución y firma.
+**Estado:** completada. **Dependencias:** P1-1. **Estimación original:** 5–10 días; reestimar tras definir distribución y firma.
 
 Trabajo:
 
