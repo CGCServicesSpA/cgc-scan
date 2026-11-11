@@ -80,6 +80,15 @@ backlog y su swap (preservados). **CodeGraph:** índice activo, 232 archivos.
 - **Decisión D-2 (registrada):** documentar ambas escalas junto a sus
   definiciones y en `docs/auditoria.md`; sin cambio de comportamiento.
 - **Siguiente paso:** P2-5b (primeros incrementos del catálogo con fixtures).
+- **D-1 y D-2 cerrados** (`b3c58cd`): `hardening_by_unit` dirigido y validado
+  contra la entrega; campo global conservado con semántica antigua y formatos
+  mixtos coexistentes; escalas documentadas en código y en
+  `docs/auditoria.md`. Pruebas: `go test ./internal/audit -run TestHardening`
+  (4 casos) y suite completa en verde con `-race`.
+- **Estimación restante actualizada:** con D-1/D-2/D-3 cerrados y el inventario
+  de companions ya levantado, queda **P2-5 (7–15 d), cierre de P2-6 (1–3 d) e
+  integración + P2-9 (2–4 d)**: **10–22 días**. El rango de P2-5 domina la
+  incertidumbre: depende de cuántas clases nuevas se demuestren con fixtures.
 
 ## Reglas de ejecución
 
